@@ -3,7 +3,7 @@ import { Loader2, FileCheck, Plus, Edit2, Trash2, Check, X, GripVertical, Sparkl
 import LocalizedArrow from "@/components/LocalizedArrow";
 import { useLang } from "@/hooks/useLang";
 import { showAlert, showToast } from "@/utils/swal";
-import { useCreateContract, useUpdateContract, useQuotations, useItems, useContracts } from "@/hooks/queries";
+import { useCreateContract, useUpdateContract, useQuotations, useItems, useContracts, useCategories } from "@/hooks/queries";
 import { useContractTerms } from "@/hooks/queries/useContractTermsQuery";
 import { getQuotationById } from "@/api/requests/quotationsService";
 import { getContractById, type Contract } from "@/api/requests/contractsService";
@@ -75,10 +75,25 @@ const CreateContract = ({ clientId, clientName, onBack, onSuccess, editContract,
     const { data: termsResponse, isLoading: termsLoading } = useContractTerms({ page: 1, limit: 100 });
     const predefinedTerms = Array.isArray(termsResponse) ? termsResponse : termsResponse?.data || [];
     const getTermId = (term: any) => String(term?._id ?? term?.id ?? "");
+    const { data: termCategoriesResponse } = useCategories({ type: "term", page: 1 });
+    const termCategories = termCategoriesResponse?.categories || [];
+
+    const getCategoryId = (value: any): string => {
+        if (!value) return "";
+        if (typeof value === "string") return value;
+        return String(value._id || value.id || "");
+    };
+
+    const [selectedTermCategory, setSelectedTermCategory] = useState<string>("all");
 
     const isSaving = createContractMutation.isPending || updateContractMutation.isPending;
     // Wait until quotations, items, contracts and predefined terms are all loaded before rendering the page
     const isLoading = quotationsLoading || itemsLoading || termsLoading || contractsLoading;
+
+    const filteredPredefinedTerms = useMemo(() => {
+        if (selectedTermCategory === "all") return predefinedTerms;
+        return predefinedTerms.filter((term: any) => getCategoryId((term as any).category) === selectedTermCategory);
+    }, [predefinedTerms, selectedTermCategory]);
 
     // Form state
     const [inputKey, setInputKey] = useState<string>("");
@@ -880,11 +895,63 @@ const CreateContract = ({ clientId, clientName, onBack, onSuccess, editContract,
                             {/* Predefined Terms Selection */}
                             {predefinedTerms.length > 0 && (
                                 <div className="mb-4">
-                                    <h4 className="text-light-700 dark:text-dark-300 mb-2 text-sm font-medium">
-                                        {t("select_predefined_terms") || "Select Predefined Terms"}
-                                    </h4>
+                                    <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <h4 className="text-light-700 dark:text-dark-300 text-sm font-medium">
+                                            {t("select_predefined_terms") || "Select Predefined Terms"}
+                                        </h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedTermCategory("all")}
+                                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                                                    selectedTermCategory === "all"
+                                                        ? "border-primary-500 bg-primary-500 text-white shadow-md shadow-primary-500/30"
+                                                        : "border-light-300 bg-white text-light-700 hover:border-light-400 hover:bg-light-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
+                                                }`}
+                                            >
+                                                {t("all_terms")}
+                                                <span className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs ${
+                                                    selectedTermCategory === "all"
+                                                        ? "bg-white/20 text-white"
+                                                        : "bg-light-200 text-light-600 dark:bg-dark-700 dark:text-dark-400"
+                                                }`}>
+                                                    {predefinedTerms.length}
+                                                </span>
+                                            </button>
+
+                                            {termCategories.map((category) => {
+                                                const count = predefinedTerms.filter(
+                                                    (term: any) => getCategoryId((term as any).category) === category._id,
+                                                ).length;
+                                                if (count === 0) return null;
+
+                                                return (
+                                                    <button
+                                                        key={category._id}
+                                                        type="button"
+                                                        onClick={() => setSelectedTermCategory(category._id)}
+                                                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                                                            selectedTermCategory === category._id
+                                                                ? "border-primary-500 bg-primary-500 text-white shadow-md shadow-primary-500/30"
+                                                                : "border-light-300 bg-white text-light-700 hover:border-light-400 hover:bg-light-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
+                                                        }`}
+                                                    >
+                                                        {category.name}
+                                                        <span className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs ${
+                                                            selectedTermCategory === category._id
+                                                                ? "bg-white/20 text-white"
+                                                                : "bg-light-200 text-light-600 dark:bg-dark-700 dark:text-dark-400"
+                                                        }`}>
+                                                            {count}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                        {predefinedTerms.map((term) => {
+                                        {filteredPredefinedTerms.map((term) => {
                                             const id = getTermId(term);
                                             const isSelected = contractTermsList.some((ct) => String(ct.termId || "") === id);
                                             return (

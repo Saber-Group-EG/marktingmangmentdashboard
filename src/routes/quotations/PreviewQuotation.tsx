@@ -176,8 +176,7 @@ const PreviewQuotation = ({
             const client = clients.find((c) => c.id === quotation.clientId);
             const clientNameForPdf = client?.business?.businessName || "";
 
-            // Generate PDF as HTML Blob
-            const htmlBlob = await generateQuotationPDF({
+            const pdfBlob = await generateQuotationPDF({
                 quotation,
                 clientName: clientNameForPdf,
                 lang: lang as "ar" | "en",
@@ -185,8 +184,7 @@ const PreviewQuotation = ({
                 items,
             });
 
-            // Create blob URL and open in new tab for preview
-            const blobUrl = URL.createObjectURL(htmlBlob);
+            const blobUrl = URL.createObjectURL(pdfBlob);
             const previewWindow = window.open(blobUrl, '_blank');
             
             if (!previewWindow) {
@@ -214,8 +212,7 @@ const PreviewQuotation = ({
             const client = clients.find((c) => c.id === quotation.clientId);
             const clientNameForPdf = client?.business?.businessName || "";
 
-            // Generate PDF as HTML Blob
-            const htmlBlob = await generateQuotationPDF({
+            const pdfBlob = await generateQuotationPDF({
                 quotation,
                 clientName: clientNameForPdf,
                 lang: lang as "ar" | "en",
@@ -223,11 +220,10 @@ const PreviewQuotation = ({
                 items,
             });
 
-            // Create download link
-            const blobUrl = URL.createObjectURL(htmlBlob);
+            const blobUrl = URL.createObjectURL(pdfBlob);
             const link = document.createElement('a');
             link.href = blobUrl;
-            link.download = `quotation-${quotation.quotationNumber || Date.now()}.html`;
+            link.download = `quotation-${quotation.quotationNumber || Date.now()}.pdf`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);

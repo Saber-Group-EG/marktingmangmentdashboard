@@ -481,7 +481,56 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
 </body>
 </html>`;
 
-    // Return as Blob instead of printing directly
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    return blob;
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.position = "fixed";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    iframe.style.left = "0";
+    iframe.style.top = "0";
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!frameDoc) {
+        document.body.removeChild(iframe);
+        throw new Error("Unable to initialize PDF preview frame");
+    }
+
+    frameDoc.open();
+    frameDoc.write(htmlContent);
+    frameDoc.close();
+
+    const sourceElement = frameDoc.body;
+
+    try {
+        const html2pdfModule: any = await import("html2pdf.js");
+        const html2pdf = html2pdfModule.default || html2pdfModule;
+
+        const worker = html2pdf()
+            .set({
+                margin: 0,
+                filename: `quotation-${quotation.quotationNumber || quotation._id || Date.now()}.pdf`,
+                image: { type: "jpeg", quality: 0.98 },
+                html2canvas: {
+                    scale: 2,
+                    useCORS: true,
+                    scrollY: 0,
+                },
+                jsPDF: {
+                    unit: "pt",
+                    format: "a4",
+                    orientation: "portrait",
+                },
+                pagebreak: { mode: ["css", "legacy"] },
+            })
+            .from(sourceElement);
+
+        const blob = await worker.outputPdf("blob");
+        return blob as Blob;
+    } finally {
+        document.body.removeChild(iframe);
+    }
 };
