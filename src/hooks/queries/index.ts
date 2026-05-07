@@ -38,3 +38,6 @@ export * from "./usePlansQuery";
 
 // Contract Terms
 export * from "./useContractTermsQuery";
+
+// Categories
+export * from "./useCategoriesQuery";

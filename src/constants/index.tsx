@@ -10,6 +10,7 @@ import {
     Target,
     FileText,
     NotepadText,
+    Tag,
     // Settings,
     // MessageSquare,
     UserCircle,
@@ -72,10 +73,7 @@ export const navbarLinks = [
                 label: "Contracts",
                 icon: FileSignature,
                 path: "/contracts",
-            },
-
-          
-           
+            }, 
         ],
     },
     {
@@ -96,6 +94,11 @@ export const navbarLinks = [
                 label: "Services",
                 icon: Briefcase,
                 path: "/services",
+            },
+            {
+                label: "Categories",
+                icon: Tag,
+                path: "/categories",
             },
             
         ],

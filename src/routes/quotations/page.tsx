@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { Loader2, Eye, Edit2, Trash2, Download } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
-import { useClients, useQuotations, useServices, useItems, useDeleteQuotation } from "@/hooks/queries";
+import { useClients, useQuotations, useItems, useDeleteQuotation } from "@/hooks/queries";
 import { showConfirm, showAlert } from "@/utils/swal";
 import type { Client } from "@/api/interfaces/clientinterface";
 import type { Quotation } from "@/api/requests/quotationsService";
 import CreateQuotation from "./CreateQuotation";
 import CustomQuotation from "./CustomQuotation";
 import PreviewQuotation from "./PreviewQuotation";
-import { generateQuotationPDF } from "@/utils/quotationPdfGenerator";
-
+import { generateQuotationPDF,} from "@/utils/quotationPdfGenerator";
 
 type View = "list" | "create" | "preview" | "custom";
 
@@ -145,23 +144,27 @@ const QuotationsPage = () => {
 
         try {
             await deleteQuotationMutation.mutateAsync(id);
+            showAlert("Quotation deleted successfully", "success");
         } catch (error: any) {
             showAlert(error?.response?.data?.message || "Failed to delete quotation", "error");
         }
     };
 
     // Services and items needed to generate PDFs client-side
-    const { data: itemsResponse,} = useItems({ limit: 1000 });
+    const { data: itemsResponse } = useItems({ limit: 1000 });
     const items = itemsResponse?.data || [];
 
+
     // Generate PDF for a quotation (mode = 'preview' opens in new tab, 'download' saves file)
-const generatePdfForQuotation = async (quotation: any, mode: "preview" | "download") => {
+ // In QuotationsPage.tsx, update the handlers:
+
+const handlePreviewQuotation = async (quotation: any) => {
     try {
         let clientNameForPdf = "";
         if (quotation.clientId && typeof quotation.clientId === 'object') {
             clientNameForPdf = quotation.clientId.business?.businessName || "";
         } else if (quotation.clientId && typeof quotation.clientId === 'string') {
-            const client = clients.find((c) => c.id === quotation.clientId);
+            const client = clients.find((c) => (c as any).id === quotation.clientId || (c as any)._id === quotation.clientId);
             clientNameForPdf = client?.business?.businessName || "";
         } else if (quotation.clientName) {
             clientNameForPdf = quotation.clientName;
@@ -169,18 +172,73 @@ const generatePdfForQuotation = async (quotation: any, mode: "preview" | "downlo
             clientNameForPdf = quotation.customName;
         }
 
-        await generateQuotationPDF({
+        // Generate PDF as HTML blob
+        const htmlBlob = await generateQuotationPDF({
             quotation,
             clientName: clientNameForPdf,
             lang: lang as "ar" | "en",
-            t,
-            items, // Pass items array for lookups
+            t: tr,
+            items,
         });
+
+        // Create a blob URL and open in new tab for preview
+        const blobUrl = URL.createObjectURL(htmlBlob);
+        const previewWindow = window.open(blobUrl, '_blank');
+        
+        if (!previewWindow) {
+            showAlert("Pop-up blocked. Please allow pop-ups for this site.", "error");
+        }
+        
+        // Clean up after a delay
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
     } catch (error: any) {
         console.error("PDF Generation Error:", error);
         showAlert(t("failed_to_generate_pdf") || "Failed to generate PDF. Please try again.", "error");
     }
 };
+
+const handleDownloadQuotation = async (quotation: any) => {
+    try {
+        let clientNameForPdf = "";
+        if (quotation.clientId && typeof quotation.clientId === 'object') {
+            clientNameForPdf = quotation.clientId.business?.businessName || "";
+        } else if (quotation.clientId && typeof quotation.clientId === 'string') {
+            const client = clients.find((c) => (c as any).id === quotation.clientId || (c as any)._id === quotation.clientId);
+            clientNameForPdf = client?.business?.businessName || "";
+        } else if (quotation.clientName) {
+            clientNameForPdf = quotation.clientName;
+        } else if (quotation.customName) {
+            clientNameForPdf = quotation.customName;
+        }
+
+        // Generate PDF as HTML blob
+        const htmlBlob = await generateQuotationPDF({
+            quotation,
+            clientName: clientNameForPdf,
+            lang: lang as "ar" | "en",
+            t: tr,
+            items,
+        });
+
+        // Create download link
+        const blobUrl = URL.createObjectURL(htmlBlob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `quotation-${quotation.quotationNumber || Date.now()}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (error: any) {
+        console.error("PDF Generation Error:", error);
+        showAlert(t("failed_to_generate_pdf") || "Failed to generate PDF. Please try again.", "error");
+    }
+};
+
+
+
     // Render Create View
     if (currentView === "create" && selectedClient) {
         const clientId = (selectedClient as any).id || (selectedClient as any)._id || undefined;
@@ -411,14 +469,14 @@ const generatePdfForQuotation = async (quotation: any, mode: "preview" | "downlo
 
                                             <div className="flex items-center gap-2">
                                                 <button
-                                                    onClick={() => generatePdfForQuotation(q, "preview")}
+                                                    onClick={() => handlePreviewQuotation(q)}
                                                     className="btn-ghost rounded-xl"
                                                     title={tr("preview_pdf", "Preview PDF")}
                                                 >
                                                     <Eye size={16} />
                                                 </button>
                                                 <button
-                                                    onClick={() => generatePdfForQuotation(q, "download")}
+                                                    onClick={() => handleDownloadQuotation(q)}
                                                     className="btn-ghost rounded-xl"
                                                     title={tr("download_pdf", "Download PDF")}
                                                 >

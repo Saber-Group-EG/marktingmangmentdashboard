@@ -158,8 +158,8 @@ export const deleteProject = async (id: string) => {
 
 export const getProjectCategories = async (): Promise<ProjectTaxonomyOption[]> => {
   try {
-    const response = await axiosInstance.get(`${PROJECTS_ENDPOINT}/categories`, {
-      params: { PageCount: "all" },
+    const response = await axiosInstance.get("/categories", {
+      params: { type: "project", page: 1, limit: 200 },
     });
     const raw = extractArrayFromResponse(response.data);
     const normalized = raw

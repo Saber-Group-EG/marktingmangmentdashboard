@@ -12,6 +12,7 @@ export interface Item {
     ar: string;
     description?: string;
     descriptionAr?: string;
+    category?: string | { _id?: string; id?: string; name?: string };
     deleted?: boolean;
     createdAt?: string;
     updatedAt?: string;
@@ -88,7 +89,13 @@ export const getItemById = async (id: string): Promise<Item> => {
 /**
  * Create a new item
  */
-export const createItem = async (itemData: { name: string; ar?: string; description?: string; descriptionAr?: string }): Promise<Item> => {
+export const createItem = async (itemData: {
+    name: string;
+    ar?: string;
+    description?: string;
+    descriptionAr?: string;
+    category?: string;
+}): Promise<Item> => {
     try {
         const response = await api.post("/items", itemData);
         // Invalidate items cache after creating
@@ -109,6 +116,7 @@ export const updateItem = async (
         ar?: string;
         description?: string;
         descriptionAr?: string;
+        category?: string;
     },
 ): Promise<Item> => {
     try {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Loader2, Package as PackageIcon, Plus, Search, Trash2, Copy } from "lucide-react";
+import { Check, Loader2, Package as PackageIcon, Plus, Search, Trash2, Copy, FolderOpen, Tag, ShoppingBag } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLang } from "@/hooks/useLang";
@@ -8,7 +8,7 @@ import { createItem, getItems, type Item } from "@/api/requests/itemsService";
 import type { Package as PackageType } from "@/api/requests/packagesService";
 import { getPackageById } from "@/api/requests/packagesService";
 import { packagesKeys, useCreatePackage, useDeletePackage, usePackages, useUpdatePackage } from "@/hooks/queries/usePackagesQuery";
-import { useServices } from "@/hooks/queries";
+import { useServices, useCategories } from "@/hooks/queries";
 
 type DisplayType = "number" | "string" | "availability";
 type LocalItem = Item & { id?: string };
@@ -23,12 +23,15 @@ const AddPackagePage = () => {
         return !value || value === key ? fallback : value;
     };
 
+    // Package form states
     const [nameEn, setNameEn] = useState("");
     const [nameAr, setNameAr] = useState("");
     const [description, setDescription] = useState("");
     const [descriptionAr, setDescriptionAr] = useState("");
     const [price, setPrice] = useState("");
+    const [categoryId, setCategoryId] = useState("");
 
+    // Items states
     const [availableItems, setAvailableItems] = useState<LocalItem[]>([]);
     const [itemsLoading, setItemsLoading] = useState(false);
     const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -38,11 +41,13 @@ const AddPackagePage = () => {
     const [availabilities, setAvailabilities] = useState<Record<string, boolean>>({});
     const [itemNotes, setItemNotes] = useState<Record<string, string>>({});
 
-    const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
-    const [serviceSearch, setServiceSearch] = useState("");
+    // Filter states
     const [packageSearch, setPackageSearch] = useState("");
+    const [selectedPackageCategory, setSelectedPackageCategory] = useState<string>("all");
     const [itemSearch, setItemSearch] = useState("");
+    const [selectedItemCategory, setSelectedItemCategory] = useState<string>("all");
 
+    // UI states
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editPackageId, setEditPackageId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -50,6 +55,8 @@ const AddPackagePage = () => {
     const [nameError, setNameError] = useState("");
     const [priceError, setPriceError] = useState("");
 
+    // Quick add item states
+    const [showQuickAdd, setShowQuickAdd] = useState(false);
     const [newItemName, setNewItemName] = useState("");
     const [newItemNameAr, setNewItemNameAr] = useState("");
     const [newItemDescription, setNewItemDescription] = useState("");
@@ -57,16 +64,52 @@ const AddPackagePage = () => {
     const [isCreatingItem, setIsCreatingItem] = useState(false);
     const [quickAddError, setQuickAddError] = useState("");
 
+    // Data fetching
     const { data: packagesData, isLoading: packagesLoading } = usePackages({ page: 1, limit: 100 });
     const packagesList: PackageType[] = packagesData?.data || [];
-    const { data: servicesData, isLoading: servicesLoading } = useServices({ limit: 1000 });
+    const { data: servicesData } = useServices({ limit: 1000 });
     const services = servicesData?.data || [];
+    const { data: packageCategoriesResponse, isLoading: packageCategoriesLoading } = useCategories({ type: "package", page: 1 });
+    const { data: itemCategoriesResponse, isLoading: itemCategoriesLoading } = useCategories({ type: "item", page: 1 });
+    
+    const packageCategories = packageCategoriesResponse?.categories || [];
+    const itemCategories = itemCategoriesResponse?.categories || [];
 
     const createPackageMutation = useCreatePackage();
     const updatePackageMutation = useUpdatePackage();
     const deleteMutation = useDeletePackage();
 
     const getItemId = (item: any): string => String(item?._id || item?.id || "");
+    const getCategoryId = (value: any): string => {
+        if (!value) return "";
+        if (typeof value === "string") return value;
+        return String(value._id || value.id || "");
+    };
+
+    const getPackageCategoryId = (pkg: PackageType): string => {
+        return getCategoryId((pkg as any).category);
+    };
+
+    const getItemCategoryId = (item: LocalItem): string => {
+        return getCategoryId((item as any).category);
+    };
+
+    const getPackageCategoryName = (categoryId: string) => {
+        const category = packageCategories.find(c => c._id === categoryId);
+        return category ? category.name : tr("no_category", "No category");
+    };
+
+    // Calculate category counts for packages
+    const getPackageCategoryCount = (categoryId: string) => {
+        if (categoryId === "all") return packagesList.length;
+        return packagesList.filter(pkg => getPackageCategoryId(pkg) === categoryId).length;
+    };
+
+    // Calculate category counts for items
+    const getItemCategoryCount = (categoryId: string) => {
+        if (categoryId === "all") return filteredBySearch.length;
+        return filteredBySearch.filter(item => getItemCategoryId(item) === categoryId).length;
+    };
 
     const normalizeItem = (raw: any): LocalItem | null => {
         const source = raw?.item || raw?.data || raw;
@@ -100,86 +143,31 @@ const AddPackagePage = () => {
 
     useEffect(() => {
         loadItems();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const getServiceId = (service: any): string => String(service?._id || service?.id || "");
-
-    const packageMatchesService = (pkg: PackageType, serviceId: string) => {
-        const maybeService = (pkg as any)?.service;
-        const maybeServiceId = (pkg as any)?.serviceId;
-
-        if (!serviceId) return false;
-        if (typeof maybeService === "string") return maybeService === serviceId;
-        if (maybeService && typeof maybeService === "object") {
-            const id = String((maybeService as any)?._id || (maybeService as any)?.id || "");
-            return id === serviceId;
-        }
-
-        return String(maybeServiceId || "") === serviceId;
-    };
-
-    const serviceCards = useMemo(() => {
-        return services
-            .map((service: any) => {
-                const serviceId = getServiceId(service);
-                const byPackages = serviceId ? packagesList.filter((pkg) => packageMatchesService(pkg, serviceId)).length : 0;
-                const byEmbedded = Array.isArray(service?.packages) ? service.packages.length : 0;
-                const count = byPackages > 0 ? byPackages : byEmbedded;
-                return {
-                    service,
-                    serviceId,
-                    count,
-                    label: String(service?.en || service?.ar || service?.name || tr("service", "Service")),
-                };
-            })
-            .filter((entry) => {
-                if (!serviceSearch.trim()) return true;
-                return entry.label.toLowerCase().includes(serviceSearch.trim().toLowerCase());
-            });
-    }, [services, packagesList, serviceSearch]);
-
+    // Apply search and category filter to packages
     const filteredPackages = useMemo(() => {
-        let baseList: PackageType[] = packagesList;
-
-        if (selectedServiceId) {
-            const directMatches = packagesList.filter((pkg) => packageMatchesService(pkg, selectedServiceId));
-
-            if (directMatches.length > 0) {
-                baseList = directMatches;
-            } else {
-                const selectedService: any = services.find((service: any) => getServiceId(service) === selectedServiceId);
-
-                if (selectedService && Array.isArray(selectedService.packages) && selectedService.packages.length > 0) {
-                    baseList = selectedService.packages.map((sp: any) => {
-                        const found = packagesList.find((pkg) => pkg._id === (sp?._id || sp?.id));
-                        if (found) return found;
-
-                        return {
-                            _id: String(sp?._id || sp?.id || Math.random()),
-                            nameEn: String(sp?.nameEn || sp?.en || sp?.name || ""),
-                            nameAr: String(sp?.nameAr || sp?.ar || ""),
-                            price: Number(sp?.price) || 0,
-                            description: sp?.description || sp?.desc || "",
-                            descriptionAr: sp?.descriptionAr || "",
-                            items: Array.isArray(sp?.items) ? sp.items : [],
-                        } as PackageType;
-                    });
-                }
-            }
+        let filtered = packagesList;
+        
+        if (selectedPackageCategory !== "all") {
+            filtered = filtered.filter(pkg => getPackageCategoryId(pkg) === selectedPackageCategory);
         }
-
-        return baseList.filter((pkg) => {
-            if (!packageSearch.trim()) return true;
+        
+        if (packageSearch.trim()) {
             const q = packageSearch.trim().toLowerCase();
-            const en = (pkg.nameEn || "").toLowerCase();
-            const ar = (pkg.nameAr || "").toLowerCase();
-            const desc = (pkg.description || "").toLowerCase();
-            return en.includes(q) || ar.includes(q) || desc.includes(q);
-        });
-    }, [packagesList, selectedServiceId, packageSearch, services]);
+            filtered = filtered.filter((pkg) => {
+                const en = (pkg.nameEn || "").toLowerCase();
+                const ar = (pkg.nameAr || "").toLowerCase();
+                const desc = (pkg.description || "").toLowerCase();
+                return en.includes(q) || ar.includes(q) || desc.includes(q);
+            });
+        }
+        
+        return filtered;
+    }, [packagesList, selectedPackageCategory, packageSearch]);
 
-    const filteredItems = useMemo(() => {
+    // Apply search filter to items
+    const filteredBySearch = useMemo(() => {
         if (!itemSearch.trim()) return availableItems;
         const q = itemSearch.trim().toLowerCase();
         return availableItems.filter((item) => {
@@ -190,11 +178,11 @@ const AddPackagePage = () => {
         });
     }, [availableItems, itemSearch]);
 
-    const selectedServiceLabel = useMemo(() => {
-        if (!selectedServiceId) return tr("all_services", "All Services");
-        const selected = serviceCards.find((entry) => entry.serviceId === selectedServiceId);
-        return selected?.label || tr("service", "Service");
-    }, [selectedServiceId, serviceCards, tr]);
+    // Apply category filter to items
+    const filteredItems = useMemo(() => {
+        if (selectedItemCategory === "all") return filteredBySearch;
+        return filteredBySearch.filter(item => getItemCategoryId(item) === selectedItemCategory);
+    }, [filteredBySearch, selectedItemCategory]);
 
     const resetForm = () => {
         setEditPackageId(null);
@@ -203,6 +191,7 @@ const AddPackagePage = () => {
         setDescription("");
         setDescriptionAr("");
         setPrice("");
+        setCategoryId("");
         setSelectedItemIds([]);
         setDisplayTypes({});
         setItemQuantities({});
@@ -220,6 +209,7 @@ const AddPackagePage = () => {
         setDescription(pkg.description || "");
         setDescriptionAr(pkg.descriptionAr || "");
         setPrice(pkg.price?.toString() || "");
+        setCategoryId(getCategoryId((pkg as any).category));
 
         const ids: string[] = [];
         const quantities: Record<string, number> = {};
@@ -266,13 +256,13 @@ const AddPackagePage = () => {
     };
 
     const duplicatePackage = (pkg: PackageType) => {
-        // Do the same as startEditPackage but do NOT set editPackageId
         setEditPackageId(null);
         setNameEn(pkg.nameEn || "");
         setNameAr(pkg.nameAr || "");
         setDescription(pkg.description || "");
         setDescriptionAr(pkg.descriptionAr || "");
         setPrice(pkg.price?.toString() || "");
+        setCategoryId(getCategoryId((pkg as any).category));
 
         const ids: string[] = [];
         const quantities: Record<string, number> = {};
@@ -329,14 +319,12 @@ const AddPackagePage = () => {
         let cancelled = false;
 
         const prefill = async () => {
-            // Try to find package in the already-loaded list
             const existing = packagesList.find((p) => String(p._id || p.id) === String(pkgId));
             if (existing) {
                 startEditPackage(existing);
                 return;
             }
 
-            // Otherwise fetch package from API
             try {
                 const fetched = await getPackageById(String(pkgId));
                 if (!cancelled && fetched) startEditPackage(fetched as PackageType);
@@ -350,7 +338,6 @@ const AddPackagePage = () => {
         return () => {
             cancelled = true;
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [packagesList, location?.state, location?.search]);
 
     const removeItemSelection = (itemId: string) => {
@@ -410,22 +397,22 @@ const AddPackagePage = () => {
         return selectedItemIds
             .filter((itemId) => !itemId.startsWith("temp-item-"))
             .map((itemId) => {
-            const type = displayTypes[itemId] || "number";
-            let quantity: number | string | boolean = itemQuantities[itemId] || 1;
+                const type = displayTypes[itemId] || "number";
+                let quantity: number | string | boolean = itemQuantities[itemId] || 1;
 
-            if (type === "string") {
-                quantity = stringValues[itemId] || "";
-            }
-            if (type === "availability") {
-                quantity = !!availabilities[itemId];
-            }
+                if (type === "string") {
+                    quantity = stringValues[itemId] || "";
+                }
+                if (type === "availability") {
+                    quantity = !!availabilities[itemId];
+                }
 
-            return {
-                item: itemId,
-                quantity,
-                note: (itemNotes[itemId] || "").trim() || undefined,
-            };
-        });
+                return {
+                    item: itemId,
+                    quantity,
+                    note: (itemNotes[itemId] || "").trim() || undefined,
+                };
+            });
     };
 
     const handleSubmit = async () => {
@@ -473,6 +460,7 @@ const AddPackagePage = () => {
             price: Number(p),
             description: description.trim() || undefined,
             descriptionAr: descriptionAr.trim() || undefined,
+            category: categoryId || undefined,
             items: itemsPayload,
         };
 
@@ -537,7 +525,6 @@ const AddPackagePage = () => {
             descriptionAr: descriptionArabic || undefined,
         };
 
-        // Show item instantly in UI while request is in flight.
         setAvailableItems((prev) => [optimisticItem, ...prev]);
         setSelectedItemIds((prev) => (prev.includes(tempId) ? prev : [...prev, tempId]));
         setDisplayTypes((prev) => ({ ...prev, [tempId]: prev[tempId] || "number" }));
@@ -548,6 +535,7 @@ const AddPackagePage = () => {
         setNewItemNameAr("");
         setNewItemDescription("");
         setNewItemDescriptionAr("");
+        setShowQuickAdd(false);
 
         try {
             const created = await createItem({
@@ -607,19 +595,16 @@ const AddPackagePage = () => {
                     return next;
                 });
             } else {
-                // If server response shape is unexpected, remove temp and reload canonical list.
                 setAvailableItems((prev) => prev.filter((item) => getItemId(item) !== tempId));
                 setSelectedItemIds((prev) => prev.filter((id) => id !== tempId));
             }
 
-            // Sync with backend list ordering in background.
             void loadItems();
         } catch (err: any) {
             const msg = err?.response?.data?.message || tr("item_create_failed", "Failed to create item");
             setError(msg);
             setQuickAddError(msg);
 
-            // Rollback optimistic UI if create fails.
             setAvailableItems((prev) => prev.filter((item) => getItemId(item) !== tempId));
             setSelectedItemIds((prev) => prev.filter((id) => id !== tempId));
             setDisplayTypes((prev) => {
@@ -675,7 +660,7 @@ const AddPackagePage = () => {
     const selectedCount = selectedItemIds.length;
     const hasPendingTempItems = selectedItemIds.some((id) => id.startsWith("temp-item-"));
 
-    if (itemsLoading && packagesLoading && servicesLoading) {
+    if (itemsLoading && packagesLoading) {
         return (
             <div className="flex items-center justify-center py-16">
                 <Loader2 className="h-8 w-8 animate-spin text-light-500" />
@@ -685,15 +670,14 @@ const AddPackagePage = () => {
 
     return (
         <div className="space-y-6 px-4 pb-10 sm:px-6 lg:px-8">
+            {/* Header Section */}
             <section className="relative overflow-hidden rounded-3xl border border-light-200/70 bg-white/90 p-6 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65 sm:p-8">
                 <div className="absolute -top-24 -right-16 h-64 w-64 rounded-full bg-secdark-700/15 blur-3xl" />
                 <div className="absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-light-400/20 blur-3xl" />
-
                 <div className="relative flex flex-col gap-3">
                     <span className="inline-flex w-fit items-center rounded-full border border-light-300/70 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-light-700 dark:border-dark-600 dark:bg-dark-900/70 dark:text-dark-200">
                         {tr("packages_workspace", "Packages Workspace")}
                     </span>
-
                     <h1 className="title text-2xl sm:text-3xl">{tr("create_package", "Create Package")}</h1>
                     <p className="text-sm text-light-600 dark:text-dark-300 sm:text-base">
                         {tr(
@@ -704,6 +688,7 @@ const AddPackagePage = () => {
                 </div>
             </section>
 
+            {/* Stats Section */}
             <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <div className="rounded-2xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/60">
                     <div className="text-xs uppercase tracking-[0.08em] text-light-600 dark:text-dark-300">{tr("services", "Services")}</div>
@@ -723,158 +708,161 @@ const AddPackagePage = () => {
                 </div>
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-                <aside className="rounded-3xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65">
-                    <div className="mb-3 flex items-center justify-between">
-                        <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("services", "Services")}</h2>
-                        <span className="rounded-full bg-light-100 px-2.5 py-1 text-xs font-semibold text-light-700 dark:bg-dark-800 dark:text-dark-200">
-                            {serviceCards.length}
-                        </span>
+            {/* Packages Grid with Category Filter */}
+            <section className="rounded-3xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65 sm:p-5">
+                <div className="mb-4 flex flex-col gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("packages", "Packages")}</h2>
+                            <p className="text-sm text-light-600 dark:text-dark-400">
+                                {tr("browse_packages", "Browse and select existing packages to edit or duplicate")}
+                            </p>
+                        </div>
+
+                        <div className="relative w-full sm:max-w-xs">
+                            <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-light-500" />
+                            <input
+                                value={packageSearch}
+                                onChange={(e) => setPackageSearch(e.target.value)}
+                                placeholder={tr("search_packages", "Search packages")}
+                                className="input w-full pl-9"
+                            />
+                        </div>
                     </div>
 
-                    <div className="relative mb-3">
-                        <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-light-500" />
-                        <input
-                            value={serviceSearch}
-                            onChange={(e) => setServiceSearch(e.target.value)}
-                            placeholder={tr("search_services", "Search services")}
-                            className="input w-full pl-9"
-                        />
-                    </div>
-
-                    <div className="space-y-2">
+                    {/* Package Category Filter Chips */}
+                    <div className="flex flex-wrap gap-2">
                         <button
-                            type="button"
-                            onClick={() => setSelectedServiceId(null)}
-                            className={`w-full rounded-2xl border px-3 py-2 text-left text-sm transition ${
-                                selectedServiceId === null
-                                    ? "border-light-700 bg-light-700 text-white dark:border-dark-600 dark:bg-dark-700"
-                                    : "border-light-200 bg-white text-light-900 hover:border-light-400 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-100"
+                            onClick={() => setSelectedPackageCategory("all")}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                                selectedPackageCategory === "all"
+                                    ? "bg-primary-500 text-white shadow-md shadow-primary-500/30"
+                                    : "bg-light-100 text-light-700 hover:bg-light-200 dark:bg-dark-800 dark:text-dark-300 dark:hover:bg-dark-700"
                             }`}
                         >
-                            {tr("all_services", "All Services")}
+                            <Tag size={12} className="inline mr-1" />
+                            {tr("all_packages", "All Packages")}
+                            <span className={`ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] ${
+                                selectedPackageCategory === "all"
+                                    ? "bg-white/20 text-white"
+                                    : "bg-light-200 text-light-600 dark:bg-dark-700 dark:text-dark-400"
+                            }`}>
+                                {packagesList.length}
+                            </span>
                         </button>
-
-                        <div className="max-h-[420px] space-y-2 overflow-auto pr-1">
-                            {serviceCards.map((entry) => (
+                        
+                        {packageCategories.map((category) => {
+                            const count = getPackageCategoryCount(category._id);
+                            if (count === 0) return null;
+                            
+                            return (
                                 <button
-                                    key={entry.serviceId || entry.label}
-                                    type="button"
-                                    onClick={() => setSelectedServiceId(entry.serviceId || null)}
-                                    className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2 text-left text-sm transition ${
-                                        selectedServiceId === entry.serviceId
-                                            ? "border-light-700 bg-light-700 text-white dark:border-dark-600 dark:bg-dark-700"
-                                            : "border-light-200 bg-white text-light-900 hover:border-light-400 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-100"
+                                    key={category._id}
+                                    onClick={() => setSelectedPackageCategory(category._id)}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                                        selectedPackageCategory === category._id
+                                            ? "bg-primary-500 text-white shadow-md shadow-primary-500/30"
+                                            : "bg-light-100 text-light-700 hover:bg-light-200 dark:bg-dark-800 dark:text-dark-300 dark:hover:bg-dark-700"
                                     }`}
                                 >
-                                    <span className="truncate">{entry.label}</span>
-                                    <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs dark:bg-white/10">{entry.count}</span>
+                                    <FolderOpen size={12} className="inline mr-1" />
+                                    {category.name}
+                                    <span className={`ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] ${
+                                        selectedPackageCategory === category._id
+                                            ? "bg-white/20 text-white"
+                                            : "bg-light-200 text-light-600 dark:bg-dark-700 dark:text-dark-400"
+                                    }`}>
+                                        {count}
+                                    </span>
                                 </button>
-                            ))}
-                        </div>
-
-                        {serviceCards.length === 0 && (
-                            <p className="px-2 py-4 text-sm text-light-600 dark:text-dark-400">{tr("no_services", "No services found.")}</p>
-                        )}
-                    </div>
-                </aside>
-
-                <div className="space-y-4">
-                    <div className="rounded-3xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65 sm:p-5">
-                        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("packages", "Packages")}</h2>
-                                <p className="text-sm text-light-600 dark:text-dark-400">
-                                    {tr("showing_for", "Showing for")}: <span className="font-medium">{selectedServiceLabel}</span>
-                                </p>
-                            </div>
-
-                            <div className="relative w-full sm:max-w-xs">
-                                <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-light-500" />
-                                <input
-                                    value={packageSearch}
-                                    onChange={(e) => setPackageSearch(e.target.value)}
-                                    placeholder={tr("search_packages", "Search packages")}
-                                    className="input w-full pl-9"
-                                />
-                            </div>
-                        </div>
-
-                        {packagesLoading ? (
-                            <div className="flex items-center justify-center py-10">
-                                <Loader2 className="h-6 w-6 animate-spin text-light-500" />
-                            </div>
-                        ) : (
-                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                {filteredPackages.map((pkg) => {
-                                    const pkgId = String(pkg._id || "");
-                                    const itemsCount = Array.isArray(pkg.items) ? pkg.items.length : 0;
-
-                                    return (
-                                        <article
-                                            key={pkgId}
-                                            className="group flex h-full flex-col justify-between rounded-2xl border border-light-200/80 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-dark-700/80 dark:bg-dark-800"
-                                        >
-                                            <div>
-                                                <div className="mb-2 flex items-start justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <h3 className="truncate text-base font-semibold text-light-900 dark:text-dark-50">
-                                                            {pkg.nameEn || pkg.nameAr || tr("unnamed_package", "Unnamed package")}
-                                                        </h3>
-                                                        <p className="mt-1 text-xs text-light-600 dark:text-dark-400">{itemsCount} {tr("items", "items")}</p>
-                                                    </div>
-                                                    <div className="rounded-xl bg-light-100 px-2.5 py-1 text-xs font-semibold text-light-700 dark:bg-dark-700 dark:text-dark-200">
-                                                        {pkg.price ? `${pkg.price} EGP` : "-"}
-                                                    </div>
-                                                </div>
-
-                                                {pkg.description && (
-                                                    <p className="line-clamp-2 text-xs text-light-600 dark:text-dark-400">{pkg.description}</p>
-                                                )}
-                                            </div>
-
-                                            <div className="mt-4 flex items-center justify-end gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => duplicatePackage(pkg)}
-                                                    className="btn-ghost inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs"
-                                                >
-                                                    <Copy size={14} />
-                                                    {tr("duplicate", "Duplicate")}
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => startEditPackage(pkg)}
-                                                    className="btn-ghost inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs"
-                                                >
-                                                    <Check size={14} />
-                                                    {tr("edit", "Edit")}
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDelete(pkgId)}
-                                                    disabled={deletingId === pkgId}
-                                                    className="inline-flex items-center gap-1.5 rounded-xl border border-danger-200 px-2.5 py-1.5 text-xs font-medium text-danger-600 transition hover:bg-danger-50 disabled:opacity-60 dark:border-danger-800/60 dark:hover:bg-danger-900/20"
-                                                >
-                                                    {deletingId === pkgId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                                                    {tr("delete", "Delete")}
-                                                </button>
-                                            </div>
-                                        </article>
-                                    );
-                                })}
-
-                                {filteredPackages.length === 0 && (
-                                    <div className="col-span-full rounded-2xl border border-dashed border-light-300 bg-light-50/70 px-4 py-10 text-center text-sm text-light-600 dark:border-dark-700 dark:bg-dark-900/30 dark:text-dark-300">
-                                        {tr("no_packages", "No packages found for this filter.")}
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                            );
+                        })}
                     </div>
                 </div>
+
+                {packagesLoading ? (
+                    <div className="flex items-center justify-center py-10">
+                        <Loader2 className="h-6 w-6 animate-spin text-light-500" />
+                    </div>
+                ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {filteredPackages.map((pkg) => {
+                            const pkgId = String(pkg._id || "");
+                            const itemsCount = Array.isArray(pkg.items) ? pkg.items.length : 0;
+                            const pkgCategoryName = getPackageCategoryName(getPackageCategoryId(pkg));
+
+                            return (
+                                <article
+                                    key={pkgId}
+                                    className="group flex h-full flex-col justify-between rounded-2xl border border-light-200/80 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-dark-700/80 dark:bg-dark-800"
+                                >
+                                    <div>
+                                        <div className="mb-2 flex items-start justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <h3 className="truncate text-base font-semibold text-light-900 dark:text-dark-50">
+                                                    {pkg.nameEn || pkg.nameAr || tr("unnamed_package", "Unnamed package")}
+                                                </h3>
+                                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-light-100 px-2 py-0.5 text-[10px] font-medium text-light-700 dark:bg-dark-700 dark:text-dark-300">
+                                                        <PackageIcon size={10} />
+                                                        {itemsCount} {tr("items", "items")}
+                                                    </span>
+                                                    {pkgCategoryName !== tr("no_category", "No category") && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-light-100 px-2 py-0.5 text-[10px] font-medium text-light-700 dark:bg-dark-700 dark:text-dark-300">
+                                                            <FolderOpen size={10} />
+                                                            {pkgCategoryName}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="rounded-xl bg-light-100 px-2.5 py-1 text-xs font-semibold text-light-700 dark:bg-dark-700 dark:text-dark-200">
+                                                {pkg.price ? `${pkg.price} EGP` : "-"}
+                                            </div>
+                                        </div>
+
+                                        {pkg.description && (
+                                            <p className="line-clamp-2 text-xs text-light-600 dark:text-dark-400">{pkg.description}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-4 flex items-center justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => duplicatePackage(pkg)}
+                                            className="btn-ghost inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs"
+                                        >
+                                            <Copy size={14} />
+                                            {tr("duplicate", "Duplicate")}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => startEditPackage(pkg)}
+                                            className="btn-ghost inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs"
+                                        >
+                                            <Check size={14} />
+                                            {tr("edit", "Edit")}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDelete(pkgId)}
+                                            disabled={deletingId === pkgId}
+                                            className="inline-flex items-center gap-1.5 rounded-xl border border-danger-200 px-2.5 py-1.5 text-xs font-medium text-danger-600 transition hover:bg-danger-50 disabled:opacity-60 dark:border-danger-800/60 dark:hover:bg-danger-900/20"
+                                        >
+                                            {deletingId === pkgId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                            {tr("delete", "Delete")}
+                                        </button>
+                                    </div>
+                                </article>
+                            );
+                        })}
+
+                        {filteredPackages.length === 0 && (
+                            <div className="col-span-full rounded-2xl border border-dashed border-light-300 bg-light-50/70 px-4 py-10 text-center text-sm text-light-600 dark:border-dark-700 dark:bg-dark-900/30 dark:text-dark-300">
+                                {tr("no_packages", "No packages found for this filter.")}
+                            </div>
+                        )}
+                    </div>
+                )}
             </section>
 
             {error && (
@@ -883,194 +871,196 @@ const AddPackagePage = () => {
                 </div>
             )}
 
-            <section className="rounded-3xl border border-light-200/70 bg-white/90 p-5 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65 sm:p-6">
-                <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
+            {/* Package Builder Sections */}
+            <div className="space-y-6">
+                {/* Package Information Section */}
+                <section className="rounded-3xl border border-light-200/70 bg-white/90 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65">
+                    <div className="border-b border-light-200/70 px-6 py-4 dark:border-dark-700/70">
                         <h2 className="text-xl font-semibold text-light-900 dark:text-dark-50">
-                            {editPackageId ? tr("edit_package", "Edit Package") : tr("package_builder", "Package Builder")}
+                            {editPackageId ? tr("edit_package", "Edit Package") : tr("package_information", "Package Information")}
                         </h2>
                         <p className="text-sm text-light-600 dark:text-dark-400">
-                            {tr("builder_subtitle", "Create or update package details and choose exactly how each item is represented.")}
+                            {tr("package_info_subtitle", "Enter the basic details of your package.")}
                         </p>
                     </div>
-                    <div className="inline-flex items-center gap-2 rounded-full border border-light-200 bg-white px-3 py-1.5 text-xs font-semibold text-light-700 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-200">
-                        <PackageIcon size={14} />
-                        {selectedCount} {tr("items_selected", "items selected")}
-                    </div>
-                </div>
+                    
+                    <div className="p-6">
+                        <div className="grid gap-6 lg:grid-cols-2">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("package_name_en", "Package Name (English)")} <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        value={nameEn}
+                                        onChange={(e) => setNameEn(e.target.value)}
+                                        placeholder="e.g., Premium Package"
+                                        className="input w-full"
+                                    />
+                                </div>
 
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-                    <div className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div>
-                                <label className="mb-1.5 block text-sm text-dark-700 dark:text-dark-400">{tr("package_name_en", "Package Name (English)")}</label>
-                                <input
-                                    value={nameEn}
-                                    onChange={(e) => setNameEn(e.target.value)}
-                                    placeholder={tr("package_name_en", "Package Name (English)")}
-                                    className="input w-full"
-                                />
+                                <div>
+                                    <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("package_name_ar", "Package Name (Arabic)")}
+                                    </label>
+                                    <input
+                                        value={nameAr}
+                                        onChange={(e) => setNameAr(e.target.value)}
+                                        placeholder="اسم الباقة"
+                                        className="input w-full"
+                                    />
+                                </div>
+
+                                {nameError && <p className="text-xs text-danger-500">{nameError}</p>}
                             </div>
 
-                            <div>
-                                <label className="mb-1.5 block text-sm text-dark-700 dark:text-dark-400">{tr("package_name_ar", "Package Name (Arabic)")}</label>
-                                <input
-                                    value={nameAr}
-                                    onChange={(e) => setNameAr(e.target.value)}
-                                    placeholder={tr("package_name_ar", "اسم الباقة (بالعربية)")}
-                                    className="input w-full"
-                                />
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("package_price", "Price")} <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={price}
+                                        onChange={(e) => setPrice(e.target.value)}
+                                        placeholder="0.00"
+                                        className="input w-full"
+                                    />
+                                    {priceError && <p className="mt-1 text-xs text-danger-500">{priceError}</p>}
+                                </div>
+
+                                <div>
+                                    <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("category", "Category")}
+                                    </label>
+                                    <select
+                                        value={categoryId}
+                                        onChange={(e) => setCategoryId(e.target.value)}
+                                        className="input w-full"
+                                    >
+                                        <option value="">{tr("no_category", "No category")}</option>
+                                        {packageCategoriesLoading ? (
+                                            <option value="" disabled>{tr("loading", "Loading...")}</option>
+                                        ) : (
+                                            packageCategories.map((category) => (
+                                                <option key={category._id} value={category._id}>
+                                                    {category.name}
+                                                </option>
+                                            ))
+                                        )}
+                                    </select>
+                                </div>
                             </div>
                         </div>
 
-                        {nameError && <p className="text-xs text-danger-500">{nameError}</p>}
-
-                        <div>
-                            <label className="mb-1.5 block text-sm text-dark-700 dark:text-dark-400">{tr("package_price", "Price")}</label>
-                            <input
-                                type="number"
-                                value={price}
-                                onChange={(e) => setPrice(e.target.value)}
-                                placeholder={tr("package_price", "Price")}
-                                className="input w-full"
-                            />
-                            {priceError && <p className="mt-1 text-xs text-danger-500">{priceError}</p>}
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div className="rounded-2xl border border-light-200/80 bg-light-50/50 p-3 dark:border-dark-700/80 dark:bg-dark-900/25">
-                                <label className="mb-1.5 block text-sm font-medium text-dark-700 dark:text-dark-300">{tr("package_description", "Description")}</label>
+                        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                            <div>
+                                <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                    {tr("package_description", "Description (English)")}
+                                </label>
                                 <textarea
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
-                                    placeholder={tr("package_description_placeholder", "Describe the package")}
-                                    rows={5}
-                                    className="w-full resize-y rounded-xl border border-light-200 bg-white px-3 py-2.5 text-sm leading-relaxed text-light-900 transition-all placeholder:text-light-400 focus:border-light-500 focus:ring-2 focus:ring-light-500/20 focus:outline-none dark:border-dark-700 dark:bg-dark-800 dark:text-dark-50 dark:placeholder:text-dark-500 dark:focus:border-secdark-700 dark:focus:ring-secdark-700/20"
+                                    placeholder="Describe what this package includes..."
+                                    rows={8}
+                                    className="input w-full min-h-[100px] resize-y"
                                 />
                             </div>
 
-                            <div className="rounded-2xl border border-light-200/80 bg-light-50/50 p-3 dark:border-dark-700/80 dark:bg-dark-900/25">
-                                <label className="mb-1.5 block text-sm font-medium text-dark-700 dark:text-dark-300">
+                            <div>
+                                <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
                                     {tr("package_description_ar", "Description (Arabic)")}
                                 </label>
                                 <textarea
                                     value={descriptionAr}
                                     onChange={(e) => setDescriptionAr(e.target.value)}
-                                    placeholder={tr("package_description_ar_placeholder", "اكتب وصف الباقة")}
-                                    rows={5}
+                                    placeholder="وصف الباقة..."
+                                    rows={8}
                                     dir="rtl"
-                                    className="w-full resize-y rounded-xl border border-light-200 bg-white px-3 py-2.5 text-right text-sm leading-relaxed text-light-900 transition-all placeholder:text-light-400 focus:border-light-500 focus:ring-2 focus:ring-light-500/20 focus:outline-none dark:border-dark-700 dark:bg-dark-800 dark:text-dark-50 dark:placeholder:text-dark-500 dark:focus:border-secdark-700 dark:focus:ring-secdark-700/20"
+                                    className="input w-full min-h-[100px] resize-y"
                                 />
                             </div>
                         </div>
+                    </div>
+                </section>
 
-                        <div className="relative overflow-hidden rounded-2xl border border-light-200/80 bg-gradient-to-br from-light-50 via-white to-light-100/60 p-4 shadow-sm dark:border-dark-700/80 dark:from-dark-900/60 dark:via-dark-900/30 dark:to-dark-800/60 sm:p-5">
-                            <div className="pointer-events-none absolute -top-10 -right-10 h-28 w-28 rounded-full bg-light-200/70 blur-2xl dark:bg-dark-700/40" />
-
-                            <div className="relative">
-                                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                                    <div className="flex items-start gap-3">
-                                        <div className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-light-900 text-white shadow-sm dark:bg-dark-100 dark:text-dark-900">
-                                            <Plus size={16} />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-semibold text-light-900 dark:text-dark-50">{tr("quick_add_item", "Quick Add Item")}</h3>
-                                            <p className="mt-1 text-xs text-light-600 dark:text-dark-400">
-                                                {tr("quick_add_hint", "Create a new item and auto-select it in this package.")}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <span className="rounded-full border border-light-300/80 bg-white/80 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-light-700 uppercase dark:border-dark-600 dark:bg-dark-800/80 dark:text-dark-200">
-                                        {tr("instant_add", "Instant add")}
-                                    </span>
-                                </div>
-
-                                <div className="grid gap-3 md:grid-cols-2">
-                                    <div>
-                                        <label className="mb-1.5 block text-xs font-medium text-light-700 dark:text-dark-300">{tr("item_name_en", "Item Name (English)")}</label>
-                                        <input
-                                            value={newItemName}
-                                            onChange={(e) => setNewItemName(e.target.value)}
-                                            placeholder={tr("item_name_en", "Item Name (English)")}
-                                            className="input w-full bg-white/90 dark:bg-dark-800/90"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="mb-1.5 block text-xs font-medium text-light-700 dark:text-dark-300">{tr("item_name_ar", "اسم العنصر (بالعربية)")}</label>
-                                        <input
-                                            value={newItemNameAr}
-                                            onChange={(e) => setNewItemNameAr(e.target.value)}
-                                            placeholder={tr("item_name_ar", "اسم العنصر (بالعربية)")}
-                                            className="input w-full bg-white/90 dark:bg-dark-800/90"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="mb-1.5 block text-xs font-medium text-light-700 dark:text-dark-300">{tr("item_description_en", "Description (English)")}</label>
-                                        <input
-                                            value={newItemDescription}
-                                            onChange={(e) => setNewItemDescription(e.target.value)}
-                                            placeholder={tr("item_description_en", "Description (English)")}
-                                            className="input w-full bg-white/90 dark:bg-dark-800/90"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="mb-1.5 block text-xs font-medium text-light-700 dark:text-dark-300">{tr("item_description_ar", "الوصف (بالعربية)")}</label>
-                                        <input
-                                            value={newItemDescriptionAr}
-                                            onChange={(e) => setNewItemDescriptionAr(e.target.value)}
-                                            placeholder={tr("item_description_ar", "الوصف (بالعربية)")}
-                                            className="input w-full bg-white/90 dark:bg-dark-800/90"
-                                        />
-                                    </div>
-                                </div>
-
-                                {quickAddError && (
-                                    <div className="mt-3 rounded-xl border border-danger-200 bg-danger-50/80 px-3 py-2 text-xs font-medium text-danger-600 dark:border-danger-800/60 dark:bg-danger-900/20 dark:text-danger-300">
-                                        {quickAddError}
-                                    </div>
-                                )}
-
-                                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                                    <p className="text-xs text-light-600 dark:text-dark-400">{tr("quick_add_footer", "Name in English is required.")}</p>
-
-                                    <button
-                                        type="button"
-                                        onClick={handleCreateItemInline}
-                                        disabled={isCreatingItem}
-                                        className="inline-flex items-center gap-2 rounded-xl bg-light-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-light-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-dark-100 dark:text-dark-900 dark:hover:bg-dark-50"
-                                    >
-                                        {isCreatingItem ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-                                        {isCreatingItem ? tr("creating", "Creating...") : tr("add_item", "Add Item")}
-                                    </button>
-                                </div>
+                {/* Items Selection Section */}
+                <section className="rounded-3xl border border-light-200/70 bg-white/90 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65">
+                    <div className="border-b border-light-200/70 px-6 py-4 dark:border-dark-700/70">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h2 className="text-xl font-semibold text-light-900 dark:text-dark-50 flex items-center gap-2">
+                                    <ShoppingBag size={20} />
+                                    {tr("select_items", "Select Items")}
+                                </h2>
+                                <p className="text-sm text-light-600 dark:text-dark-400">
+                                    {tr("select_items_subtitle", "Choose items to include in this package and configure their properties.")}
+                                </p>
+                            </div>
+                            <div className="inline-flex items-center gap-2 rounded-full bg-light-50 px-3 py-1.5 text-xs font-semibold text-light-700 dark:bg-dark-900/20 dark:text-dark-300">
+                                <PackageIcon size={14} />
+                                {selectedCount} {tr("items_selected", "selected")}
                             </div>
                         </div>
                     </div>
 
-                    <div>
-                        <div className="mb-3 flex items-center justify-between gap-2">
-                            <h3 className="text-sm font-semibold text-light-900 dark:text-dark-50">{tr("select_items", "Select Items")}</h3>
-                            <div className="relative w-full max-w-xs">
+                    <div className="p-6">
+                        {/* Search and Filter Bar */}
+                        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => setSelectedItemCategory("all")}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                                        selectedItemCategory === "all"
+                                            ? "bg-primary-500 text-white"
+                                            : "bg-light-100 text-light-700 hover:bg-light-200 dark:bg-dark-800 dark:text-dark-300"
+                                    }`}
+                                >
+                                    {tr("all", "All")}
+                                    <span className="ml-1.5 inline-block rounded-full bg-white/20 px-1.5 text-[10px]">
+                                        {filteredBySearch.length}
+                                    </span>
+                                </button>
+                                {itemCategories.map((cat) => {
+                                    const count = getItemCategoryCount(cat._id);
+                                    if (count === 0) return null;
+                                    return (
+                                        <button
+                                            key={cat._id}
+                                            onClick={() => setSelectedItemCategory(cat._id)}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                                                selectedItemCategory === cat._id
+                                                    ? "bg-primary-500 text-white"
+                                                    : "bg-light-100 text-light-700 hover:bg-light-200 dark:bg-dark-800 dark:text-dark-300"
+                                            }`}
+                                        >
+                                            {cat.name}
+                                            <span className="ml-1.5 inline-block rounded-full bg-white/20 px-1.5 text-[10px]">
+                                                {count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="relative w-full sm:w-64">
                                 <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-light-500" />
                                 <input
                                     value={itemSearch}
                                     onChange={(e) => setItemSearch(e.target.value)}
-                                    placeholder={tr("search_items", "Search items")}
+                                    placeholder={tr("search_items", "Search items...")}
                                     className="input w-full pl-9"
                                 />
                             </div>
                         </div>
 
-                        <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
+                        {/* Items List */}
+                        <div className="max-h-[500px] space-y-2 overflow-auto">
                             {itemsLoading ? (
                                 <div className="flex items-center justify-center py-10">
-                                    <Loader2 className="h-6 w-6 animate-spin text-light-500" />
+                                    <Loader2 className="h-6 w-6 animate-spin" />
                                 </div>
-                            ) : (
+                            ) : filteredItems.length > 0 ? (
                                 filteredItems.map((item) => {
                                     const isSelected = selectedItemIds.includes(item._id);
                                     const selectedType = displayTypes[item._id] || "number";
@@ -1078,9 +1068,9 @@ const AddPackagePage = () => {
                                     return (
                                         <div
                                             key={item._id}
-                                            className={`rounded-2xl border p-3 transition ${
+                                            className={`rounded-lg border p-3 transition ${
                                                 isSelected
-                                                    ? "border-light-400 bg-light-50/70 dark:border-secdark-600 dark:bg-dark-900/40"
+                                                    ? "border-primary-300 bg-primary-50/50 dark:border-primary-700 dark:bg-primary-900/20"
                                                     : "border-light-200 bg-white dark:border-dark-700 dark:bg-dark-800"
                                             }`}
                                         >
@@ -1089,78 +1079,72 @@ const AddPackagePage = () => {
                                                     type="checkbox"
                                                     checked={isSelected}
                                                     onChange={(e) => setItemSelected(item._id, e.target.checked)}
-                                                    className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded-md border border-light-300 bg-white accent-light-500 shadow-sm transition hover:border-light-400 focus:ring-2 focus:ring-light-500/30 focus:outline-none dark:border-dark-600 dark:bg-dark-800 dark:accent-secdark-700 dark:hover:border-dark-500 dark:focus:ring-secdark-700/30"
+                                                    className="mt-0.5 h-4 w-4 rounded border-light-300"
                                                 />
-                                                <span className="min-w-0 flex-1">
-                                                    <span className="block text-sm font-medium text-light-900 dark:text-dark-50">{item.name}</span>
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-light-900 dark:text-dark-50">{item.name}</div>
                                                     {item.description && (
-                                                        <span className="mt-0.5 block text-xs text-light-600 dark:text-dark-400">{item.description}</span>
+                                                        <div className="text-xs text-light-500 dark:text-dark-400">{item.description}</div>
                                                     )}
-                                                </span>
+                                                </div>
                                             </label>
 
                                             {isSelected && (
-                                                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
                                                     <div>
-                                                        <label className="mb-1 block text-xs text-light-600 dark:text-dark-400">{tr("type", "Type")}</label>
+                                                        <label className="mb-1 block text-xs text-light-600 dark:text-dark-400">Type</label>
                                                         <select
                                                             value={selectedType}
                                                             onChange={(e) => setDisplayType(item._id, e.target.value as DisplayType)}
-                                                            className="input w-full"
+                                                            className="input w-full text-sm"
                                                         >
-                                                            <option value="number">{tr("number", "Number")}</option>
-                                                            <option value="string">{tr("text", "Text")}</option>
-                                                            <option value="availability">{tr("availability", "Availability")}</option>
+                                                            <option value="number">Number</option>
+                                                            <option value="string">Text</option>
+                                                            <option value="availability">Availability</option>
                                                         </select>
                                                     </div>
 
                                                     <div>
-                                                        <label className="mb-1 block text-xs text-light-600 dark:text-dark-400">{tr("value", "Value")}</label>
-
+                                                        <label className="mb-1 block text-xs text-light-600 dark:text-dark-400">Value</label>
                                                         {selectedType === "number" && (
                                                             <input
                                                                 type="number"
                                                                 min={1}
                                                                 value={itemQuantities[item._id] || 1}
-                                                                onChange={(e) => {
-                                                                    const next = Math.max(1, Number(e.target.value) || 1);
-                                                                    setItemQuantities((prev) => ({ ...prev, [item._id]: next }));
-                                                                }}
-                                                                className="input w-full"
+                                                                onChange={(e) => setItemQuantities(prev => ({ ...prev, [item._id]: Math.max(1, Number(e.target.value)) }))}
+                                                                className="input w-full text-sm"
                                                             />
                                                         )}
-
                                                         {selectedType === "string" && (
                                                             <input
                                                                 value={stringValues[item._id] || ""}
-                                                                onChange={(e) => setStringValues((prev) => ({ ...prev, [item._id]: e.target.value }))}
-                                                                placeholder={tr("text_value", "Text value")}
-                                                                className="input w-full"
+                                                                onChange={(e) => setStringValues(prev => ({ ...prev, [item._id]: e.target.value }))}
+                                                                placeholder="Text value"
+                                                                className="input w-full text-sm"
                                                             />
                                                         )}
-
                                                         {selectedType === "availability" && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setAvailabilities((prev) => ({ ...prev, [item._id]: !prev[item._id] }))}
-                                                                className={`flex h-10 w-full items-center justify-center rounded-xl border text-sm font-medium transition ${
+                                                                onClick={() => setAvailabilities(prev => ({ ...prev, [item._id]: !prev[item._id] }))}
+                                                                className={`h-9 w-full rounded-lg text-sm font-medium ${
                                                                     availabilities[item._id]
-                                                                        ? "border-green-200 bg-green-50 text-green-700 dark:border-green-800/50 dark:bg-green-900/20 dark:text-green-300"
-                                                                        : "border-light-300 bg-white text-light-700 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-200"
+                                                                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                                                                        : "bg-light-100 text-light-700 dark:bg-dark-700 dark:text-dark-300"
                                                                 }`}
                                                             >
-                                                                {availabilities[item._id] ? tr("available", "Available") : tr("not_available", "Not Available")}
+                                                                {availabilities[item._id] ? "Available" : "Not Available"}
                                                             </button>
                                                         )}
                                                     </div>
 
-                                                    <div className="sm:col-span-2 lg:col-span-1">
-                                                        <label className="mb-1 block text-xs text-light-600 dark:text-dark-400">{tr("note", "Note")}</label>
+                                                    <div>
+                                                        <label className="mb-1 block text-xs text-light-600 dark:text-dark-400">Note (Optional)</label>
                                                         <input
                                                             value={itemNotes[item._id] || ""}
-                                                            onChange={(e) => setItemNotes((prev) => ({ ...prev, [item._id]: e.target.value }))}
-                                                            placeholder={tr("item_note_placeholder", "Optional note")}
-                                                            className="input w-full"
+                                                            onChange={(e) => setItemNotes(prev => ({ ...prev, [item._id]: e.target.value }))}
+                                                            placeholder="Add a note..."
+                                                            className="input w-full text-sm"
                                                         />
                                                     </div>
                                                 </div>
@@ -1168,28 +1152,151 @@ const AddPackagePage = () => {
                                         </div>
                                     );
                                 })
-                            )}
-
-                            {!itemsLoading && filteredItems.length === 0 && (
-                                <div className="rounded-2xl border border-dashed border-light-300 bg-light-50/70 px-4 py-8 text-center text-sm text-light-600 dark:border-dark-700 dark:bg-dark-900/30 dark:text-dark-300">
+                            ) : (
+                                <div className="rounded-lg border border-dashed border-light-300 p-8 text-center text-sm text-light-500">
                                     {tr("no_items_available", "No items available.")}
                                 </div>
                             )}
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                {/* Quick Add Item Section */}
+                <section className="rounded-3xl border border-light-200/70 bg-gradient-to-br from-primary-50/50 to-white/90 shadow-sm dark:border-primary-800/30 dark:from-primary-900/10 dark:to-dark-900/65">
+                    <div className="p-6">
+                        <div className="flex items-start justify-between">
+                            <div>
+                                <h3 className="text-lg font-semibold text-primary-700 dark:text-dark-300 flex items-center gap-2">
+                                    <Plus size={18} />
+                                    {tr("quick_add_item", "Quick Add Item")}
+                                </h3>
+                                <p className="mt-1 text-sm text-light-600 dark:text-light-400">
+                                    {tr("quick_add_hint", "Don't see the item you need? Create a new item and it will be automatically added to this package.")}
+                                </p>
+                            </div>
+                            {!showQuickAdd && (
+                                <button
+                                    onClick={() => setShowQuickAdd(true)}
+                                    className="rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 transition hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-900/20"
+                                >
+                                    <Plus size={16} className="inline mr-1" />
+                                    {tr("add_new_item", "Add New Item")}
+                                </button>
+                            )}
+                        </div>
+
+                        {showQuickAdd && (
+                            <div className="mt-4 rounded-xl border border-primary-200 bg-white p-4 dark:border-primary-800 dark:bg-dark-800">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                            {tr("item_name_en", "Item Name (English)")} <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            value={newItemName}
+                                            onChange={(e) => setNewItemName(e.target.value)}
+                                            placeholder="Enter item name"
+                                            className="input w-full"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                            {tr("item_name_ar", "Item Name (Arabic)")}
+                                        </label>
+                                        <input
+                                            value={newItemNameAr}
+                                            onChange={(e) => setNewItemNameAr(e.target.value)}
+                                            placeholder="اسم العنصر"
+                                            className="input w-full"
+                                        />
+                                    </div>
+
+                                    <div className="sm:col-span-2">
+                                        <label className="mb-1 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                            {tr("item_description_en", "Description (English)")}
+                                        </label>
+                                        <textarea
+                                            value={newItemDescription}
+                                            onChange={(e) => setNewItemDescription(e.target.value)}
+                                            rows={6}
+                                            className="input w-full min-h-[100px] resize-y"
+                                            placeholder="Enter item description"
+                                        />
+                                    </div>
+
+                                    <div className="sm:col-span-2">
+                                        <label className="mb-1 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                            {tr("item_description_ar", "Description (Arabic)")}
+                                        </label>
+                                        <textarea
+                                            value={newItemDescriptionAr}
+                                            onChange={(e) => setNewItemDescriptionAr(e.target.value)}
+                                            rows={6}
+                                            className="input w-full min-h-[100px] resize-y"
+                                            placeholder="وصف العنصر"
+                                            dir="rtl"
+                                        />
+                                    </div>
+                                </div>
+
+                                {quickAddError && (
+                                    <div className="mt-3 rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-600">
+                                        {quickAddError}
+                                    </div>
+                                )}
+
+                                <div className="mt-4 flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowQuickAdd(false);
+                                            setQuickAddError("");
+                                            setNewItemName("");
+                                            setNewItemNameAr("");
+                                            setNewItemDescription("");
+                                            setNewItemDescriptionAr("");
+                                        }}
+                                        className="rounded-lg border border-light-300 px-4 py-2 text-sm font-medium text-light-700 hover:bg-light-50"
+                                    >
+                                        {tr("cancel", "Cancel")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCreateItemInline}
+                                        disabled={isCreatingItem}
+                                        className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-700 disabled:opacity-50"
+                                    >
+                                        {isCreatingItem ? (
+                                            <>
+                                                <Loader2 size={14} className="mr-2 inline animate-spin" />
+                                                {tr("creating", "Creating...")}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plus size={14} className="mr-2 inline" />
+                                                {tr("create_item", "Create Item")}
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </section>
+
+                {/* Form Actions */}
+                <div className="flex flex-wrap justify-end gap-3">
                     <button
                         type="button"
                         onClick={() => {
                             if (editPackageId) {
                                 resetForm();
-                                return;
+                            } else {
+                                navigate("/packages");
                             }
-                            navigate("/packages");
                         }}
-                        className="btn-ghost rounded-xl"
+                        className="rounded-lg border border-light-300 px-6 py-2.5 text-sm font-medium text-light-700 transition hover:bg-light-50 dark:border-dark-600 dark:text-dark-300 dark:hover:bg-dark-800"
                     >
                         {tr("cancel", "Cancel")}
                     </button>
@@ -1197,26 +1304,28 @@ const AddPackagePage = () => {
                     <button
                         type="button"
                         onClick={handleSubmit}
-                        disabled={isSubmitting || createPackageMutation.isPending || updatePackageMutation.isPending}
-                        className="btn-primary inline-flex items-center gap-2 rounded-xl"
+                        disabled={isSubmitting}
+                        className="rounded-lg bg-primary-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700 disabled:opacity-50"
                     >
-                        {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : editPackageId ? <Check size={16} /> : <Plus size={16} />}
+                        {isSubmitting ? (
+                            <Loader2 size={16} className="mr-2 inline animate-spin" />
+                        ) : editPackageId ? (
+                            <Check size={16} className="mr-2 inline" />
+                        ) : (
+                            <Plus size={16} className="mr-2 inline" />
+                        )}
                         {isSubmitting
-                            ? editPackageId
-                                ? tr("updating", "Updating...")
-                                : tr("creating", "Creating...")
-                            : editPackageId
-                              ? tr("update_package", "Update Package")
-                              : tr("create_package", "Create Package")}
+                            ? editPackageId ? tr("updating", "Updating...") : tr("creating", "Creating...")
+                            : editPackageId ? tr("update_package", "Update Package") : tr("create_package", "Create Package")}
                     </button>
                 </div>
 
                 {hasPendingTempItems && (
-                    <p className="mt-2 text-right text-xs text-light-600 dark:text-dark-400">
-                        {tr("pending_items_note", "Some quick-added items are still syncing and will be included once ready.")}
+                    <p className="text-right text-xs text-amber-600 dark:text-amber-400">
+                        {tr("pending_items_note", "Some items are still syncing...")}
                     </p>
                 )}
-            </section>
+            </div>
         </div>
     );
 };

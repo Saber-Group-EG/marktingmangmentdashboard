@@ -49,7 +49,7 @@ export const useCreateItem = () => {
     return useMutation({
         mutationFn: createItem,
         // Optimistic update: add the new item to all cached item lists immediately
-        onMutate: async (newItem: { name: string; ar?: string; description?: string; descriptionAr?: string }) => {
+        onMutate: async (newItem: { name: string; ar?: string; description?: string; descriptionAr?: string; category?: string }) => {
             await queryClient.cancelQueries({ queryKey: itemsKeys.lists() });
 
             const previous = queryClient.getQueriesData({ queryKey: itemsKeys.lists() });
@@ -61,6 +61,7 @@ export const useCreateItem = () => {
                 ar: newItem.ar || "",
                 description: newItem.description,
                 descriptionAr: newItem.descriptionAr,
+                category: newItem.category,
             };
 
             previous.forEach(([key]) => {

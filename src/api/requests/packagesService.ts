@@ -22,6 +22,7 @@ export interface Package {
     price: number;
     description?: string;
     descriptionAr?: string;
+    category?: string | { _id?: string; id?: string; name?: string };
     items?: PackageItem[];
     deleted?: boolean;
     createdAt?: string;
@@ -116,6 +117,7 @@ export const createPackage = async (packageData: {
     price: number;
     description?: string;
     descriptionAr?: string;
+    category?: string;
     items?: { item: string; quantity?: number | string | boolean; note?: string }[];
 }): Promise<Package> => {
     try {
@@ -139,6 +141,7 @@ export const updatePackage = async (
         price?: number;
         description?: string;
         descriptionAr?: string;
+        category?: string;
         items?: { item: string; quantity?: number | string | boolean; note?: string }[];
     },
 ): Promise<Package> => {

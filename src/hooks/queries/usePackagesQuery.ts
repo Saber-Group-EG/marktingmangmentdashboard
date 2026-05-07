@@ -60,6 +60,7 @@ export const useCreatePackage = () => {
                 price: newPackage.price || 0,
                 description: newPackage.description,
                 descriptionAr: (newPackage as any).descriptionAr,
+                category: (newPackage as any).category,
                 items: (newPackage.items as any) || [],
             };
 

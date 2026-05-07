@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLang } from "@/hooks/useLang";
 import { Check, Loader2, Plus, RefreshCw, Search, X, Edit, Trash2 } from "lucide-react";
-import { usePackages, useServices, useItems } from "@/hooks/queries";
+import { usePackages, useServices, useItems, useCategories } from "@/hooks/queries";
 import type { Package } from "@/api/requests/packagesService";
 import type { Service } from "@/api/requests/servicesService";
 import { useNavigate } from "react-router-dom";
@@ -17,10 +17,10 @@ const PackagesPage = () => {
 
     const [searchQuery, setSearchQuery] = useState<string>("");
     const [currentPage, setCurrentPage] = useState<number>(1);
-    const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+    const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
     const [error, setError] = useState<string>("");
 
-    // React Query hook
+    // React Query hooks
     const { data: packagesResponse, isLoading, refetch } = usePackages({
         page: currentPage,
         limit: 20,
@@ -29,11 +29,17 @@ const PackagesPage = () => {
     const packages = packagesResponse?.data || [];
     const totalPages = packagesResponse?.meta.totalPages || 1;
 
-    // Services for tabs (load a large limit to get all services)
+    // Load services for stats only
     const { data: servicesResponse } = useServices({ limit: 1000 });
     const services = servicesResponse?.data || [];
+    
+    // Load items for display
     const { data: itemsResponse } = useItems({ limit: 1000 });
     const items = itemsResponse?.data || [];
+    
+    // Load categories for filtering
+    const { data: packageCategoriesResponse, isLoading: categoriesLoading } = useCategories({ type: "package", page: 1 });
+    const packageCategories = packageCategoriesResponse?.categories || [];
 
     const itemsMap = useMemo(() => {
         const m: Record<string, string> = {};
@@ -45,67 +51,33 @@ const PackagesPage = () => {
         return m;
     }, [items]);
 
-    // Helper to determine if a package belongs to a service id
-    const packageMatchesService = (pkg: Package, serviceId: string) => {
+    const getPackageCategoryId = (pkg: Package): string => {
         const anyPkg: any = pkg as any;
-        // possible shapes: pkg.service (object or id), pkg.serviceId
-        if (!serviceId) return false;
-        if (anyPkg.service) {
-            if (typeof anyPkg.service === "string") return anyPkg.service === serviceId;
-            if (anyPkg.service._id) return anyPkg.service._id === serviceId;
-            if (anyPkg.service.id) return anyPkg.service.id === serviceId;
-        }
-        if (anyPkg.serviceId) return anyPkg.serviceId === serviceId;
-        return false;
+        if (!anyPkg.category) return "";
+        if (typeof anyPkg.category === "string") return anyPkg.category;
+        if (anyPkg.category._id) return anyPkg.category._id;
+        if (anyPkg.category.id) return anyPkg.category.id;
+        return "";
     };
 
-    // Build list of services that actually have packages
-    const servicesWithCounts = useMemo(() => {
-        const map: { service: Service; count: number }[] = [];
-        services.forEach((s) => {
-            // Prefer counting by scanning packages for references, but fall back to
-            // `service.packages` if the backend returns packages nested under the service.
-            const byPackages = packages.filter((p) => packageMatchesService(p, s._id)).length;
-            const byServiceList = s.packages?.length || 0;
-            const count = byPackages > 0 ? byPackages : byServiceList;
-            if (count > 0) map.push({ service: s, count });
+    // Build list of categories that actually have packages
+    const categoriesWithCounts = useMemo(() => {
+        const map: { category: typeof packageCategories[0]; count: number }[] = [];
+        
+        packageCategories.forEach((category) => {
+            const count = packages.filter((pkg) => getPackageCategoryId(pkg) === category._id).length;
+            if (count > 0) {
+                map.push({ category, count });
+            }
         });
+        
         return map;
-    }, [services, packages]);
+    }, [packageCategories, packages]);
 
     const filteredPackages = useMemo(() => {
-        if (!selectedServiceId) return packages;
-        const svc = services.find((s) => s._id === selectedServiceId);
-        if (svc && svc.packages && svc.packages.length > 0) {
-            // If the packages list already contains the full package objects, prefer
-            // returning those so the display matches the 'All' view (including item names).
-            return (svc.packages as any[]).map((sp) => {
-                const found = packages.find((p) => p._id === (sp._id || sp.id));
-                if (found) return found;
-
-                const normalized: Package = {
-                    _id: sp._id || sp.id || String(sp._id || Math.random()),
-                    nameEn: sp.nameEn || sp.en || sp.name || "",
-                    nameAr: sp.nameAr || sp.ar || "",
-                    price: typeof sp.price === "number" ? sp.price : Number(sp.price) || 0,
-                    description: sp.description || sp.desc || "",
-                    items: (sp.items || []).map((it: any) => {
-                        // ServicePackage.items might be a different shape; normalize to Item-like object
-                        if (!it) return it;
-                        if (typeof it === "string") return { _id: it, name: itemsMap[it] || it };
-                        return {
-                            _id: it._id || it.id,
-                            name: it.name || it.nameEn || it.nameAr || it.en || it.ar || itemsMap[it._id || it.id] || "(item)",
-                            description: it.description || it.desc || undefined,
-                            type: it.type,
-                        } as any;
-                    }),
-                };
-                return normalized;
-            }) as Package[];
-        }
-        return packages.filter((p) => packageMatchesService(p, selectedServiceId));
-    }, [packages, selectedServiceId, services, itemsMap]);
+        if (!selectedCategoryId) return packages;
+        return packages.filter((pkg) => getPackageCategoryId(pkg) === selectedCategoryId);
+    }, [packages, selectedCategoryId]);
 
     const normalizePackageItem = (pkgItem: any, pkgId: string, idx: number) => {
         const raw = pkgItem as any;
@@ -158,19 +130,20 @@ const PackagesPage = () => {
 
     return (
         <div className="space-y-6 px-4 sm:px-6 lg:px-8">
+            {/* Header Section */}
             <section className="relative overflow-hidden rounded-3xl border border-light-200/70 bg-white/90 p-6 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65 sm:p-8">
                 <div className="absolute -top-20 -right-14 h-56 w-56 rounded-full bg-light-400/20 blur-3xl dark:bg-light-500/10" />
                 <div className="absolute -bottom-24 -left-14 h-56 w-56 rounded-full bg-secdark-700/20 blur-3xl dark:bg-secdark-700/20" />
                 <div className="relative flex flex-col gap-4">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                        <span className="inline-flex w-fit items-center rounded-full border border-light-300/70 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-light-700 dark:border-dark-600 dark:bg-dark-900/70 dark:text-dark-200">
-                            Package Library
-                        </span>
-                        <h1 className="title mt-3 text-xl sm:text-2xl lg:text-3xl">{tr("service_packages", "Service Packages")}</h1>
-                        <p className="text-light-600 dark:text-dark-300 mt-1 text-sm sm:text-base">
-                            {tr("service_packages_subtitle", "Explore and compare service packages with full feature visibility.")}
-                        </p>
+                            <span className="inline-flex w-fit items-center rounded-full border border-light-300/70 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-light-700 dark:border-dark-600 dark:bg-dark-900/70 dark:text-dark-200">
+                                Package Library
+                            </span>
+                            <h1 className="title mt-3 text-xl sm:text-2xl lg:text-3xl">{tr("service_packages", "Service Packages")}</h1>
+                            <p className="text-light-600 dark:text-dark-300 mt-1 text-sm sm:text-base">
+                                {tr("service_packages_subtitle", "Explore and compare service packages with full feature visibility.")}
+                            </p>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
@@ -209,14 +182,19 @@ const PackagesPage = () => {
                 </div>
             </section>
 
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {/* Stats Section */}
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                 <div className="rounded-2xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/60">
                     <p className="text-light-600 dark:text-dark-300 text-xs uppercase tracking-[0.08em]">{tr("total_packages", "Total Packages")}</p>
                     <p className="text-light-900 dark:text-dark-50 mt-2 text-2xl font-semibold">{packages.length}</p>
                 </div>
                 <div className="rounded-2xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/60">
-                    <p className="text-light-600 dark:text-dark-300 text-xs uppercase tracking-[0.08em]">{tr("active_services", "Services With Packages")}</p>
-                    <p className="text-light-900 dark:text-dark-50 mt-2 text-2xl font-semibold">{servicesWithCounts.length}</p>
+                    <p className="text-light-600 dark:text-dark-300 text-xs uppercase tracking-[0.08em]">{tr("categories", "Categories")}</p>
+                    <p className="text-light-900 dark:text-dark-50 mt-2 text-2xl font-semibold">{packageCategories.length}</p>
+                </div>
+                <div className="rounded-2xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/60">
+                    <p className="text-light-600 dark:text-dark-300 text-xs uppercase tracking-[0.08em]">{tr("services", "Services")}</p>
+                    <p className="text-light-900 dark:text-dark-50 mt-2 text-2xl font-semibold">{services.length}</p>
                 </div>
                 <div className="rounded-2xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/60">
                     <p className="text-light-600 dark:text-dark-300 text-xs uppercase tracking-[0.08em]">{tr("visible_packages", "Visible Packages")}</p>
@@ -230,47 +208,60 @@ const PackagesPage = () => {
                 </div>
             )}
 
-            {isLoading ? (
+            {isLoading && categoriesLoading ? (
                 <div className="flex items-center justify-center py-12">
                     <Loader2 className="text-light-500 dark:text-light-500 h-8 w-8 animate-spin" />
                 </div>
             ) : (
                 <>
-                    {/* Tabs: All + services that have packages */}
+                    {/* Category Filter Chips - No Icons */}
                     <div className="mb-4 flex flex-wrap items-center gap-2">
                         <button
                             type="button"
-                            onClick={() => setSelectedServiceId(null)}
-                            aria-pressed={selectedServiceId === null}
-                            className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                                selectedServiceId === null
-                                    ? "border-light-700 bg-light-700 text-white dark:border-dark-600 dark:bg-dark-700 dark:text-dark-50"
-                                    : "border-light-300 bg-white text-light-900 hover:border-light-400 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200"
+                            onClick={() => setSelectedCategoryId(null)}
+                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                                selectedCategoryId === null
+                                    ? "border-primary-500 bg-primary-500 text-white shadow-md shadow-primary-500/30"
+                                    : "border-light-300 bg-white text-light-700 hover:border-light-400 hover:bg-light-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
                             }`}
                         >
                             {tr("all", "All")}
+                            <span className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs ${
+                                selectedCategoryId === null
+                                    ? "bg-white/20 text-white"
+                                    : "bg-light-200 text-light-600 dark:bg-dark-700 dark:text-dark-400"
+                            }`}>
+                                {packages.length}
+                            </span>
                         </button>
 
-                        {servicesWithCounts.map(({ service, count }) => (
+                        {categoriesWithCounts.map(({ category, count }) => (
                             <button
-                                key={service._id}
+                                key={category._id}
                                 type="button"
-                                onClick={() => setSelectedServiceId(service._id)}
-                                aria-pressed={selectedServiceId === service._id}
-                                className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                                    selectedServiceId === service._id
-                                        ? "border-light-700 bg-light-700 text-white dark:border-dark-600 dark:bg-dark-700 dark:text-dark-50"
-                                        : "border-light-300 bg-white text-light-900 hover:border-light-400 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200"
+                                onClick={() => setSelectedCategoryId(category._id)}
+                                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                                    selectedCategoryId === category._id
+                                        ? "border-primary-500 bg-primary-500 text-white shadow-md shadow-primary-500/30"
+                                        : "border-light-300 bg-white text-light-700 hover:border-light-400 hover:bg-light-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
                                 }`}
                             >
-                                {lang === "ar" ? service.ar || service.en : service.en}
-                                <span className="ml-2 inline-block rounded-full bg-black/10 px-2 py-0.5 text-xs dark:bg-white/10">{count}</span>
+                                {category.name}
+                                <span className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs ${
+                                    selectedCategoryId === category._id
+                                        ? "bg-white/20 text-white"
+                                        : "bg-light-200 text-light-600 dark:bg-dark-700 dark:text-dark-400"
+                                }`}>
+                                    {count}
+                                </span>
                             </button>
                         ))}
                     </div>
 
                     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                         {filteredPackages.map((pkg) => {
+                            const categoryName = getPackageCategoryId(pkg) ? packageCategories.find(c => c._id === getPackageCategoryId(pkg))?.name : null;
+                            
                             return (
                                 <div
                                     key={pkg._id}
@@ -279,42 +270,44 @@ const PackagesPage = () => {
                                     <div className="from-primary-400/20 to-primary-600/20 absolute top-0 right-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-gradient-to-br blur-3xl" />
 
                                     <div className="relative z-10 mb-4 flex items-center justify-between">
-                                        <span className="rounded-full border border-light-300/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-light-700 shadow-sm dark:border-dark-600 dark:bg-dark-900/70 dark:text-dark-200">
-                                            {(pkg.items || []).length} {tr("items", "items")}
-                                        </span>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-light-500 dark:text-dark-400 text-[11px] font-semibold uppercase tracking-[0.08em]">
-                                                {tr("package_card", "Package Card")}
+                                            <span className="rounded-full border border-light-300/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-light-700 shadow-sm dark:border-dark-600 dark:bg-dark-900/70 dark:text-dark-200">
+                                                {(pkg.items || []).length} {tr("items", "items")}
                                             </span>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const id = pkg._id || pkg.id;
-                                                        if (id) handleEditPackage(id);
-                                                    }}
-                                                    title={tr("edit", "Edit")}
-                                                    className="btn-ghost p-1 rounded-full"
-                                                >
-                                                    <Edit size={16} />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const id = pkg._id || pkg.id;
-                                                        if (id) handleDeletePackage(id);
-                                                    }}
-                                                    title={tr("delete", "Delete")}
-                                                    className="btn-ghost p-1 rounded-full text-red-600"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
+                                            {categoryName && (
+                                                <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                                                    {categoryName}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const id = pkg._id || pkg.id;
+                                                    if (id) handleEditPackage(id);
+                                                }}
+                                                title={tr("edit", "Edit")}
+                                                className="rounded-lg p-1.5 text-light-500 transition hover:bg-light-100 hover:text-primary-600 dark:text-light-500 dark:hover:bg-dark-700"
+                                            >
+                                                <Edit size={14} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const id = pkg._id || pkg.id;
+                                                    if (id) handleDeletePackage(id);
+                                                }}
+                                                title={tr("delete", "Delete")}
+                                                className="rounded-lg p-1.5 text-light-500 transition hover:bg-red-50 hover:text-red-600 dark:text-light-500 dark:hover:bg-red-900/20"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
                                         </div>
                                     </div>
 
                                     <div className="relative z-10 mb-5 text-center">
-                                        <h3 className="text-light-900 dark:text-dark-50 text-[30px] leading-tight font-bold tracking-tight">
+                                        <h3 className="text-light-900 dark:text-dark-50 text-[28px] leading-tight font-bold tracking-tight">
                                             {lang === "ar" ? pkg.nameAr : pkg.nameEn}
                                         </h3>
                                         {pkg.description && <p className="text-light-600 dark:text-dark-400 mt-2 line-clamp-2 text-sm">{pkg.description}</p>}
@@ -352,17 +345,11 @@ const PackagesPage = () => {
                                                                 {typeof item.quantity === "boolean" ? (
                                                                     item.quantity ? (
                                                                         <div className="rounded-full border border-emerald-200 bg-emerald-100/90 p-1.5 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-900/30">
-                                                                            <Check
-                                                                                size={17}
-                                                                                className="text-green-600 dark:text-green-400"
-                                                                            />
+                                                                            <Check size={17} className="text-green-600 dark:text-green-400" />
                                                                         </div>
                                                                     ) : (
                                                                         <div className="rounded-full border border-red-200 bg-red-100/90 p-1.5 shadow-sm dark:border-red-500/30 dark:bg-red-900/30">
-                                                                            <X
-                                                                                size={17}
-                                                                                className="text-red-600 dark:text-red-400"
-                                                                            />
+                                                                            <X size={17} className="text-red-600 dark:text-red-400" />
                                                                         </div>
                                                                     )
                                                                 ) : typeof item.quantity === "number" ? (
@@ -375,10 +362,7 @@ const PackagesPage = () => {
                                                                     </span>
                                                                 ) : (
                                                                     <div className="rounded-full border border-emerald-200 bg-emerald-100/90 p-1.5 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-900/30">
-                                                                        <Check
-                                                                            size={17}
-                                                                            className="text-green-600 dark:text-green-400"
-                                                                        />
+                                                                        <Check size={17} className="text-green-600 dark:text-green-400" />
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -407,7 +391,7 @@ const PackagesPage = () => {
                         })}
                     </div>
 
-                    {packages.length === 0 && !isLoading && (
+                    {filteredPackages.length === 0 && !isLoading && (
                         <div className="py-12 text-center">
                             <p className="text-light-600 dark:text-dark-400">{tr("no_packages_found", "No packages found")}</p>
                             <button

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useProject, useUpdateProject, useDeleteProject, useProjectCategories, useProjectTypes, useProjectCast, useProjects } from "@/hooks/queries";
+import { useProject, useUpdateProject, useDeleteProject, useProjectTypes, useProjectCast, useProjects, useCategories } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
@@ -67,7 +67,9 @@ const EditProject: React.FC = () => {
     const { data: allProjects = [] as any[] } = useProjects();
     const update = useUpdateProject();
     const del = useDeleteProject();
-    const { data: projectCategories = [], isLoading: projectCategoriesLoading } = useProjectCategories();
+    // Replace useProjectCategories with useCategories
+    const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading } = useCategories({ type: "project" });
+    const projectCategories = projectCategoriesResponse?.categories || [];
     const { data: projectTypes = [], isLoading: projectTypesLoading } = useProjectTypes();
 
     const [form, setForm] = useState<any>({
@@ -1142,17 +1144,6 @@ const EditProject: React.FC = () => {
                         <Camera className="w-4 h-4 inline mr-2" />
                         Main Cover
                     </button>
-                    {/* <button
-                        onClick={() => setActiveTab("media")}
-                        className={`px-4 py-2 text-sm font-medium transition-colors ${
-                            activeTab === "media"
-                                ? "text-light-500 dark:text-secdark-500 border-b-2 border-light-500 dark:border-secdark-500"
-                                : "text-light-600 dark:text-dark-400 hover:text-light-700 dark:hover:text-dark-300"
-                        }`}
-                    >
-                        <File className="w-4 h-4 inline mr-2" />
-                        HTML
-                    </button> */}
                 </div>
             </div>
 
@@ -1730,8 +1721,7 @@ const EditProject: React.FC = () => {
                             
                             <div>
                                 <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title</label>
-                                <input
-                                    type="text"
+                                <input                                    type="text"
                                     value={editingMaterial.caption || ""}
                                     onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: e.target.value })}
                                     className="input w-full"

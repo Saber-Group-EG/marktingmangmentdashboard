@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useCreateProject, useProjectCategories, useProjectTypes, useProjectCast, useProjects } from "@/hooks/queries";
+import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useCategories } from "@/hooks/queries";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
@@ -63,7 +63,9 @@ const AddProject: React.FC = () => {
     void tr; // avoid unused variable warning
     
     const mutation = useCreateProject();
-    const { data: projectCategories = [], isLoading: projectCategoriesLoading } = useProjectCategories();
+    // Replace useProjectCategories with useCategories
+    const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading } = useCategories({ type: "project" });
+    const projectCategories = projectCategoriesResponse?.categories || [];
     const { data: projectTypes = [], isLoading: projectTypesLoading } = useProjectTypes();
     const { data: projectCast = []} = useProjectCast();
     const { data: allProjects = [] as any[]} = useProjects();
@@ -75,7 +77,7 @@ const AddProject: React.FC = () => {
         categories: [] as string[],
         tags: [] as string[],
         types: [] as string[],    
-        publishAt: null as Date | null, // Add this
+        publishAt: null as Date | null,
         parentProject: null as any,
         materials: [] as Material[],
         cast: [] as Cast[],

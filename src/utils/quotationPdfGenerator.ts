@@ -4,246 +4,202 @@ interface QuotationPDFOptions {
     quotation: any;
     clientName: string;
     lang: "ar" | "en";
-    t: (key: string) => string;
+    t: (key: string, fallback: string) => string; // Updated to include fallback
     items?: any[];
 }
 
-export const generateQuotationPDF = async ({ quotation, clientName, lang, items = [] }: QuotationPDFOptions) => {
-    try {
-        const isRTL = lang === "ar";
-        const dateStr = quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US") : "";
-        const validUntilStr = quotation.validUntil ? new Date(quotation.validUntil).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US") : "";
+export const generateQuotationPDF = async ({ quotation, clientName, lang, items = [] }: QuotationPDFOptions): Promise<Blob> => {
+    const isRTL = lang === "ar";
+    const dateStr = quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US") : "";
+    const validUntilStr = quotation.validUntil ? new Date(quotation.validUntil).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US") : "";
 
-        // Helper function to safely escape HTML
-        const escapeHtml = (text: string) => {
-            if (!text) return "";
-            return text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#39;");
-        };
+    // Helper function to safely escape HTML
+    const escapeHtml = (text: string) => {
+        if (!text) return "";
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    };
 
-        // Helper function to get localized name
-        const getLocalizedName = (obj: any) => {
-            if (!obj) return "";
-            if (lang === "ar") {
-                return obj.nameAr || obj.ar || obj.name || obj.nameEn || obj.en || "";
-            }
-            return obj.nameEn || obj.en || obj.name || obj.nameAr || obj.ar || "";
-        };
-
-        // Helper function to find item by ID
-        const findItemById = (itemId: string) => {
-            return items.find((i: any) => String(i._id) === String(itemId) || String(i.id) === String(itemId));
-        };
-
-        // Helper function to get item name from various formats
-        const getItemName = (item: any) => {
-            // If item has a name directly
-            if (item.name) return getLocalizedName(item) || item.name;
-            
-            // If item has an item object
-            if (item.item) {
-                if (typeof item.item === 'object') {
-                    return getLocalizedName(item.item) || item.item.name || "(item)";
-                }
-                if (typeof item.item === 'string') {
-                    const found = findItemById(item.item);
-                    if (found) return getLocalizedName(found) || found.name || "(item)";
-                    return `Item ${item.item.slice(-6)}`;
-                }
-            }
-            
-            return "(item)";
-        };
-
-        // Helper function to format quantity display
-        const formatQuantity = (quantity: any) => {
-            if (quantity === undefined || quantity === null) return "";
-            if (typeof quantity === 'boolean') {
-                return quantity ? " ✓" : "";
-            }
-            if (typeof quantity === 'number') {
-                return ` ×${quantity}`;
-            }
-            if (typeof quantity === 'string') {
-                // Check if it's a percentage
-                if (quantity.includes('%')) {
-                    return ` (${quantity})`;
-                }
-                // Check if it's a number string
-                const num = parseFloat(quantity);
-                if (!isNaN(num)) {
-                    return ` ×${num}`;
-                }
-                return ` (${quantity})`;
-            }
-            return "";
-        };
-
-        const currency = lang === "ar" ? "ج.م" : "EGP";
-
-        // Build services HTML
-        let servicesHTML = "";
-        let itemNumber = 1;
-
-        // Process packages
-        if (quotation.packages && quotation.packages.length > 0) {
-            for (const pkg of quotation.packages) {
-                if (pkg.deleted === true) continue;
-                
-                const packageName = getLocalizedName(pkg) || pkg.name || "Package";
-                const packagePrice = pkg.price || 0;
-                
-                servicesHTML += `
-                    <tr style="background-color: #f0fdf4;">
-                        <td style="text-align: center; padding: 12px; font-weight: 700;">${itemNumber++}</td>
-                        <td style="padding: 12px;">
-                            <strong style="color: #166534;">📦 ${escapeHtml(packageName)}</strong>
-                            <div style="font-size: 9pt; color: #166534; margin-top: 4px;">${packagePrice.toFixed(2)} ${currency}</div>
-                        </td>
-                        <td style="text-align: right; padding: 12px;">${packagePrice.toFixed(2)} ${currency}</td>
-                        <td style="text-align: center; padding: 12px;">-</td>
-                        <td style="text-align: right; padding: 12px;"><strong>${packagePrice.toFixed(2)} ${currency}</strong></td>
-                    </tr>
-                `;
-                
-                // Process package items - just show as indented list without prices
-                if (pkg.items && pkg.items.length > 0) {
-                    for (const it of pkg.items) {
-                        const itemName = getItemName(it);
-                        const quantityText = formatQuantity(it.quantity);
-                        const itemNote = it.note || "";
-                        
-                        // Clean up any weird characters
-                        const cleanNote = itemNote ? itemNote.replace(/[���]/g, '') : '';
-                        
-                        servicesHTML += `
-                            <tr style="background-color: #fafafa;">
-                                <td style="padding: 8px; text-align: center;"></td>
-                                <td style="padding-left: 30px; padding: 8px; color: #4a5568;">
-                                    <span style="color: #9ca3af;">↳</span> ${escapeHtml(itemName)}${quantityText}
-                                    ${cleanNote ? `<div style="font-size: 9pt; color: #f59e0b; margin-top: 4px; margin-left: 16px;">📝 ${escapeHtml(cleanNote)}</div>` : ''}
-                                </td>
-                                <td style="padding: 8px;"></td>
-                                <td style="padding: 8px;"></td>
-                                <td style="padding: 8px;"></td>
-                            </tr>
-                        `;
-                    }
-                }
-            }
-        }
-
-        // Process services pricing
-        if (quotation.servicesPricing && quotation.servicesPricing.length > 0) {
-            for (const sp of quotation.servicesPricing) {
-                const service = sp.service;
-                if (!service) continue;
-                
-                let serviceName = "";
-                let price = sp.customPrice || 0;
-                
-                if (typeof service === 'object' && service !== null) {
-                    serviceName = getLocalizedName(service) || "Service";
-                    if (!price) price = service.price || 0;
-                } else if (typeof service === 'string') {
-                    serviceName = `Service ${service.slice(-6)}`;
-                }
-                
-                servicesHTML += `
-                    <tr>
-                        <td style="text-align: center; padding: 12px;">${itemNumber++}</td>
-                        <td style="padding: 12px;">
-                            ${escapeHtml(serviceName)}
-                            <div style="font-size: 9pt; color: #666; margin-top: 4px;">${lang === "ar" ? "خدمة فردية" : "Individual Service"}</div>
-                        </td>
-                        <td style="text-align: right; padding: 12px;">${price.toFixed(2)} ${currency}</td>
-                        <td style="text-align: center; padding: 12px;">-</td>
-                        <td style="text-align: right; padding: 12px;"><strong>${price.toFixed(2)} ${currency}</strong></td>
-                    </tr>
-                `;
-            }
-        }
-
-        // Process custom services
-        if (quotation.customServices && quotation.customServices.length > 0) {
-            for (const cs of quotation.customServices) {
-                let finalPrice = cs.price;
-                let discountText = "-";
-                const serviceName = lang === "ar" ? cs.ar : cs.en;
-                
-                if (cs.discount && cs.discount > 0) {
-                    if (cs.discountType === "percentage") {
-                        const discountAmt = (cs.price * cs.discount) / 100;
-                        finalPrice = cs.price - discountAmt;
-                        discountText = `${cs.discount}%`;
-                    } else {
-                        finalPrice = cs.price - cs.discount;
-                        discountText = `${cs.discount} ${currency}`;
-                    }
-                }
-
-                servicesHTML += `
-                    <tr>
-                        <td style="text-align: center; padding: 12px;">${itemNumber++}</td>
-                        <td style="padding: 12px;">
-                            ${escapeHtml(serviceName)}
-                            <div style="font-size: 9pt; color: #666; margin-top: 4px;">${lang === "ar" ? "خدمة مخصصة" : "Custom Service"}</div>
-                        </td>
-                        <td style="text-align: right; padding: 12px;">${cs.price.toFixed(2)} ${currency}</td>
-                        <td style="text-align: center; padding: 12px;">${discountText}</td>
-                        <td style="text-align: right; padding: 12px;"><strong>${finalPrice.toFixed(2)} ${currency}</strong></td>
-                    </tr>
-                `;
-            }
-        }
-
-        // Empty state
-        if (servicesHTML === "") {
-            servicesHTML = `
-                <tr>
-                    <td style="text-align: center; padding: 12px;" colspan="5">${lang === "ar" ? "لا توجد خدمات" : "No services"}</td>
-                </tr>
-            `;
-        }
-
-        // Calculate discount amount
-        let discountAmount = 0;
-        if (quotation.discountValue > 0) {
-            if (quotation.discountType === "percentage") {
-                discountAmount = (quotation.subtotal * quotation.discountValue) / 100;
-            } else {
-                discountAmount = quotation.discountValue;
-            }
-        }
-
-        // Get status text
-        let statusText = (quotation.status || "").toUpperCase();
+    // Helper function to get localized name
+    const getLocalizedName = (obj: any) => {
+        if (!obj) return "";
         if (lang === "ar") {
-            const statusMap: Record<string, string> = {
-                draft: "مسودة",
-                sent: "مرسل",
-                approved: "موافق عليه",
-                rejected: "مرفوض",
-                expired: "منتهي",
-            };
-            statusText = statusMap[quotation.status] || quotation.status;
+            return obj.nameAr || obj.ar || obj.name || obj.nameEn || obj.en || "";
         }
+        return obj.nameEn || obj.en || obj.name || obj.nameAr || obj.ar || "";
+    };
 
-        // Clean up any weird characters in notes
-        const cleanMainNote = quotation.note ? quotation.note.replace(/[���]/g, '') : '';
+    // Helper function to find item by ID
+    const findItemById = (itemId: string) => {
+        return items.find((i: any) => String(i._id) === String(itemId) || String(i.id) === String(itemId));
+    };
 
-        const htmlContent = `<!DOCTYPE html>
+    // Helper function to get item name
+    const getItemName = (item: any) => {
+        if (item.name) return getLocalizedName(item) || item.name;
+        if (item.item) {
+            if (typeof item.item === 'object') {
+                return getLocalizedName(item.item) || item.item.name || "(item)";
+            }
+            if (typeof item.item === 'string') {
+                const found = findItemById(item.item);
+                if (found) return getLocalizedName(found) || found.name || "(item)";
+                return `Item ${item.item.slice(-6)}`;
+            }
+        }
+        return "(item)";
+    };
+
+    // Helper function to format quantity display
+    const formatQuantityDisplay = (quantity: any) => {
+        if (quantity === undefined || quantity === null) return "";
+        if (typeof quantity === 'boolean') {
+            return quantity ? " ✓" : "";
+        }
+        if (typeof quantity === 'number') {
+            return ` ×${quantity}`;
+        }
+        if (typeof quantity === 'string') {
+            if (quantity.includes('%')) return ` (${quantity})`;
+            const num = parseFloat(quantity);
+            if (!isNaN(num)) return ` ×${num}`;
+            return ` (${quantity})`;
+        }
+        return "";
+    };
+
+    const currency = lang === "ar" ? "ج.م" : "EGP";
+
+    // Build items/services HTML - compact version
+    let itemsHTML = "";
+    let itemNumber = 1;
+
+    // Helper to add item row
+    const addItemRow = (name: string, details: string, quantity: string, price: number, total: number, isPackage: boolean = false) => {
+        itemsHTML += `
+            <tr style="${isPackage ? 'background-color: #f0fdf4;' : ''}">
+                <td style="padding: 6px 8px; text-align: center; font-size: 9pt;">${itemNumber++}</td>
+                <td style="padding: 6px 8px;">
+                    <strong style="${isPackage ? 'color: #166534;' : ''}">${escapeHtml(name)}</strong>
+                    ${details ? `<div style="font-size: 8pt; color: #666; margin-top: 2px;">${escapeHtml(details)}</div>` : ''}
+                </td>
+                <td style="padding: 6px 8px; text-align: right; font-size: 9pt;">${price > 0 ? `${price.toFixed(2)} ${currency}` : '-'}</td>
+                <td style="padding: 6px 8px; text-align: center; font-size: 9pt;">${quantity}</td>
+                <td style="padding: 6px 8px; text-align: right; font-size: 9pt; font-weight: 500;">${total > 0 ? `${total.toFixed(2)} ${currency}` : '-'}</td>
+            </tr>
+        `;
+    };
+
+    // Process packages
+    if (quotation.packages && quotation.packages.length > 0) {
+        for (const pkg of quotation.packages) {
+            if (pkg.deleted === true) continue;
+            
+            const packageName = getLocalizedName(pkg) || pkg.name || "Package";
+            const packagePrice = pkg.price || 0;
+            
+            addItemRow(packageName, `Package`, `1`, packagePrice, packagePrice, true);
+            
+            // Process package items - compact display
+            if (pkg.items && pkg.items.length > 0) {
+                for (const it of pkg.items) {
+                    const itemName = getItemName(it);
+                    const quantityText = formatQuantityDisplay(it.quantity);
+                    const itemNote = it.note || "";
+                    const cleanNote = itemNote ? itemNote.replace(/[���]/g, '') : '';
+                    
+                    itemsHTML += `
+                        <tr style="background-color: #fafafa;">
+                            <td style="padding: 4px 8px; text-align: center; font-size: 8pt;"></td>
+                            <td style="padding: 4px 8px; padding-left: 20px; font-size: 8pt; color: #4a5568;">
+                                <span style="color: #9ca3af;">↳</span> ${escapeHtml(itemName)}${quantityText}
+                                ${cleanNote ? `<div style="font-size: 7pt; color: #f59e0b; margin-top: 2px;">📝 ${escapeHtml(cleanNote)}</div>` : ''}
+                            </td>
+                            <td style="padding: 4px 8px;"></td>
+                            <td style="padding: 4px 8px;"></td>
+                            <td style="padding: 4px 8px;"></td>
+                        </tr>
+                    `;
+                }
+            }
+        }
+    }
+
+    // Process services pricing
+    if (quotation.servicesPricing && quotation.servicesPricing.length > 0) {
+        for (const sp of quotation.servicesPricing) {
+            const service = sp.service;
+            if (!service) continue;
+            
+            let serviceName = "";
+            let price = sp.customPrice || 0;
+            
+            if (typeof service === 'object' && service !== null) {
+                serviceName = getLocalizedName(service) || "Service";
+                if (!price) price = service.price || 0;
+            } else if (typeof service === 'string') {
+                serviceName = `Service ${service.slice(-6)}`;
+            }
+            
+            addItemRow(serviceName, `Individual Service`, `1`, price, price);
+        }
+    }
+
+    // Process custom services
+    if (quotation.customServices && quotation.customServices.length > 0) {
+        for (const cs of quotation.customServices) {
+            let finalPrice = cs.price;
+            let discountText = "";
+            const serviceName = lang === "ar" ? cs.ar : cs.en;
+            
+            if (cs.discount && cs.discount > 0) {
+                if (cs.discountType === "percentage") {
+                    const discountAmt = (cs.price * cs.discount) / 100;
+                    finalPrice = cs.price - discountAmt;
+                    discountText = `(${cs.discount}% off)`;
+                } else {
+                    finalPrice = cs.price - cs.discount;
+                    discountText = `(-${cs.discount} ${currency})`;
+                }
+            }
+            
+            addItemRow(serviceName, `Custom Service ${discountText}`, `1`, cs.price, finalPrice);
+        }
+    }
+
+    // Empty state
+    if (itemsHTML === "") {
+        itemsHTML = `
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 20px; font-size: 10pt;">${lang === "ar" ? "لا توجد خدمات" : "No services"}</td>
+            </tr>
+        `;
+    }
+
+    // Calculate discount amount
+    let discountAmount = 0;
+    if (quotation.discountValue > 0) {
+        if (quotation.discountType === "percentage") {
+            discountAmount = (quotation.subtotal * quotation.discountValue) / 100;
+        } else {
+            discountAmount = quotation.discountValue;
+        }
+    }
+
+    // Clean up notes
+    const cleanMainNote = quotation.note ? quotation.note.replace(/[���]/g, '') : '';
+
+    const htmlContent = `<!DOCTYPE html>
 <html dir="${isRTL ? "rtl" : "ltr"}" lang="${lang}">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quotation - ${quotation.quotationNumber || ""}</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
         
         * {
             margin: 0;
@@ -252,289 +208,240 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
         }
 
         body {
-            font-family: 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 12pt;
-            line-height: 1.6;
+            font-family: 'Cairo', 'Segoe UI', Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
             color: #333;
             direction: ${isRTL ? "rtl" : "ltr"};
+            padding: 10mm;
         }
 
         @page {
             size: A4;
-            margin: 20mm;
+            margin: 10mm;
         }
 
         .page {
-            background: white;
-            padding: 0;
-            margin: 0;
+            max-width: 100%;
         }
 
+        /* Header - Compact */
         .header {
             background: #dc2626;
             color: white;
-            padding: 30px 40px;
-            margin-bottom: 30px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             flex-wrap: wrap;
-            gap: 20px;
-        }
-
-        .company-info {
-            flex: 1;
+            gap: 10px;
+            border-radius: 6px;
         }
 
         .company-name {
-            font-size: 28pt;
+            font-size: 16pt;
             font-weight: 700;
-            margin-bottom: 5px;
         }
 
         .company-subtitle {
-            font-size: 11pt;
-            margin-bottom: 10px;
-            opacity: 0.95;
+            font-size: 8pt;
+            opacity: 0.9;
         }
 
         .company-contact {
-            font-size: 9pt;
-            opacity: 0.9;
-            line-height: 1.4;
+            font-size: 7pt;
+            opacity: 0.85;
         }
 
-        .quotation-info {
-            text-align: ${isRTL ? "left" : "right"};
-        }
-
-        .quotation-title-main {
-            font-size: 20pt;
+        .quotation-title {
+            font-size: 14pt;
             font-weight: 700;
             text-align: center;
-            margin: 30px 0;
-            color: #333;
+            margin: 10px 0;
+            color: #dc2626;
         }
 
+        /* Party Box - Compact */
         .party-box {
             background: #f5f5f5;
-            border: 1px solid #c8c8c8;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin: 10px 0;
         }
 
         .party-label {
-            font-size: 12pt;
+            font-size: 9pt;
             font-weight: 700;
-            margin-bottom: 10px;
-            color: #333;
+            margin-bottom: 4px;
         }
 
         .party-details {
-            font-size: 10pt;
-            line-height: 1.8;
+            font-size: 9pt;
             color: #4a5568;
         }
 
-        .services-table {
+        /* Table - Compact */
+        .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 25px 0;
+            margin: 12px 0;
+            font-size: 9pt;
         }
 
-        .services-table th {
+        .items-table th {
             background: #dc2626;
             color: white;
-            padding: 12px;
+            padding: 8px 6px;
             font-weight: 600;
-            font-size: 11pt;
+            font-size: 9pt;
             border: 1px solid #b91c1c;
         }
 
-        .services-table td {
-            padding: 10px;
+        .items-table td {
+            padding: 6px;
             border: 1px solid #e2e8f0;
-            font-size: 10pt;
             vertical-align: top;
         }
 
-        .services-table tr:nth-child(even) {
-            background-color: #f7fafc;
+        .items-table tr:nth-child(even) {
+            background-color: #f9fafb;
         }
 
+        /* Summary - Compact */
         .summary-section {
-            margin: 25px 0;
-            padding: 20px;
+            margin: 12px 0;
+            padding: 10px 12px;
             background: #f7fafc;
-            border-radius: 8px;
+            border-radius: 6px;
             text-align: right;
         }
 
         .summary-row {
-            margin: 8px 0;
-            font-size: 11pt;
+            margin: 4px 0;
+            font-size: 9pt;
         }
 
         .total-row {
-            font-size: 14pt;
+            font-size: 11pt;
             font-weight: 700;
             color: #dc2626;
-            margin-top: 15px;
-            padding-top: 10px;
-            border-top: 2px solid #cbd5e0;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #cbd5e0;
         }
 
+        /* Notes - Compact */
         .notes-section {
-            margin: 25px 0;
-            padding: 20px;
+            margin: 12px 0;
+            padding: 8px 12px;
             background: #fff5f0;
-            border-left: 4px solid #f59e0b;
-            border-radius: 8px;
+            border-left: 3px solid #f59e0b;
+            border-radius: 6px;
         }
 
         .notes-title {
-            font-size: 12pt;
+            font-size: 9pt;
             font-weight: 700;
-            margin-bottom: 10px;
+            margin-bottom: 4px;
             color: #f59e0b;
         }
 
         .notes-content {
-            font-size: 10pt;
-            line-height: 1.7;
+            font-size: 8pt;
             color: #4a5568;
             white-space: pre-wrap;
             word-break: break-word;
         }
 
+        /* Validity */
         .validity-section {
-            margin: 15px 0;
-            padding: 10px 20px;
+            margin: 10px 0;
+            padding: 6px 12px;
             background: #fef3c7;
-            border-radius: 8px;
+            border-radius: 6px;
             text-align: center;
+            font-size: 8pt;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 7pt;
+            color: #999;
+            border-top: 1px solid #e0e0e0;
+            padding-top: 10px;
         }
 
         .divider {
             border: 0;
-            border-top: 1px solid #c8c8c8;
-            margin: 25px 0;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 9pt;
-            font-weight: 600;
-            margin-top: 10px;
-        }
-
-        .status-draft { background: #e2e8f0; color: #4a5568; }
-        .status-sent { background: #bfdbfe; color: #1e40af; }
-        .status-approved { background: #dcfce7; color: #166534; }
-        .status-rejected { background: #fee2e2; color: #991b1b; }
-        .status-expired { background: #fed7aa; color: #92400e; }
-
-        .signature-section {
-            margin-top: 40px;
-            page-break-inside: avoid;
-        }
-
-        .signature-row {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 20px;
-        }
-
-        .signature-box {
-            text-align: center;
-            flex: 1;
-            padding: 0 30px;
-        }
-
-        .signature-label {
-            font-weight: 700;
-            margin-bottom: 30px;
-            font-size: 11pt;
-        }
-
-        .signature-line {
-            border-top: 1px solid #333;
-            width: 200px;
-            margin: 0 auto;
-        }
-
-        .footer {
-            margin-top: 50px;
-            text-align: center;
-            font-size: 9pt;
-            color: #999;
+            border-top: 1px solid #e0e0e0;
+            margin: 12px 0;
         }
 
         @media print {
             body {
+                padding: 0;
+                margin: 0;
+            }
+            .header {
+                background: #dc2626 !important;
                 print-color-adjust: exact;
                 -webkit-print-color-adjust: exact;
             }
-            
-            .header {
+            .items-table th {
                 background: #dc2626 !important;
-                color: white !important;
-            }
-
-            .services-table th {
-                background: #dc2626 !important;
-                color: white !important;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
             }
         }
     </style>
 </head>
 <body>
     <div class="page">
+        <!-- Compact Header -->
         <div class="header">
-            <div class="company-info">
+            <div>
                 <div class="company-name">${lang === "ar" ? "صابر جروب" : "SABER GROUP"}</div>
                 <div class="company-subtitle">${lang === "ar" ? "وكالة تسويق" : "MARKETING AGENCY"}</div>
-                <div class="company-contact">
-                    <div>${lang === "ar" ? "٨ شارع الحمزاوي, النادي طنطا الغربيه" : "8 Elhamzawy St, Elnady, Tanta-Elghabria"}</div>
-                    <div>01553596428</div>
-                    <div>info@sabergroup-eg.com</div>
-                </div>
             </div>
-            <div class="quotation-info">
-                <div style="font-size: 16pt; font-weight: 700; margin-bottom: 5px;">${lang === "ar" ? "عرض سعر" : "QUOTATION"}</div>
-                <div style="font-size: 11pt;">${quotation.quotationNumber || ""}</div>
-                <div style="font-size: 9pt; margin-top: 5px;">${lang === "ar" ? "التاريخ:" : "Date:"} ${dateStr}</div>
-                <div class="status-badge status-${quotation.status || 'draft'}">${statusText}</div>
+            <div style="text-align: right;">
+                <div style="font-weight: 700;">${lang === "ar" ? "عرض سعر" : "QUOTATION"}</div>
+                <div style="font-size: 8pt;">${quotation.quotationNumber || ""}</div>
+                <div style="font-size: 7pt;">${dateStr}</div>
             </div>
         </div>
 
-        <div class="quotation-title-main">
-            ${lang === "ar" ? "عرض سعر لخدمات إدارة منصات التواصل الاجتماعي" : "Social Media Management Services Quotation"}
+        <!-- Title -->
+        <div class="quotation-title">
+            ${lang === "ar" ? "عرض سعر خدمات إدارة منصات التواصل الاجتماعي" : "Social Media Management Services Quotation"}
         </div>
 
+        <!-- Client Info - Compact -->
         <div class="party-box">
             <div class="party-label">${lang === "ar" ? "العميل" : "Client"}</div>
             <div class="party-details">${escapeHtml(clientName) || (lang === "ar" ? "غير محدد" : "Not specified")}</div>
         </div>
 
-        <table class="services-table">
+        <!-- Items Table -->
+        <table class="items-table">
             <thead>
                 <tr>
                     <th style="width: 5%;">#</th>
                     <th style="width: 55%;">${lang === "ar" ? "الخدمة / الباقة" : "Service / Package"}</th>
-                    <th style="width: 13%;">${lang === "ar" ? "السعر" : "Price"}</th>
-                    <th style="width: 12%;">${lang === "ar" ? "الخصم" : "Discount"}</th>
+                    <th style="width: 15%;">${lang === "ar" ? "السعر" : "Price"}</th>
+                    <th style="width: 10%;">${lang === "ar" ? "الكمية" : "Qty"}</th>
                     <th style="width: 15%;">${lang === "ar" ? "الإجمالي" : "Total"}</th>
                 </tr>
             </thead>
             <tbody>
-                ${servicesHTML}
+                ${itemsHTML}
             </tbody>
         </table>
 
+        <!-- Summary -->
         <div class="summary-section">
             <div class="summary-row">
                 <strong>${lang === "ar" ? "المجموع الفرعي:" : "Subtotal:"}</strong> ${(quotation.subtotal || 0).toFixed(2)} ${currency}
@@ -551,12 +458,14 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
             </div>
         </div>
 
+        <!-- Validity -->
         ${validUntilStr ? `
         <div class="validity-section">
             <strong>${lang === "ar" ? "صالح حتى:" : "Valid Until:"}</strong> ${validUntilStr}
         </div>
         ` : ''}
 
+        <!-- Notes -->
         ${cleanMainNote ? `
         <div class="notes-section">
             <div class="notes-title">${lang === "ar" ? "ملاحظات:" : "Notes:"}</div>
@@ -564,21 +473,7 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
         </div>
         ` : ''}
 
-        <hr class="divider">
-
-        <div class="signature-section no-break">
-            <div class="signature-row">
-                <div class="signature-box">
-                    <div class="signature-label">${lang === "ar" ? "توقيع الطرف الأول" : "First Party Signature"}</div>
-                    <div class="signature-line"></div>
-                </div>
-                <div class="signature-box">
-                    <div class="signature-label">${lang === "ar" ? "توقيع الطرف الثاني" : "Second Party Signature"}</div>
-                    <div class="signature-line"></div>
-                </div>
-            </div>
-        </div>
-
+        <!-- Footer -->
         <div class="footer">
             ${lang === "ar" ? "شكراً لثقتكم بنا" : "Thank you for your business"}
         </div>
@@ -586,26 +481,7 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
 </body>
 </html>`;
 
-        const printWindow = window.open("", "_blank");
-        if (!printWindow) {
-            throw new Error("Pop-up blocked. Please allow pop-ups for this site.");
-        }
-
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-
-        printWindow.onload = () => {
-            setTimeout(() => {
-                printWindow.print();
-                setTimeout(() => {
-                    printWindow.close();
-                }, 500);
-            }, 250);
-        };
-
-        return true;
-    } catch (error) {
-        console.error("Error generating quotation PDF:", error);
-        throw error;
-    }
+    // Return as Blob instead of printing directly
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    return blob;
 };

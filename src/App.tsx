@@ -20,6 +20,7 @@ import AddPackagePage from "./routes/packages/add";
 import ContractPage from "./routes/contracts/page";
 import ReportsPage from "./routes/reports/page";
 import ProfilePage from "./routes/profile/page.tsx";
+import CategoriesPage from "./routes/categories/page";
 import ProjectsPage from "./routes/Projects/page";
 import AddProjectPage from "./routes/Projects/AddProject.tsx";
 import ProjectDetailsPage from "./routes/Projects/PreviewProject.tsx";
@@ -55,6 +56,7 @@ function App() {
                     { path: "quotations", element: <QuotationsPage /> },
                     { path: "packages", element: <PackagesPage /> },
                     { path: "packages/add", element: <AddPackagePage /> },
+                    { path: "categories", element: <CategoriesPage /> },
                     { path: "projects", element: <ProjectsPage /> },
                     { path: "projects/add", element: <AddProjectPage /> },
                     { path: "projects/:id", element: <ProjectDetailsPage /> },

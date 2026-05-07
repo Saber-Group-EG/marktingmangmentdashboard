@@ -6,6 +6,7 @@ export interface ContractTerm {
     keyAr: string;
     value?: string;
     valueAr?: string;
+    category?: string | { _id?: string; id?: string; name?: string };
     deleted?: boolean;
     createdAt?: string;
     updatedAt?: string;
@@ -16,6 +17,7 @@ export interface CreateContractTermDTO {
     keyAr: string;
     value?: string;
     valueAr?: string;
+    category?: string;
 }
 
 export interface UpdateContractTermDTO {
@@ -23,6 +25,7 @@ export interface UpdateContractTermDTO {
     keyAr?: string;
     value?: string;
     valueAr?: string;
+    category?: string;
 }
 
 export interface ContractTermsResponse {
