@@ -1,5 +1,5 @@
 import { useState, KeyboardEvent } from "react";
-import { Plus, Edit2, Trash2, Check, X, Loader2, Search, XCircle } from "lucide-react";
+import { Plus, Edit2, Trash2, Check, X, Loader2, Search } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem, useCategories } from "@/hooks/queries";

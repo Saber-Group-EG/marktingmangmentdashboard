@@ -140,8 +140,8 @@ axiosInstance.interceptors.response.use(
 
         // Handle common errors
         if (error.response) {
-            // Only log in development
-            if (process.env.NODE_ENV === "development") {
+            // Only log in development - using import.meta.env instead of process.env
+            if (import.meta.env.DEV) {
                 console.error("❌ API Error:", error.response.status, error.config?.url);
             }
 
@@ -246,12 +246,10 @@ axiosInstance.interceptors.response.use(
                     }
                 }
             }
-        } else if (error.request && process.env.NODE_ENV === "development") {
-            // Ignore and do not log canceled/aborted requests to reduce console noise
-            // Axios emits a CanceledError with code 'ERR_CANCELED' and message 'canceled'
-            if (error.code === "ERR_CANCELED" || error?.name === "CanceledError" || error?.message === "canceled") {
-                // silently ignore
-            } else {
+        } else if (error.request) {
+            // Only log in development and ignore canceled requests
+            const isCanceled = error.code === "ERR_CANCELED" || error?.name === "CanceledError" || error?.message === "canceled";
+            if (!isCanceled && import.meta.env.DEV) {
                 console.error("❌ Network Error:", error.message);
             }
         }

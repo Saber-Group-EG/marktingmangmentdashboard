@@ -3,7 +3,7 @@ import { useLang } from "@/hooks/useLang";
 import { Check, Loader2, Plus, RefreshCw, Search, X, Edit, Trash2 } from "lucide-react";
 import { usePackages, useServices, useItems, useCategories } from "@/hooks/queries";
 import type { Package } from "@/api/requests/packagesService";
-import type { Service } from "@/api/requests/servicesService";
+
 import { useNavigate } from "react-router-dom";
 import { deletePackage } from "@/api/requests/packagesService";
 

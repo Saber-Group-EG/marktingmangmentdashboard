@@ -70,7 +70,7 @@ const AddPackagePage = () => {
     const { data: servicesData } = useServices({ limit: 1000 });
     const services = servicesData?.data || [];
     const { data: packageCategoriesResponse, isLoading: packageCategoriesLoading } = useCategories({ type: "package", page: 1 });
-    const { data: itemCategoriesResponse, isLoading: itemCategoriesLoading } = useCategories({ type: "item", page: 1 });
+    const { data: itemCategoriesResponse } = useCategories({ type: "item", page: 1 });
     
     const packageCategories = packageCategoriesResponse?.categories || [];
     const itemCategories = itemCategoriesResponse?.categories || [];
