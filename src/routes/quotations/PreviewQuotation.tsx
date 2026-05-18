@@ -5,7 +5,7 @@ import { useLang } from "@/hooks/useLang";
 import { showAlert, showConfirm } from "@/utils/swal";
 import { useClients, useQuotations, useDeleteQuotation, useItems } from "@/hooks/queries";
 import type { Quotation, QuotationQueryParams } from "@/api/requests/quotationsService";
-import { generateQuotationPDF } from "@/utils/quotationPdfGenerator";
+import { downloadQuotationPDF, generateQuotationPDF } from "@/utils/quotationPdfGenerator";
 
 interface PreviewQuotationProps {
     clientId?: string;
@@ -154,7 +154,7 @@ const PreviewQuotation = ({
         }
     };
 
-    // Updated handlePreviewPDF - opens PDF in new tab
+    // Updated handlePreviewPDF - opens rendered HTML in a new tab
     const handlePreviewPDF = async (quotation: Quotation) => {
         // Wait for necessary data to be available
         const waitForLoaded = async (timeout = 10000) => {
@@ -176,7 +176,7 @@ const PreviewQuotation = ({
             const client = clients.find((c) => c.id === quotation.clientId);
             const clientNameForPdf = client?.business?.businessName || "";
 
-            const pdfBlob = await generateQuotationPDF({
+            const htmlContent = await generateQuotationPDF({
                 quotation,
                 clientName: clientNameForPdf,
                 lang: lang as "ar" | "en",
@@ -184,15 +184,16 @@ const PreviewQuotation = ({
                 items,
             });
 
-            const blobUrl = URL.createObjectURL(pdfBlob);
-            const previewWindow = window.open(blobUrl, '_blank');
+            const previewWindow = window.open("", "_blank");
             
             if (!previewWindow) {
                 showAlert(t("popup_blocked") || "Pop-up blocked. Please allow pop-ups for this site.", "error");
+                return;
             }
-            
-            // Clean up blob URL after a delay
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+
+            previewWindow.document.open();
+            previewWindow.document.write(htmlContent);
+            previewWindow.document.close();
         } catch (error: any) {
             console.error("PDF Generation Error:", error);
             showAlert(`${t("failed_to_generate_preview") || "Failed to generate preview"}: ${error?.message || "Please try again."}`, "error");
@@ -212,7 +213,7 @@ const PreviewQuotation = ({
             const client = clients.find((c) => c.id === quotation.clientId);
             const clientNameForPdf = client?.business?.businessName || "";
 
-            const pdfBlob = await generateQuotationPDF({
+            const htmlContent = await generateQuotationPDF({
                 quotation,
                 clientName: clientNameForPdf,
                 lang: lang as "ar" | "en",
@@ -220,16 +221,7 @@ const PreviewQuotation = ({
                 items,
             });
 
-            const blobUrl = URL.createObjectURL(pdfBlob);
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = `quotation-${quotation.quotationNumber || Date.now()}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            // Clean up blob URL
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            await downloadQuotationPDF(htmlContent, `quotation-${quotation.quotationNumber || Date.now()}.pdf`);
         } catch (error) {
             console.error("PDF Generation Error:", error);
             showAlert(t("failed_to_generate_pdf") || "Failed to generate PDF. Please try again.", "error");

@@ -8,7 +8,7 @@ import type { Quotation } from "@/api/requests/quotationsService";
 import CreateQuotation from "./CreateQuotation";
 import CustomQuotation from "./CustomQuotation";
 import PreviewQuotation from "./PreviewQuotation";
-import { generateQuotationPDF,} from "@/utils/quotationPdfGenerator";
+import { generateQuotationPDF, downloadQuotationPDF } from "@/utils/quotationPdfGenerator";
 
 type View = "list" | "create" | "preview" | "custom";
 
@@ -172,8 +172,8 @@ const handlePreviewQuotation = async (quotation: any) => {
             clientNameForPdf = quotation.customName;
         }
 
-        // Generate PDF as HTML blob
-        const htmlBlob = await generateQuotationPDF({
+        // Generate HTML
+        const htmlContent = await generateQuotationPDF({
             quotation,
             clientName: clientNameForPdf,
             lang: lang as "ar" | "en",
@@ -181,16 +181,17 @@ const handlePreviewQuotation = async (quotation: any) => {
             items,
         });
 
-        // Create a blob URL and open in new tab for preview
-        const blobUrl = URL.createObjectURL(htmlBlob);
-        const previewWindow = window.open(blobUrl, '_blank');
+        // Open the HTML directly so preview stays in the tab without triggering print
+        const previewWindow = window.open("", "_blank");
         
         if (!previewWindow) {
             showAlert("Pop-up blocked. Please allow pop-ups for this site.", "error");
+            return;
         }
-        
-        // Clean up after a delay
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+
+        previewWindow.document.open();
+        previewWindow.document.write(htmlContent);
+        previewWindow.document.close();
     } catch (error: any) {
         console.error("PDF Generation Error:", error);
         showAlert(t("failed_to_generate_pdf") || "Failed to generate PDF. Please try again.", "error");
@@ -211,8 +212,8 @@ const handleDownloadQuotation = async (quotation: any) => {
             clientNameForPdf = quotation.customName;
         }
 
-        // Generate PDF as HTML blob
-        const htmlBlob = await generateQuotationPDF({
+        // Generate HTML
+        const htmlContent = await generateQuotationPDF({
             quotation,
             clientName: clientNameForPdf,
             lang: lang as "ar" | "en",
@@ -220,17 +221,9 @@ const handleDownloadQuotation = async (quotation: any) => {
             items,
         });
 
-        // Create download link
-        const blobUrl = URL.createObjectURL(htmlBlob);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `quotation-${quotation.quotationNumber || Date.now()}.html`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // Clean up
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        // Download as PDF
+        const filename = `quotation-${quotation.quotationNumber || Date.now()}.pdf`;
+        await downloadQuotationPDF(htmlContent, filename);
     } catch (error: any) {
         console.error("PDF Generation Error:", error);
         showAlert(t("failed_to_generate_pdf") || "Failed to generate PDF. Please try again.", "error");
@@ -516,3 +509,4 @@ const handleDownloadQuotation = async (quotation: any) => {
 };
 
 export default QuotationsPage;
+

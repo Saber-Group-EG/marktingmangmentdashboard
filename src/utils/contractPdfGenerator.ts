@@ -66,7 +66,6 @@ export const generateContractPDF = async ({ contract, clientName, lang }: PDFGen
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contract - ${contract._id}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
         
@@ -356,18 +355,18 @@ export const generateContractPDF = async ({ contract, clientName, lang }: PDFGen
         printWindow.document.close();
 
         // Wait for content to load
-        printWindow.onload = () => {
-            setTimeout(() => {
-                printWindow.print();
-                // Close window after printing (user can cancel)
+        return new Promise((resolve) => {
+            printWindow.onload = () => {
                 setTimeout(() => {
-                    printWindow.close();
+                    printWindow.print();
+                    // Close window after printing (user can cancel)
+                    setTimeout(() => {
+                        printWindow.close();
+                        resolve(true);
+                    }, 500);
                 }, 500);
-            }, 250);
-        };
-
-        console.log("PDF print dialog opened");
-        return true;
+            };
+        });
     } catch (error) {
         console.error("Error generating contract PDF:", error);
         console.error("Error details:", error instanceof Error ? error.message : String(error));

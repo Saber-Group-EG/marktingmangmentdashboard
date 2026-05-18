@@ -71,7 +71,7 @@ export const compressImageFileToMaxBytes = async (file: File, options: CompressI
     }
 
     let bestBlob: Blob | null = null;
-    let bestMimeType = OUTPUT_MIME_TYPES[0];
+    let bestMimeType: typeof OUTPUT_MIME_TYPES[number] = OUTPUT_MIME_TYPES[0];
 
     for (let attempt = 0; attempt < 10; attempt += 1) {
         canvas.width = Math.max(1, width);

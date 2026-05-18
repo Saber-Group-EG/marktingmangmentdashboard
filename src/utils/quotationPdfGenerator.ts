@@ -4,11 +4,11 @@ interface QuotationPDFOptions {
     quotation: any;
     clientName: string;
     lang: "ar" | "en";
-    t: (key: string, fallback: string) => string; // Updated to include fallback
+    t: (key: string, fallback: string) => string;
     items?: any[];
 }
 
-export const generateQuotationPDF = async ({ quotation, clientName, lang, items = [] }: QuotationPDFOptions): Promise<Blob> => {
+export const generateQuotationPDF = async ({ quotation, clientName, lang, items = [] }: QuotationPDFOptions): Promise<string> => {
     const isRTL = lang === "ar";
     const dateStr = quotation.createdAt ? new Date(quotation.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US") : "";
     const validUntilStr = quotation.validUntil ? new Date(quotation.validUntil).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US") : "";
@@ -74,25 +74,9 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
 
     const currency = lang === "ar" ? "ج.م" : "EGP";
 
-    // Build items/services HTML - compact version
+    // Build items/services HTML
     let itemsHTML = "";
     let itemNumber = 1;
-
-    // Helper to add item row
-    const addItemRow = (name: string, details: string, quantity: string, price: number, total: number, isPackage: boolean = false) => {
-        itemsHTML += `
-            <tr style="${isPackage ? 'background-color: #f0fdf4;' : ''}">
-                <td style="padding: 6px 8px; text-align: center; font-size: 9pt;">${itemNumber++}</td>
-                <td style="padding: 6px 8px;">
-                    <strong style="${isPackage ? 'color: #166534;' : ''}">${escapeHtml(name)}</strong>
-                    ${details ? `<div style="font-size: 8pt; color: #666; margin-top: 2px;">${escapeHtml(details)}</div>` : ''}
-                </td>
-                <td style="padding: 6px 8px; text-align: right; font-size: 9pt;">${price > 0 ? `${price.toFixed(2)} ${currency}` : '-'}</td>
-                <td style="padding: 6px 8px; text-align: center; font-size: 9pt;">${quantity}</td>
-                <td style="padding: 6px 8px; text-align: right; font-size: 9pt; font-weight: 500;">${total > 0 ? `${total.toFixed(2)} ${currency}` : '-'}</td>
-            </tr>
-        `;
-    };
 
     // Process packages
     if (quotation.packages && quotation.packages.length > 0) {
@@ -102,10 +86,30 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
             const packageName = getLocalizedName(pkg) || pkg.name || "Package";
             const packagePrice = pkg.price || 0;
             
-            addItemRow(packageName, `Package`, `1`, packagePrice, packagePrice, true);
+            // Main package row
+            itemsHTML += `
+                <tr style="background-color: #e8f5e9;">
+                    <td style="padding: 10px 8px; text-align: center; border: 1px solid #c8e6c9; vertical-align: top; font-weight: bold;">${itemNumber++}</td>
+                    <td style="padding: 10px 8px; border: 1px solid #c8e6c9; vertical-align: top;">
+                        <strong style="color: #2e7d32;">${escapeHtml(packageName)}</strong>
+                        <div style="font-size: 8pt; color: #666; margin-top: 2px;">📦 Package</div>
+                    </td>
+                    <td style="padding: 10px 8px; text-align: right; border: 1px solid #c8e6c9; vertical-align: top;">${packagePrice.toFixed(2)} ${currency}</td>
+                    <td style="padding: 10px 8px; text-align: center; border: 1px solid #c8e6c9; vertical-align: top;">1</td>
+                    <td style="padding: 10px 8px; text-align: right; border: 1px solid #c8e6c9; vertical-align: top; font-weight: 500;">${packagePrice.toFixed(2)} ${currency}</td>
+                </tr>
+            `;
             
-            // Process package items - compact display
+            // Package items as detailed list
             if (pkg.items && pkg.items.length > 0) {
+                itemsHTML += `
+                    <tr>
+                        <td colspan="5" style="padding: 0; border: none;">
+                            <div style="background-color: #f9f9f9; padding: 10px 15px 10px 25px; margin: 0; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 4px 4px;">
+                                <div style="font-size: 9pt; color: #2e7d32; font-weight: 600; margin-bottom: 8px;">📋 Package Includes:</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 6px 15px;">
+                `;
+                
                 for (const it of pkg.items) {
                     const itemName = getItemName(it);
                     const quantityText = formatQuantityDisplay(it.quantity);
@@ -113,18 +117,19 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
                     const cleanNote = itemNote ? itemNote.replace(/[���]/g, '') : '';
                     
                     itemsHTML += `
-                        <tr style="background-color: #fafafa;">
-                            <td style="padding: 4px 8px; text-align: center; font-size: 8pt;"></td>
-                            <td style="padding: 4px 8px; padding-left: 20px; font-size: 8pt; color: #4a5568;">
-                                <span style="color: #9ca3af;">↳</span> ${escapeHtml(itemName)}${quantityText}
-                                ${cleanNote ? `<div style="font-size: 7pt; color: #f59e0b; margin-top: 2px;">📝 ${escapeHtml(cleanNote)}</div>` : ''}
-                            </td>
-                            <td style="padding: 4px 8px;"></td>
-                            <td style="padding: 4px 8px;"></td>
-                            <td style="padding: 4px 8px;"></td>
-                        </tr>
+                        <div style="font-size: 9pt; color: #333; min-width: 180px;">
+                            <span style="color: #4caf50;">✓</span> ${escapeHtml(itemName)}${quantityText}
+                            ${cleanNote ? `<span style="color: #ff9800; font-size: 8pt;"> (${escapeHtml(cleanNote)})</span>` : ''}
+                        </div>
                     `;
                 }
+                
+                itemsHTML += `
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
             }
         }
     }
@@ -145,7 +150,18 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
                 serviceName = `Service ${service.slice(-6)}`;
             }
             
-            addItemRow(serviceName, `Individual Service`, `1`, price, price);
+            itemsHTML += `
+                <tr>
+                    <td style="padding: 10px 8px; text-align: center; border: 1px solid #e0e0e0; vertical-align: top;">${itemNumber++}</td>
+                    <td style="padding: 10px 8px; border: 1px solid #e0e0e0; vertical-align: top;">
+                        <strong>${escapeHtml(serviceName)}</strong>
+                        <div style="font-size: 8pt; color: #666; margin-top: 2px;">🔧 Individual Service</div>
+                    </td>
+                    <td style="padding: 10px 8px; text-align: right; border: 1px solid #e0e0e0; vertical-align: top;">${price.toFixed(2)} ${currency}</td>
+                    <td style="padding: 10px 8px; text-align: center; border: 1px solid #e0e0e0; vertical-align: top;">1</td>
+                    <td style="padding: 10px 8px; text-align: right; border: 1px solid #e0e0e0; vertical-align: top; font-weight: 500;">${price.toFixed(2)} ${currency}</td>
+                </tr>
+            `;
         }
     }
 
@@ -167,7 +183,18 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
                 }
             }
             
-            addItemRow(serviceName, `Custom Service ${discountText}`, `1`, cs.price, finalPrice);
+            itemsHTML += `
+                <tr>
+                    <td style="padding: 10px 8px; text-align: center; border: 1px solid #e0e0e0; vertical-align: top;">${itemNumber++}</td>
+                    <td style="padding: 10px 8px; border: 1px solid #e0e0e0; vertical-align: top;">
+                        <strong>${escapeHtml(serviceName)}</strong>
+                        <div style="font-size: 8pt; color: #666; margin-top: 2px;">✨ Custom Service ${discountText}</div>
+                    </td>
+                    <td style="padding: 10px 8px; text-align: right; border: 1px solid #e0e0e0; vertical-align: top;">${cs.price.toFixed(2)} ${currency}</td>
+                    <td style="padding: 10px 8px; text-align: center; border: 1px solid #e0e0e0; vertical-align: top;">1</td>
+                    <td style="padding: 10px 8px; text-align: right; border: 1px solid #e0e0e0; vertical-align: top; font-weight: 500;">${finalPrice.toFixed(2)} ${currency}</td>
+                </tr>
+            `;
         }
     }
 
@@ -175,7 +202,7 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
     if (itemsHTML === "") {
         itemsHTML = `
             <tr>
-                <td colspan="5" style="text-align: center; padding: 20px; font-size: 10pt;">${lang === "ar" ? "لا توجد خدمات" : "No services"}</td>
+                <td colspan="5" style="text-align: center; padding: 30px; border: 1px solid #e0e0e0;">${lang === "ar" ? "لا توجد خدمات" : "No services"}</td>
             </tr>
         `;
     }
@@ -197,10 +224,9 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
 <html dir="${isRTL ? "rtl" : "ltr"}" lang="${lang}">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quotation - ${quotation.quotationNumber || ""}</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
-        
         * {
             margin: 0;
             padding: 0;
@@ -208,179 +234,185 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
         }
 
         body {
-            font-family: 'Cairo', 'Segoe UI', Arial, sans-serif;
+            font-family: ${isRTL ? "'Segoe UI', 'Tahoma', Arial, sans-serif" : "'Segoe UI', Arial, sans-serif"};
             font-size: 10pt;
             line-height: 1.4;
             color: #333;
             direction: ${isRTL ? "rtl" : "ltr"};
-            padding: 10mm;
+            padding: 0;
+            margin: 0;
+            background: white;
         }
 
-        @page {
-            size: A4;
-            margin: 10mm;
+        .pdf-container {
+            max-width: 210mm;
+            margin: 0 auto;
+            background: white;
+            padding: 12mm 10mm;
         }
 
-        .page {
-            max-width: 100%;
-        }
-
-        /* Header - Compact */
+        /* Header */
         .header {
             background: #dc2626;
             color: white;
-            padding: 12px 16px;
-            margin-bottom: 15px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
             gap: 10px;
-            border-radius: 6px;
+            border-radius: 4px;
         }
 
         .company-name {
-            font-size: 16pt;
-            font-weight: 700;
+            font-size: 20pt;
+            font-weight: 800;
+            letter-spacing: 1px;
         }
 
         .company-subtitle {
-            font-size: 8pt;
+            font-size: 9pt;
             opacity: 0.9;
-        }
-
-        .company-contact {
-            font-size: 7pt;
-            opacity: 0.85;
+            margin-top: 4px;
         }
 
         .quotation-title {
-            font-size: 14pt;
+            font-size: 16pt;
             font-weight: 700;
             text-align: center;
-            margin: 10px 0;
+            margin: 20px 0;
             color: #dc2626;
         }
 
-        /* Party Box - Compact */
+        /* Client Box */
         .party-box {
             background: #f5f5f5;
             border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            padding: 10px 12px;
-            margin: 10px 0;
+            border-radius: 4px;
+            padding: 12px 15px;
+            margin: 15px 0;
         }
 
         .party-label {
-            font-size: 9pt;
+            font-size: 10pt;
             font-weight: 700;
-            margin-bottom: 4px;
+            margin-bottom: 5px;
+            color: #555;
         }
 
         .party-details {
-            font-size: 9pt;
-            color: #4a5568;
+            font-size: 11pt;
+            color: #333;
+            font-weight: 500;
         }
 
-        /* Table - Compact */
+        /* Table */
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 12px 0;
+            margin: 20px 0;
             font-size: 9pt;
         }
 
         .items-table th {
             background: #dc2626;
             color: white;
-            padding: 8px 6px;
-            font-weight: 600;
-            font-size: 9pt;
+            padding: 10px 8px;
+            font-weight: 700;
+            font-size: 10pt;
             border: 1px solid #b91c1c;
+            text-align: center;
+        }
+
+        .items-table th:first-child {
+            border-top-left-radius: 4px;
+        }
+
+        .items-table th:last-child {
+            border-top-right-radius: 4px;
         }
 
         .items-table td {
-            padding: 6px;
-            border: 1px solid #e2e8f0;
+            padding: 10px 8px;
+            border: 1px solid #e0e0e0;
             vertical-align: top;
         }
 
-        .items-table tr:nth-child(even) {
-            background-color: #f9fafb;
-        }
-
-        /* Summary - Compact */
+        /* Summary Section */
         .summary-section {
-            margin: 12px 0;
-            padding: 10px 12px;
-            background: #f7fafc;
-            border-radius: 6px;
+            margin: 20px 0;
+            padding: 15px 20px;
+            background: #fafafa;
+            border-radius: 4px;
             text-align: right;
+            border: 1px solid #e0e0e0;
         }
 
         .summary-row {
-            margin: 4px 0;
-            font-size: 9pt;
+            margin: 6px 0;
+            font-size: 10pt;
         }
 
         .total-row {
-            font-size: 11pt;
-            font-weight: 700;
+            font-size: 13pt;
+            font-weight: 800;
             color: #dc2626;
-            margin-top: 6px;
-            padding-top: 6px;
-            border-top: 1px solid #cbd5e0;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 2px solid #ddd;
         }
 
-        /* Notes - Compact */
+        /* Notes Section */
         .notes-section {
-            margin: 12px 0;
-            padding: 8px 12px;
-            background: #fff5f0;
-            border-left: 3px solid #f59e0b;
-            border-radius: 6px;
+            margin: 20px 0;
+            padding: 12px 15px;
+            background: #fff8e1;
+            border-left: 4px solid #ff9800;
+            border-radius: 4px;
         }
 
         .notes-title {
-            font-size: 9pt;
+            font-size: 10pt;
             font-weight: 700;
-            margin-bottom: 4px;
-            color: #f59e0b;
+            margin-bottom: 6px;
+            color: #ff9800;
         }
 
         .notes-content {
-            font-size: 8pt;
-            color: #4a5568;
+            font-size: 9pt;
+            color: #555;
             white-space: pre-wrap;
             word-break: break-word;
+            line-height: 1.5;
         }
 
         /* Validity */
         .validity-section {
-            margin: 10px 0;
-            padding: 6px 12px;
-            background: #fef3c7;
-            border-radius: 6px;
+            margin: 20px 0;
+            padding: 10px 15px;
+            background: #fff3e0;
+            border-radius: 4px;
             text-align: center;
-            font-size: 8pt;
+            font-size: 9pt;
+            border: 1px solid #ffe0b2;
+        }
+
+        .validity-section strong {
+            color: #e65100;
         }
 
         /* Footer */
         .footer {
-            margin-top: 20px;
+            margin-top: 30px;
             text-align: center;
-            font-size: 7pt;
+            font-size: 8pt;
             color: #999;
             border-top: 1px solid #e0e0e0;
-            padding-top: 10px;
+            padding-top: 15px;
         }
 
-        .divider {
-            border: 0;
-            border-top: 1px solid #e0e0e0;
-            margin: 12px 0;
-        }
-
+        /* Print optimization */
         @media print {
             body {
                 padding: 0;
@@ -388,29 +420,45 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
             }
             .header {
                 background: #dc2626 !important;
-                print-color-adjust: exact;
                 -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
             .items-table th {
                 background: #dc2626 !important;
-                print-color-adjust: exact;
                 -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            tr[style*="background-color"] {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .summary-section {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .notes-section {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .validity-section {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
         }
     </style>
 </head>
 <body>
-    <div class="page">
-        <!-- Compact Header -->
+    <div class="pdf-container">
+        <!-- Header -->
         <div class="header">
             <div>
                 <div class="company-name">${lang === "ar" ? "صابر جروب" : "SABER GROUP"}</div>
                 <div class="company-subtitle">${lang === "ar" ? "وكالة تسويق" : "MARKETING AGENCY"}</div>
             </div>
             <div style="text-align: right;">
-                <div style="font-weight: 700;">${lang === "ar" ? "عرض سعر" : "QUOTATION"}</div>
-                <div style="font-size: 8pt;">${quotation.quotationNumber || ""}</div>
-                <div style="font-size: 7pt;">${dateStr}</div>
+                <div style="font-size: 14pt; font-weight: 800;">${lang === "ar" ? "عرض سعر" : "QUOTATION"}</div>
+                <div style="font-size: 10pt; margin-top: 4px;">${quotation.quotationNumber || ""}</div>
+                <div style="font-size: 9pt; opacity: 0.9;">${dateStr}</div>
             </div>
         </div>
 
@@ -419,7 +467,7 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
             ${lang === "ar" ? "عرض سعر خدمات إدارة منصات التواصل الاجتماعي" : "Social Media Management Services Quotation"}
         </div>
 
-        <!-- Client Info - Compact -->
+        <!-- Client Info -->
         <div class="party-box">
             <div class="party-label">${lang === "ar" ? "العميل" : "Client"}</div>
             <div class="party-details">${escapeHtml(clientName) || (lang === "ar" ? "غير محدد" : "Not specified")}</div>
@@ -450,7 +498,7 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
             <div class="summary-row">
                 <strong>${lang === "ar" ? "الخصم:" : "Discount:"}</strong> 
                 ${quotation.discountType === "percentage" ? `${quotation.discountValue}%` : `${quotation.discountValue.toFixed(2)} ${currency}`}
-                (-${discountAmount.toFixed(2)} ${currency})
+                <span style="color: #dc2626;">(-${discountAmount.toFixed(2)} ${currency})</span>
             </div>
             ` : ''}
             <div class="total-row">
@@ -481,56 +529,71 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
 </body>
 </html>`;
 
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.style.position = "fixed";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    iframe.style.opacity = "0";
-    iframe.style.pointerEvents = "none";
-    iframe.style.left = "0";
-    iframe.style.top = "0";
-    document.body.appendChild(iframe);
+    return htmlContent;
+};
 
-    const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!frameDoc) {
-        document.body.removeChild(iframe);
-        throw new Error("Unable to initialize PDF preview frame");
-    }
+export const downloadQuotationPDF = async (htmlContent: string, filename: string): Promise<void> => {
+    // Create a temporary container
+    const parsedDocument = new DOMParser().parseFromString(htmlContent, 'text/html');
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.left = '0';
+    container.style.top = '0';
+    container.style.transform = 'translateX(-200vw)';
+    container.style.width = '210mm';
+    container.style.minHeight = '297mm';
+    container.style.backgroundColor = 'white';
+    container.style.pointerEvents = 'none';
+    container.style.overflow = 'visible';
 
-    frameDoc.open();
-    frameDoc.write(htmlContent);
-    frameDoc.close();
+    const styleElement = document.createElement('style');
+    styleElement.textContent = Array.from(parsedDocument.querySelectorAll('style'))
+        .map((styleTag) => styleTag.textContent || '')
+        .join('\n');
+    container.appendChild(styleElement);
 
-    const sourceElement = frameDoc.body;
+    const bodyContent = document.createElement('div');
+    bodyContent.innerHTML = parsedDocument.body?.innerHTML || '';
+    container.appendChild(bodyContent);
+
+    document.body.appendChild(container);
 
     try {
-        const html2pdfModule: any = await import("html2pdf.js");
+        // Import html2pdf
+        const html2pdfModule: any = await import('html2pdf.js');
         const html2pdf = html2pdfModule.default || html2pdfModule;
+        
+        await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
 
-        const worker = html2pdf()
-            .set({
-                margin: 0,
-                filename: `quotation-${quotation.quotationNumber || quotation._id || Date.now()}.pdf`,
-                image: { type: "jpeg", quality: 0.98 },
-                html2canvas: {
-                    scale: 2,
-                    useCORS: true,
-                    scrollY: 0,
-                },
-                jsPDF: {
-                    unit: "pt",
-                    format: "a4",
-                    orientation: "portrait",
-                },
-                pagebreak: { mode: ["css", "legacy"] },
-            })
-            .from(sourceElement);
-
-        const blob = await worker.outputPdf("blob");
-        return blob as Blob;
+        const element = container.querySelector('.pdf-container') as HTMLElement | null;
+        if (!element) {
+            throw new Error('PDF content is missing');
+        }
+        
+        const opt = {
+            margin: [0.2, 0.2, 0.2, 0.2] as [number, number, number, number],
+            filename: filename,
+            image: { type: 'jpeg', quality: 1 },
+            html2canvas: { 
+                scale: 3,
+                useCORS: true,
+                letterRendering: true,
+                logging: false,
+                backgroundColor: '#ffffff',
+                windowWidth: element.scrollWidth,
+                dpi: 300
+            },
+            jsPDF: { 
+                unit: 'in', 
+                format: 'a4', 
+                orientation: 'portrait' 
+            }
+        };
+        
+        await html2pdf().set(opt).from(element).save();
     } finally {
-        document.body.removeChild(iframe);
+        document.body.removeChild(container);
     }
 };
