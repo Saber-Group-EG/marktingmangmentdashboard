@@ -567,6 +567,7 @@ export const downloadQuotationPDF = async (htmlContent: string, filename: string
             requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         });
 
+        
         const element = container.querySelector('.pdf-container') as HTMLElement | null;
         if (!element) {
             throw new Error('PDF content is missing');
