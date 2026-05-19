@@ -25,6 +25,7 @@ const QuotationsPage = () => {
     const [customCreateName] = useState<string | null>(null);
     const [autoPreviewQuotationId, setAutoPreviewQuotationId] = useState<string | null>(null);
     const [autoDownloadQuotationId, setAutoDownloadQuotationId] = useState<string | null>(null);
+    const [isDownloading, setIsDownloading] = useState<string | null>(null);
 
     const { data: clients = [], isLoading: clientsLoading } = useClients();
     const { data: allQuotationsResponse } = useQuotations({ page: 1, limit: 1000 });
@@ -199,6 +200,7 @@ const handlePreviewQuotation = async (quotation: any) => {
 };
 
 const handleDownloadQuotation = async (quotation: any) => {
+    setIsDownloading(quotation._id || quotation.id);
     try {
         let clientNameForPdf = "";
         if (quotation.clientId && typeof quotation.clientId === 'object') {
@@ -227,6 +229,8 @@ const handleDownloadQuotation = async (quotation: any) => {
     } catch (error: any) {
         console.error("PDF Generation Error:", error);
         showAlert(t("failed_to_generate_pdf") || "Failed to generate PDF. Please try again.", "error");
+    } finally {
+        setIsDownloading(null);
     }
 };
 
@@ -472,8 +476,13 @@ const handleDownloadQuotation = async (quotation: any) => {
                                                     onClick={() => handleDownloadQuotation(q)}
                                                     className="btn-ghost rounded-xl"
                                                     title={tr("download_pdf", "Download PDF")}
+                                                    disabled={isDownloading === (q._id || q.id)}
                                                 >
-                                                    <Download size={16} />
+                                                    {isDownloading === (q._id || q.id) ? (
+                                                        <Loader2 size={16} className="text-light-500 animate-spin" />
+                                                    ) : (
+                                                        <Download size={16} />
+                                                    )}
                                                 </button>
                                                 <button
                                                     onClick={() => {

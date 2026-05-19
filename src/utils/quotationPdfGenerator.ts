@@ -533,68 +533,67 @@ export const generateQuotationPDF = async ({ quotation, clientName, lang, items 
 };
 
 export const downloadQuotationPDF = async (htmlContent: string, filename: string): Promise<void> => {
-    // Create a temporary container
-    const parsedDocument = new DOMParser().parseFromString(htmlContent, 'text/html');
-    const container = document.createElement('div');
-    container.style.position = 'fixed';
-    container.style.left = '0';
-    container.style.top = '0';
-    container.style.transform = 'translateX(-200vw)';
-    container.style.width = '210mm';
-    container.style.minHeight = '297mm';
-    container.style.backgroundColor = 'white';
-    container.style.pointerEvents = 'none';
-    container.style.overflow = 'visible';
+    return new Promise<void>((resolve, reject) => {
+        // Create a hidden iframe — completely isolated from your page DOM
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.top = '0';
+        iframe.style.left = '0';
+        iframe.style.width = '210mm';
+        iframe.style.height = '297mm';
+        iframe.style.border = 'none';
+        iframe.style.visibility = 'hidden';   // hidden but still rendered
+        iframe.style.zIndex = '-9999';
+        iframe.style.pointerEvents = 'none';
+        document.body.appendChild(iframe);
 
-    const styleElement = document.createElement('style');
-    styleElement.textContent = Array.from(parsedDocument.querySelectorAll('style'))
-        .map((styleTag) => styleTag.textContent || '')
-        .join('\n');
-    container.appendChild(styleElement);
+        iframe.onload = async () => {
+            try {
+                const iframeDoc = iframe.contentDocument!;
+                iframeDoc.open();
+                iframeDoc.write(htmlContent);
+                iframeDoc.close();
 
-    const bodyContent = document.createElement('div');
-    bodyContent.innerHTML = parsedDocument.body?.innerHTML || '';
-    container.appendChild(bodyContent);
+                // Wait for fonts/images inside iframe to settle
+                await new Promise<void>((r) => setTimeout(r, 500));
 
-    document.body.appendChild(container);
+                const element = iframeDoc.querySelector('.pdf-container') as HTMLElement;
+                if (!element) throw new Error('PDF container not found');
 
-    try {
-        // Import html2pdf
-        const html2pdfModule: any = await import('html2pdf.js');
-        const html2pdf = html2pdfModule.default || html2pdfModule;
-        
-        await new Promise<void>((resolve) => {
-            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        });
+                const html2pdfModule: any = await import('html2pdf.js');
+                const html2pdf = html2pdfModule.default || html2pdfModule;
 
-        
-        const element = container.querySelector('.pdf-container') as HTMLElement | null;
-        if (!element) {
-            throw new Error('PDF content is missing');
-        }
-        
-        const opt = {
-            margin: [0.2, 0.2, 0.2, 0.2] as [number, number, number, number],
-            filename: filename,
-            image: { type: 'jpeg', quality: 1 },
-            html2canvas: { 
-                scale: 3,
-                useCORS: true,
-                letterRendering: true,
-                logging: false,
-                backgroundColor: '#ffffff',
-                windowWidth: element.scrollWidth,
-                dpi: 300
-            },
-            jsPDF: { 
-                unit: 'in', 
-                format: 'a4', 
-                orientation: 'portrait' 
+                const opt = {
+                    margin: [0.2, 0.2, 0.2, 0.2] as [number, number, number, number],
+                    filename,
+                    image: { type: 'jpeg', quality: 1 },
+                    html2canvas: {
+                        scale: 3,
+                        useCORS: true,
+                        letterRendering: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                        windowWidth: element.scrollWidth,
+                        dpi: 300,
+                    },
+                    jsPDF: {
+                        unit: 'in',
+                        format: 'a4',
+                        orientation: 'portrait',
+                    },
+                };
+
+                await html2pdf().set(opt).from(element).save();
+                resolve();
+            } catch (err) {
+                reject(err);
+            } finally {
+                // Always clean up — even on error
+                document.body.removeChild(iframe);
             }
         };
-        
-        await html2pdf().set(opt).from(element).save();
-    } finally {
-        document.body.removeChild(container);
-    }
+
+        // Trigger the onload
+        iframe.src = 'about:blank';
+    });
 };
