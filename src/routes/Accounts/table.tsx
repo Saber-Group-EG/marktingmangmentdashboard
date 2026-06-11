@@ -5,6 +5,7 @@ import { NewAccount } from "./Forms/NewAccount";
 import { Loader2 } from "lucide-react";
 import { useAllAccounts, useUpdateAccount, useDeleteAccount } from "@/hooks/queries/useAccouts";
 import type { Account } from "@/api/requests/accoutServices";
+import PasswordGate from "@/components/PasswordGate";
 
 type AccountWithClientName = Account & {
     clientName: string;
@@ -156,6 +157,7 @@ const AccountsPage = () => {
     };
 
     return (
+        <PasswordGate>
         <div className="space-y-6 px-4 sm:px-6 lg:px-8">
             {error && (
                 <div className="rounded-lg bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 p-4">
@@ -410,6 +412,7 @@ const AccountsPage = () => {
                 )}
             </section>
         </div>
+        </PasswordGate>
     );
 };
 
