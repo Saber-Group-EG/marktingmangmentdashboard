@@ -189,7 +189,7 @@ const OnboardingPage: FC = () => {
 
                     if (editId) {
                         // Update existing client using mutation
-                        await updateClientMutation.mutateAsync({ id: editId, data: updatedFormData as any });
+                        await updateClientMutation.mutateAsync({ clientId: editId, data: updatedFormData as any });
                     } else {
                         // Create new client using mutation
                         const newClient = await createClientMutation.mutateAsync(updatedFormData as any);

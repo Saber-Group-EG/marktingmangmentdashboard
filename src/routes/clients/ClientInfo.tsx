@@ -312,7 +312,7 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
                 };
             }
 
-            await updateClientMutation!.mutateAsync({ id: clientId, data: sanitizedForClient });
+            await updateClientMutation!.mutateAsync({ clientId, data: sanitizedForClient });
 
             const originalSegments = client?.segments || [];
             try {
