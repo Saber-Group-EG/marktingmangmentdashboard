@@ -222,10 +222,11 @@ const AccountsPage = () => {
                                     <th className="px-4 py-3">Platform</th>
                                     <th className="px-4 py-3">Username</th>
                                     <th className="px-4 py-3">Password</th>
+                                    <th className="px-4 py-3">Note</th>
                                     <th className="px-4 py-3">2FA Method</th>
                                     <th className="px-4 py-3">Contact Info</th>
                                     <th className="px-4 py-3">Created At</th>
-                                    <th className="px-4 py-3">Actions</th>
+                                    <th className="px-4 py-3 sticky right-0 z-10 bg-light-100 dark:bg-dark-800 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.05)]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -270,6 +271,16 @@ const AccountsPage = () => {
                                                             onChange={(e) => handleEditChange("password", e.target.value)}
                                                             className="w-full px-2 py-1 border rounded dark:bg-dark-800 dark:border-dark-700"
                                                             placeholder="Password"
+                                                            disabled={isSavingAccount}
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3 min-w-[200px]">
+                                                        <textarea
+                                                            value={editingData?.note || ""}
+                                                            onChange={(e) => handleEditChange("note", e.target.value)}
+                                                            className="w-full px-2 py-1 border rounded dark:bg-dark-800 dark:border-dark-700 resize-y"
+                                                            placeholder="Note"
+                                                            rows={3}
                                                             disabled={isSavingAccount}
                                                         />
                                                     </td>
@@ -331,7 +342,7 @@ const AccountsPage = () => {
                                                     <td className="px-4 py-3 text-xs">
                                                         {account.createdAt ? new Date(account.createdAt).toLocaleDateString() : '-'}
                                                     </td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-4 py-3 sticky right-0 z-10 bg-white dark:bg-dark-900 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.05)]">
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
@@ -359,6 +370,9 @@ const AccountsPage = () => {
                                                     <td className="px-4 py-3">{account.platformName || "-"}</td>
                                                     <td className="px-4 py-3">{account.userName || "-"}</td>
                                                     <td className="px-4 py-3 font-mono text-sm">{account.password || "-"}</td>
+                                                    <td className="px-4 py-3 max-w-[250px] break-words whitespace-pre-wrap">
+                                                        {account.note || '-'}
+                                                    </td>
                                                     <td className="px-4 py-3">{getTwoFactorDisplay(account.twoFactorMethod, account)}</td>
                                                     <td className="px-4 py-3">
                                                         {account.twoFactorMethod === "mail" && account.mail && (
@@ -378,7 +392,7 @@ const AccountsPage = () => {
                                                     <td className="px-4 py-3 text-xs">
                                                         {account.createdAt ? new Date(account.createdAt).toLocaleDateString() : '-'}
                                                     </td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-4 py-3 sticky right-0 z-10 bg-white dark:bg-dark-900 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.05)]">
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
