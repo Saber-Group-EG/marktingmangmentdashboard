@@ -241,6 +241,8 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
         setEditing(false);
     };
 
+    const isValidObjectId = (s: string): boolean => /^[0-9a-fA-F]{24}$/.test(s);
+
     // Helper function to deep compare two objects
     const hasChanges = (obj1: any, obj2: any): boolean => {
         const json1 = JSON.stringify(obj1);
@@ -250,6 +252,13 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
 
     const saveEditing = async () => {
         if (!draft || !id) return;
+
+        const resolvedClientId = id;
+
+        if (!isValidObjectId(resolvedClientId)) {
+            showAlert("This client has a non-standard ID format which the system cannot save. Please contact your administrator to ensure this client's ID is corrected in the database.", "error");
+            return;
+        }
 
         try {
             const draftCopy = JSON.parse(JSON.stringify(draft)) as Record<string, any>;
@@ -312,11 +321,9 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
                 };
             }
 
-            await updateClientMutation!.mutateAsync({ clientId, data: sanitizedForClient });
+            await updateClientMutation!.mutateAsync({ clientId: resolvedClientId, data: sanitizedForClient });
 
             const originalSegments = client?.segments || [];
-            try {
-            } catch (e) {}
             // Process segments: batch-create new segments using bulk endpoint, keep updates/deletes per-item
             const segmentCreatePayloads: any[] = [];
             const segmentUpdatePromises: Promise<any>[] = [];
@@ -358,17 +365,18 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
                 }
 
                 if (sanitized._id) {
+                    if (!isValidObjectId(String(sanitized._id))) {
+                        console.warn("Skipping segment update: invalid segment ID format", sanitized._id);
+                        continue;
+                    }
                     const originalSegment = originalSegments.find((s: Segment) => s._id === sanitized._id);
                     if (originalSegment) {
                         const originalSanitized = JSON.parse(JSON.stringify(originalSegment));
                         if (originalSanitized._interestsText !== undefined) delete originalSanitized._interestsText;
                         if (hasChanges(originalSanitized, sanitized)) {
-                            // log the payload being sent for update to inspect population
-                            try {
-                            } catch (e) {}
                             segmentUpdatePromises.push(
                                 updateSegmentMutation!
-                                    .mutateAsync({ clientId: clientId, segmentId: sanitized._id, data: sanitized }, { onSuccess: () => {} })
+                                    .mutateAsync({ clientId: resolvedClientId, segmentId: sanitized._id, data: sanitized })
                                     .catch((err) => console.error("Error updating segment:", err)),
                             );
                         }
@@ -381,9 +389,13 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
             for (const originalSegment of originalSegments) {
                 const stillExists = draftSegments.find((s: Segment) => s._id === originalSegment._id);
                 if (!stillExists && originalSegment._id) {
+                    if (!isValidObjectId(String(originalSegment._id))) {
+                        console.warn("Skipping segment delete: invalid segment ID format", originalSegment._id);
+                        continue;
+                    }
                     segmentDeletePromises.push(
                         deleteSegmentMutation!
-                            .mutateAsync({ clientId: clientId, segmentId: originalSegment._id }, { onSuccess: () => {} })
+                            .mutateAsync({ clientId: resolvedClientId, segmentId: originalSegment._id })
                             .catch((err) => console.error("Error deleting segment:", err)),
                     );
                 }
@@ -392,10 +404,10 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
             // Batch create new segments if any
             if (segmentCreatePayloads.length > 0) {
                 try {
-                    try {
-                    } catch (e) {}
-                    await apiCreateSegments(clientId, segmentCreatePayloads);
-                } catch (err) {}
+                    await apiCreateSegments(resolvedClientId, segmentCreatePayloads);
+                } catch (err) {
+                    console.error("Error creating segments (bulk):", err);
+                }
             }
 
             // Run updates/deletes in parallel
@@ -412,11 +424,15 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
                 const sanitized = JSON.parse(JSON.stringify(competitor));
 
                 if (sanitized._id) {
+                    if (!isValidObjectId(String(sanitized._id))) {
+                        console.warn("Skipping competitor update: invalid competitor ID format", sanitized._id);
+                        continue;
+                    }
                     const originalCompetitor = originalCompetitors.find((c: any) => c._id === sanitized._id);
                     if (originalCompetitor && hasChanges(originalCompetitor, sanitized)) {
                         competitorUpdatePromises.push(
                             updateCompetitorMutation!
-                                .mutateAsync({ clientId: clientId, competitorId: sanitized._id, data: sanitized }, { onSuccess: () => {} })
+                                .mutateAsync({ clientId: resolvedClientId, competitorId: sanitized._id, data: sanitized })
                                 .catch((err) => console.error("Error updating competitor:", err)),
                         );
                     }
@@ -428,9 +444,13 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
             for (const originalCompetitor of originalCompetitors) {
                 const stillExists = draftCompetitors.find((c: any) => c._id === originalCompetitor._id);
                 if (!stillExists && originalCompetitor._id) {
+                    if (!isValidObjectId(String(originalCompetitor._id))) {
+                        console.warn("Skipping competitor delete: invalid competitor ID format", originalCompetitor._id);
+                        continue;
+                    }
                     competitorDeletePromises.push(
                         deleteCompetitorMutation!
-                            .mutateAsync({ clientId: clientId, competitorId: originalCompetitor._id }, { onSuccess: () => {} })
+                            .mutateAsync({ clientId: resolvedClientId, competitorId: originalCompetitor._id })
                             .catch((err) => console.error("Error deleting competitor:", err)),
                     );
                 }
@@ -439,7 +459,7 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
             // Bulk create new competitors if any
             if (competitorCreatePayloads.length > 0) {
                 try {
-                    await apiCreateCompetitors(clientId, competitorCreatePayloads);
+                    await apiCreateCompetitors(resolvedClientId, competitorCreatePayloads);
                 } catch (err) {
                     console.error("Error creating competitors (bulk):", err);
                 }
@@ -458,11 +478,15 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
                 const sanitized = JSON.parse(JSON.stringify(branch));
 
                 if (sanitized._id) {
+                    if (!isValidObjectId(String(sanitized._id))) {
+                        console.warn("Skipping branch update: invalid branch ID format", sanitized._id);
+                        continue;
+                    }
                     const originalBranch = originalBranches.find((b: any) => b._id === sanitized._id);
                     if (originalBranch && hasChanges(originalBranch, sanitized)) {
                         branchUpdatePromises.push(
                             updateBranchMutation!
-                                .mutateAsync({ clientId: clientId, branchId: sanitized._id, data: sanitized }, { onSuccess: () => {} })
+                                .mutateAsync({ clientId: resolvedClientId, branchId: sanitized._id, data: sanitized })
                                 .catch((err) => console.error("Error updating branch:", err)),
                         );
                     }
@@ -474,9 +498,13 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
             for (const originalBranch of originalBranches) {
                 const stillExists = draftBranches.find((b: any) => b._id === originalBranch._id);
                 if (!stillExists && originalBranch._id) {
+                    if (!isValidObjectId(String(originalBranch._id))) {
+                        console.warn("Skipping branch delete: invalid branch ID format", originalBranch._id);
+                        continue;
+                    }
                     branchDeletePromises.push(
                         deleteBranchMutation!
-                            .mutateAsync({ clientId: clientId, branchId: originalBranch._id }, { onSuccess: () => {} })
+                            .mutateAsync({ clientId: resolvedClientId, branchId: originalBranch._id })
                             .catch((err) => console.error("Error deleting branch:", err)),
                     );
                 }
@@ -485,8 +513,10 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
             // Bulk create new branches if any
             if (branchCreatePayloads.length > 0) {
                 try {
-                    await apiCreateBranches(clientId, branchCreatePayloads);
-                } catch (err) {}
+                    await apiCreateBranches(resolvedClientId, branchCreatePayloads);
+                } catch (err) {
+                    console.error("Error creating branches (bulk):", err);
+                }
             }
 
             if (branchUpdatePromises.length > 0 || branchDeletePromises.length > 0) {
@@ -494,13 +524,13 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
             }
 
             await queryClient.refetchQueries({
-                queryKey: clientsKeys.detail(clientId),
+                queryKey: clientsKeys.detail(resolvedClientId),
                 exact: true,
             });
 
             try {
                 // Fetch fresh client from cache/server and log it for debugging
-                await queryClient.fetchQuery({ queryKey: clientsKeys.detail(clientId) });
+                await queryClient.fetchQuery({ queryKey: clientsKeys.detail(resolvedClientId) });
             } catch (e) {
                 // ignore
             }
@@ -510,13 +540,21 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
 
             showAlert("Client updated successfully!", "success");
         } catch (err: any) {
-            const errorMessage = err?.response?.data?.message || err?.message || "Failed to update client";
+            let errorMessage = err?.response?.data?.message || err?.message || "Failed to update client";
+            const rawMsg = (err?.response?.data?.message || "").toLowerCase();
+            if (rawMsg.includes("invalid") && rawMsg.includes("id")) {
+                errorMessage = "This client has a non-standard ID format that the system cannot process. Please contact your administrator to correct the client ID in the database.";
+            }
             showAlert(`Error: ${errorMessage}. Please try again.`, "error");
         }
     };
 
     const handleDeleteClient = async () => {
         if (!fullPage || !id) return;
+        if (!isValidObjectId(id)) {
+            showAlert("This client has a non-standard ID format which the system cannot delete. Please contact your administrator to correct the client ID in the database.", "error");
+            return;
+        }
         const confirmed = await showConfirm(
             t("confirm_delete_client") || "Are you sure you want to delete this client?",
             t("yes") || "Yes",
@@ -531,7 +569,11 @@ const ClientInfo: React.FC<ClientInfoProps> = ({
             showAlert("Client deleted successfully!", "success");
             navigate("/clients");
         } catch (err: any) {
-            const errorMessage = err?.response?.data?.message || err?.message || "Failed to delete client";
+            let errorMessage = err?.response?.data?.message || err?.message || "Failed to delete client";
+            const rawMsg = (err?.response?.data?.message || "").toLowerCase();
+            if (rawMsg.includes("invalid") && rawMsg.includes("id")) {
+                errorMessage = "This client has a non-standard ID format that the system cannot process. Please contact your administrator to correct the client ID in the database.";
+            }
             showAlert(`Error: ${errorMessage}. Please try again.`, "error");
         }
     };
