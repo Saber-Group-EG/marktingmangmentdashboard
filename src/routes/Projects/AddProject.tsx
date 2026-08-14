@@ -7,6 +7,8 @@ import "react-quill-new/dist/quill.snow.css";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
+import UploadProgressOverlay from "@/components/UploadProgressOverlay";
+import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { isDataUrl, uploadDataUrlToR2 } from "@/utils/r2Upload";
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
@@ -138,6 +140,9 @@ const AddProject: React.FC = () => {
     const [, setUploadedSteps] = useState(0);
     const [, setTotalSteps] = useState(0);
     const [estimatedSecondsLeft, setEstimatedSecondsLeft] = useState<number | null>(null);
+
+    // Photo selection upload progress overlay
+    const photoUpload = useUploadProgress();
 
     // Do NOT auto-prefill `form.cast` from `projectCast` — users must add members manually
     const [selectedExistingCast, setSelectedExistingCast] = useState<any[]>([]);
@@ -365,8 +370,14 @@ const AddProject: React.FC = () => {
             const file = e.target.files?.[0];
             if (!file || !editingMaterial) return;
             try {
-                const dataUrl = await readFileAsDataUrl(file);
-                setEditingMaterial((prev) => (prev ? { ...prev, thumbnail: { url: dataUrl, mimeType: file.type, originalName: file.name, size: file.size } } : prev));
+                await photoUpload.run({
+                    title: "Uploading photo...",
+                    label: file.name,
+                    task: async () => {
+                        const dataUrl = await readFileAsDataUrl(file);
+                        setEditingMaterial((prev) => (prev ? { ...prev, thumbnail: { url: dataUrl, mimeType: file.type, originalName: file.name, size: file.size } } : prev));
+                    },
+                });
             } catch {
                 // ignore
             } finally {
@@ -475,51 +486,57 @@ const AddProject: React.FC = () => {
         if (!files.length || !editingMaterial) return;
 
         try {
-            if (editingMaterial.type === "photo") {
-                const uploadedItems: PhotoMaterialItem[] = await Promise.all(
-                    files.map(async (file) => {
-                        const optimizedFile = await compressImageFileToMaxBytes(file, {
-                            maxBytes: MAX_PHOTO_THUMBNAIL_BYTES,
+            await photoUpload.run({
+                title: editingMaterial.type === "photo" ? "Uploading photo..." : "Uploading file...",
+                label: files.length > 1 ? `${files.length} photos` : files[0].name,
+                task: async () => {
+                    if (editingMaterial.type === "photo") {
+                        const uploadedItems: PhotoMaterialItem[] = await Promise.all(
+                            files.map(async (file) => {
+                                const optimizedFile = await compressImageFileToMaxBytes(file, {
+                                    maxBytes: MAX_PHOTO_THUMBNAIL_BYTES,
+                                });
+
+                                return {
+                                    url: await readFileAsDataUrl(optimizedFile),
+                                    mimeType: optimizedFile.type || file.type,
+                                    size: optimizedFile.size || file.size,
+                                    originalName: optimizedFile.name || file.name,
+                                    type: "photo" as const,
+                                };
+                            })
+                        );
+
+                        setEditingMaterial((prev) => {
+                            if (!prev || prev.type !== "photo") return prev;
+                            const items = [...buildPhotoItems(prev), ...uploadedItems];
+                            const primary = items[0];
+                            return {
+                                ...prev,
+                                items,
+                                url: primary?.url || "",
+                                mimeType: primary?.mimeType || prev.mimeType,
+                                size: primary?.size || prev.size,
+                                originalName: primary?.originalName || prev.originalName,
+                            };
                         });
-
-                        return {
-                            url: await readFileAsDataUrl(optimizedFile),
-                            mimeType: optimizedFile.type || file.type,
-                            size: optimizedFile.size || file.size,
-                            originalName: optimizedFile.name || file.name,
-                            type: "photo" as const,
-                        };
-                    })
-                );
-
-                setEditingMaterial((prev) => {
-                    if (!prev || prev.type !== "photo") return prev;
-                    const items = [...buildPhotoItems(prev), ...uploadedItems];
-                    const primary = items[0];
-                    return {
-                        ...prev,
-                        items,
-                        url: primary?.url || "",
-                        mimeType: primary?.mimeType || prev.mimeType,
-                        size: primary?.size || prev.size,
-                        originalName: primary?.originalName || prev.originalName,
-                    };
-                });
-            } else {
-                const file = files[0];
-                const dataUrl = await readFileAsDataUrl(file);
-                setEditingMaterial((prev) =>
-                    prev
-                        ? {
-                              ...prev,
-                              url: dataUrl,
-                              mimeType: file.type,
-                              size: file.size,
-                              originalName: file.name,
-                          }
-                        : prev
-                );
-            }
+                    } else {
+                        const file = files[0];
+                        const dataUrl = await readFileAsDataUrl(file);
+                        setEditingMaterial((prev) =>
+                            prev
+                                ? {
+                                      ...prev,
+                                      url: dataUrl,
+                                      mimeType: file.type,
+                                      size: file.size,
+                                      originalName: file.name,
+                                  }
+                                : prev
+                        );
+                    }
+                },
+            });
         } catch {
             // Ignore file read errors and keep the current editor state unchanged.
         } finally {
@@ -543,26 +560,32 @@ const AddProject: React.FC = () => {
         });
     };
 
-    const handleBeforeAfterUpload = (e: React.ChangeEvent<HTMLInputElement>, which: 'before' | 'after') => {
+    const handleBeforeAfterUpload = async (e: React.ChangeEvent<HTMLInputElement>, which: 'before' | 'after') => {
         const file = e.target.files?.[0];
         if (!file || !editingMaterial) return;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const dataUrl = reader.result as string;
-            setEditingMaterial({
-                ...editingMaterial,
-                [which]: {
-                    ...((editingMaterial as any)[which] || {}),
-                    url: dataUrl,
-                    mimeType: file.type,
-                    originalName: file.name,
-                    size: file.size,
-                    label: which === 'before' ? { ar: 'قبل', en: 'Before' } : { ar: 'بعد', en: 'After' },
-                    type: 'photo',
+        try {
+            await photoUpload.run({
+                title: "Uploading photo...",
+                label: file.name,
+                task: async () => {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    setEditingMaterial({
+                        ...editingMaterial,
+                        [which]: {
+                            ...((editingMaterial as any)[which] || {}),
+                            url: dataUrl,
+                            mimeType: file.type,
+                            originalName: file.name,
+                            size: file.size,
+                            label: which === 'before' ? { ar: 'قبل', en: 'Before' } : { ar: 'بعد', en: 'After' },
+                            type: 'photo',
+                        },
+                    } as any);
                 },
-            } as any);
-        };
-        reader.readAsDataURL(file);
+            });
+        } catch {
+            // ignore
+        }
     };
 
     const handleDeleteMaterial = (materialId?: string | null, index?: number) => {
@@ -627,31 +650,45 @@ const AddProject: React.FC = () => {
         return photo.url || photo.publicId || "";
     };
 
-    const handleCastPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleCastPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !editingCast) return;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            setEditingCast((prev) =>
-                prev
-                    ? { ...prev, photo: { url: reader.result as string, mimeType: file.type, originalName: file.name, size: file.size } }
-                    : prev
-            );
-        };
-        reader.readAsDataURL(file);
+        try {
+            await photoUpload.run({
+                title: "Uploading photo...",
+                label: file.name,
+                task: async () => {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    setEditingCast((prev) =>
+                        prev
+                            ? { ...prev, photo: { url: dataUrl, mimeType: file.type, originalName: file.name, size: file.size } }
+                            : prev
+                    );
+                },
+            });
+        } catch {
+            // ignore
+        }
         if (e.target) e.target.value = "";
     };
 
-    const handleCastRowPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, rIdx: number) => {
+    const handleCastRowPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, rIdx: number) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            setNewMembersRows((prev) =>
-                prev.map((p, i) => (i === rIdx ? { ...p, photo: { url: reader.result as string, mimeType: file.type, originalName: file.name, size: file.size } } : p))
-            );
-        };
-        reader.readAsDataURL(file);
+        try {
+            await photoUpload.run({
+                title: "Uploading photo...",
+                label: file.name,
+                task: async () => {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    setNewMembersRows((prev) =>
+                        prev.map((p, i) => (i === rIdx ? { ...p, photo: { url: dataUrl, mimeType: file.type, originalName: file.name, size: file.size } } : p))
+                    );
+                },
+            });
+        } catch {
+            // ignore
+        }
         if (e.target) e.target.value = "";
     };
 
@@ -779,15 +816,22 @@ const AddProject: React.FC = () => {
     };
 
     // Main Cover Management
-    const handleMainCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleMainCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const dataUrl = reader.result as string;
-                // load image to read natural dimensions
-                const img = new Image();
-                img.onload = () => {
+        if (!file) return;
+        try {
+            await photoUpload.run({
+                title: "Uploading photo...",
+                label: file.name,
+                task: async () => {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    // load image to read natural dimensions
+                    const img = new Image();
+                    await new Promise<void>((resolve) => {
+                        img.onload = () => resolve();
+                        img.onerror = () => resolve();
+                        img.src = dataUrl;
+                    });
                     loadedImgRef.current = img;
                     setMainCoverMeta({ width: img.naturalWidth, height: img.naturalHeight });
                     setCroppedPreview(null);
@@ -803,10 +847,10 @@ const AddProject: React.FC = () => {
                             size: file.size,
                         },
                     });
-                };
-                img.src = dataUrl;
-            };
-            reader.readAsDataURL(file);
+                },
+            });
+        } catch {
+            // ignore
         }
     };
 
@@ -2109,6 +2153,15 @@ const handleDateChange = (date: Date | null) => {
                     </div>
                 </div>
             )}
+
+            {/* Photo Upload Progress Overlay */}
+            <UploadProgressOverlay
+                open={photoUpload.open}
+                progress={photoUpload.progress}
+                estimatedSecondsLeft={photoUpload.estimatedSecondsLeft}
+                title={photoUpload.title}
+                label={photoUpload.label}
+            />
 
             {/* Material Edit Modal */}
             {editingMaterial && (
