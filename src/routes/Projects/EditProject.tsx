@@ -2335,9 +2335,17 @@ const uploaded = await uploadDataUrlToR2(photoUrl, {
                                         slotProps={taxonomyAutocompleteSlotProps}
                                         renderOption={(props, option: any) => (
                                             <li {...props} className="flex items-center gap-3 px-3 py-2">
-                                                <div className="w-8 h-8 rounded-full bg-light-100 dark:bg-dark-800 flex items-center justify-center text-sm font-medium text-light-700 dark:text-dark-200">
-                                                    {getOptionLabel(option).charAt(0).toUpperCase()}
-                                                </div>
+                                                {(() => {
+                                                    const optionPhotoUrl = getCastPhotoUrl(option.photo);
+                                                    if (optionPhotoUrl) {
+                                                        return <img src={optionPhotoUrl} alt={getOptionLabel(option)} className="w-8 h-8 rounded-full object-cover shrink-0" />;
+                                                    }
+                                                    return (
+                                                        <div className="w-8 h-8 rounded-full bg-light-100 dark:bg-dark-800 flex items-center justify-center text-sm font-medium text-light-700 dark:text-dark-200 shrink-0">
+                                                            {getOptionLabel(option).charAt(0).toUpperCase()}
+                                                        </div>
+                                                    );
+                                                })()}
                                                 <div className="flex-1">
                                                     <div className="font-medium text-sm text-light-900 dark:text-dark-50">{getOptionLabel(option)}</div>
                                                     {option.title && <div className="text-xs text-light-500 dark:text-dark-400">{option.title}</div>}
@@ -2348,10 +2356,17 @@ const uploaded = await uploadDataUrlToR2(photoUrl, {
                                             value.map((option, index) => {
                                                 const label = getOptionLabel(option);
                                                 const initial = label ? label.charAt(0).toUpperCase() : "?";
+                                                const optionPhotoUrl = getCastPhotoUrl(option.photo);
                                                 return (
                                                     <Chip
                                                         label={label}
-                                                        avatar={<Avatar sx={{ width: 20, height: 20, fontSize: 12 }}>{initial}</Avatar>}
+                                                        avatar={
+                                                            optionPhotoUrl ? (
+                                                                <Avatar src={optionPhotoUrl} sx={{ width: 20, height: 20 }}>{initial}</Avatar>
+                                                            ) : (
+                                                                <Avatar sx={{ width: 20, height: 20, fontSize: 12 }}>{initial}</Avatar>
+                                                            )
+                                                        }
                                                         size="small"
                                                         {...getTagProps({ index })}
                                                     />
