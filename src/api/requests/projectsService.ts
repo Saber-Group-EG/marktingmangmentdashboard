@@ -7,6 +7,9 @@ export interface ProjectTaxonomyOption {
   _id?: string;
   id?: string;
   name: string;
+  title?: string;
+  socialLinks?: { platform: string; url: string; _id?: string }[];
+  photo?: any;
 }
 
 const extractArrayFromResponse = (payload: any): any[] => {
@@ -41,6 +44,11 @@ const normalizeTaxonomyOption = (item: any): ProjectTaxonomyOption | null => {
     _id: id || undefined,
     id: id || undefined,
     name,
+    ...(item.title ? { title: String(item.title).trim() } : {}),
+    ...(Array.isArray(item.socialLinks) && item.socialLinks.length
+      ? { socialLinks: item.socialLinks.filter((l: any) => l && l.url).map((l: any) => ({ platform: l.platform || "", url: l.url, _id: l._id })) }
+      : {}),
+    ...(item.photo ? { photo: item.photo } : {}),
   };
 };
 
@@ -58,14 +66,23 @@ const uniqueTaxonomyOptions = (items: ProjectTaxonomyOption[]): ProjectTaxonomyO
   return unique;
 };
 
+const localizedText = (value: any): any => {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    if ("ar" in value || "en" in value) {
+      return value.en || value.ar || "";
+    }
+  }
+  return value;
+};
+
 const transformProject = (raw: any): Project => {
   if (!raw) return raw;
   // Preserve normalized fields while keeping the full raw payload available
   const base: any = {
     ...raw,
     id: raw._id || raw.id || "",
-    name: raw.name || raw.title || "",
-    description: raw.description || "",
+    name: localizedText(raw.name) || raw.title || "",
+    description: localizedText(raw.description) || "",
     clientId: raw.client?._id || raw.clientId || raw.client || undefined,
     parentProject: raw.parentProject || undefined,
     rootOnly: raw.rootOnly || false,
@@ -73,10 +90,14 @@ const transformProject = (raw: any): Project => {
     type: raw.type || "",
     category: raw.category || "",
     tag: raw.tag || "",
-    location: raw.location || "",
+    location: localizedText(raw.location) || "",
     client: raw.client || null,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    // Keep the raw localized objects so editors can round-trip ar/en values
+    localizedName: raw.name,
+    localizedDescription: raw.description,
+    localizedLocation: raw.location,
   };
 
   // Ensure subProjects are transformed recursively
@@ -154,6 +175,17 @@ export const deleteProject = async (id: string) => {
   } catch (error) {
     throw error;
   }
+};
+
+export const reorderProjects = async (orderedIds: string[]): Promise<any> => {
+  for (let i = 0; i < orderedIds.length; i++) {
+    await axiosInstance.put(
+      `${PROJECTS_ENDPOINT}/${orderedIds[i]}`,
+      { order: i },
+      { headers: { "x-silent": "1" } },
+    );
+  }
+  return { success: true, orderedIds };
 };
 
 export const getProjectCategories = async (): Promise<ProjectTaxonomyOption[]> => {

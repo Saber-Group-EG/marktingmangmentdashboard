@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useProject, useProjectCast } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
+import SocialLinkIcons from "@/components/SocialLinkIcons";
 // framer-motion removed (no animations on this page)
 import { 
     ChevronDown, ChevronUp, Play, Maximize2, X, ChevronLeft, ChevronRight,
@@ -15,12 +16,19 @@ import {
 
 const ProjectDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const tr = (key: string, fallback: string) => {
         const v = t(key);
         return !v || v === key ? fallback : v;
     };
     void tr; // to avoid unused variable warning since tr is used in JSX
+
+    const localizedToString = (value: any): string => {
+        if (!value) return "";
+        if (typeof value === "string") return value;
+        if (typeof value === "object") return value[lang] || value.en || value.ar || "";
+        return "";
+    };
 
     const { data: project, isLoading, error } = useProject(id);
     const { data: projectCast = [] } = useProjectCast();
@@ -198,6 +206,8 @@ const ProjectDetails: React.FC = () => {
                     _id: found?._id,
                     name: found?.name || c,
                     title: (found as any)?.title || "",
+                    socialLinks: (found as any)?.socialLinks || [],
+                    photo: (found as any)?.photo || null,
                     order: idx + 1,
                 };
             }
@@ -211,6 +221,8 @@ const ProjectDetails: React.FC = () => {
                         _id: found?._id,
                         name: found?.name || castEntry,
                         title: (found as any)?.title || "",
+                        socialLinks: (found as any)?.socialLinks || [],
+                        photo: (found as any)?.photo || null,
                         order: c.order || idx + 1,
                     };
                 }
@@ -221,6 +233,8 @@ const ProjectDetails: React.FC = () => {
                         _id: castEntry._id || found?._id,
                         name: castEntry.name || found?.name || "",
                         title: castEntry.title || (found as any)?.title || "",
+                        socialLinks: castEntry.socialLinks || (found as any)?.socialLinks || [],
+                        photo: castEntry.photo || (found as any)?.photo || null,
                         order: c.order || idx + 1,
                     };
                 }
@@ -230,7 +244,14 @@ const ProjectDetails: React.FC = () => {
             if (typeof c === "object") {
                 if (c.name) {
                     const found = projectCast.find((pc: any) => (pc._id || pc.id) === (c._id || c.id) || pc.name === c.name);
-                    return { _id: c._id || found?._id, name: c.name, title: c.title || (found as any)?.title || "", order: c.order || idx + 1 };
+                    return {
+                        _id: c._id || found?._id,
+                        name: c.name,
+                        title: c.title || (found as any)?.title || "",
+                        socialLinks: c.socialLinks?.length ? c.socialLinks : (found as any)?.socialLinks || [],
+                        photo: c.photo || (found as any)?.photo || null,
+                        order: c.order || idx + 1,
+                    };
                 }
 
                 const found = projectCast.find((pc: any) => pc._id === c._id || pc.id === c._id || pc._id === c.id || pc.name === c.name);
@@ -337,7 +358,7 @@ const ProjectDetails: React.FC = () => {
     const renderMaterialItem = (m: any, idx: number) => {
         if (!m) return null;
         const key = m._id || m.id || idx;
-        const caption = m.caption || m.textContent || m.label || "";
+        const caption = localizedToString(m.caption) || localizedToString(m.textContent) || localizedToString(m.label) || "";
 
         const MediaCard = ({ children, onClick, className = "" }: any) => (
             <div
@@ -465,8 +486,8 @@ const ProjectDetails: React.FC = () => {
                         <BeforeAfterSlider
                             beforeUrl={m.before?.url}
                             afterUrl={m.after?.url}
-                            beforeLabel={m.before?.label || "Before"}
-                            afterLabel={m.after?.label || "After"}
+                            beforeLabel={localizedToString(m.before?.label) || "Before"}
+                            afterLabel={localizedToString(m.after?.label) || "After"}
                             mediaClassName="aspect-square w-full"
                             showSlider={false}
                         />
@@ -493,7 +514,7 @@ const ProjectDetails: React.FC = () => {
                                     {caption && <p className="text-xs text-light-500 dark:text-secdark-400 font-medium">{caption}</p>}
                                     <span className="text-xs text-light-400 dark:text-dark-500">Text #{m.order}</span>
                                 </div>
-                                <div className="text-light-700 dark:text-dark-300" dangerouslySetInnerHTML={{ __html: formatRichText(m.textContent) }} />
+                                <div className="text-light-700 dark:text-dark-300" dangerouslySetInnerHTML={{ __html: formatRichText(localizedToString(m.textContent)) }} />
                                 <div className="mt-2 pt-2 border-t border-light-200 dark:border-dark-700 text-xs text-light-400 dark:text-dark-500">
                                     {/* ID removed for privacy */}
                                 </div>
@@ -515,7 +536,7 @@ const ProjectDetails: React.FC = () => {
                                     {caption && <p className="text-xs text-light-500 dark:text-secdark-400 font-medium">{caption}</p>}
                                     <span className="text-xs text-light-400 dark:text-dark-500">HTML #{m.order}</span>
                                 </div>
-                                <div className="prose prose-sm max-w-none text-light-700 dark:text-dark-300" dangerouslySetInnerHTML={{ __html: m.htmlContent }} />
+                                <div className="prose prose-sm max-w-none text-light-700 dark:text-dark-300" dangerouslySetInnerHTML={{ __html: localizedToString(m.htmlContent) }} />
                                 <div className="mt-2 pt-2 border-t border-light-200 dark:border-dark-700 text-xs text-light-400 dark:text-dark-500">
                                     {/* ID removed for privacy */}
                                 </div>
@@ -697,20 +718,28 @@ const ProjectDetails: React.FC = () => {
                             >
                                 <div className="flex items-start justify-between mb-3">
                                     <div className="flex items-center gap-3">
-                                            <div className="w-12 h-12 bg-gradient-to-br from-light-200 to-light-300 dark:from-dark-700 dark:to-dark-600 rounded-full flex items-center justify-center">
-                                            <span className="text-lg font-medium text-light-600 dark:text-dark-300">
-                                                {c.name ? c.name.charAt(0).toUpperCase() : "?"}
-                                            </span>
+                                            {(() => {
+                                                const photoUrl = c.photo && (typeof c.photo === "string" ? c.photo : c.photo.url || c.photo.publicId);
+                                                if (photoUrl) {
+                                                    return <img src={photoUrl} alt={c.name || "Member"} className="w-12 h-12 rounded-full object-cover" />;
+                                                }
+                                                return (
+                                                    <div className="w-12 h-12 bg-gradient-to-br from-light-200 to-light-300 dark:from-dark-700 dark:to-dark-600 rounded-full flex items-center justify-center">
+                                                        <span className="text-lg font-medium text-light-600 dark:text-dark-300">
+                                                            {c.name ? c.name.charAt(0).toUpperCase() : "?"}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
+                                            <div>
+                                                <h3 className="font-semibold text-light-900 dark:text-dark-50">{c.name}</h3>
+                                                <p className="text-sm text-light-500 dark:text-secdark-400">{c.title}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="font-semibold text-light-900 dark:text-dark-50">{c.name}</h3>
-                                            <p className="text-sm text-light-500 dark:text-secdark-400">{c.title}</p>
-                                        </div>
-                                    </div>
                                     <span className="text-xs text-light-400 dark:text-dark-500">Order: {c.order}</span>
                                 </div>
-                                <div className="text-xs text-light-400 dark:text-dark-500 pt-2 border-t border-light-100 dark:border-dark-700">
-                                    {/* ID removed for privacy */}
+                                <div className="pt-3 border-t border-light-100 dark:border-dark-700">
+                                    <SocialLinkIcons links={c.socialLinks} size={15} />
                                 </div>
                             </div>
                         ))}
@@ -849,9 +878,9 @@ const ProjectDetails: React.FC = () => {
                                 <video controls autoPlay src={selectedMedia.url} className="w-full h-auto max-h-[90vh]" />
                             )}
                         
-                        {selectedMedia.caption && (
+                        {localizedToString(selectedMedia.caption) && (
                             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
-                                <p className="text-white text-center">{selectedMedia.caption}</p>
+                                <p className="text-white text-center">{localizedToString(selectedMedia.caption)}</p>
                                 <div className="text-xs text-white/60 text-center mt-1">
                                             {/* ID removed for privacy */}
                                         </div>

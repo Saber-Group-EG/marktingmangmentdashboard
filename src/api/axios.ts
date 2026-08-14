@@ -110,6 +110,10 @@ axiosInstance.interceptors.response.use(
             const method = (response.config?.method || "").toLowerCase();
             // Only show success toast for mutating operations
             if (["post", "put", "patch", "delete"].includes(method)) {
+                // Skip toast for silent requests (e.g. background reorder calls)
+                if (response.config?.headers?.["x-silent"]) {
+                    return response;
+                }
                 const url = response.config?.url || "";
                 const firstSegment = url.split("/").filter(Boolean)[0] || "item";
                 // Make a readable resource name: replace dashes/underscores, singularize simple plural

@@ -5,9 +5,11 @@ import { useLang } from "@/hooks/useLang";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
-import { isDataUrl, uploadDataUrlToCloudinary } from "@/utils/cloudinaryUpload";
+import CastSocialLinks from "@/components/CastSocialLinks";
+import SocialLinkIcons from "@/components/SocialLinkIcons";
+import { isDataUrl, uploadDataUrlToR2 } from "@/utils/r2Upload";
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
-import { Autocomplete, TextField } from "@mui/material";
+import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
 import { 
   Save, Trash2, X, ArrowLeft, Loader2, 
   FileText, Info, AlertCircle, CheckCircle, Plus,
@@ -20,17 +22,17 @@ interface Material {
   _id?: string;
         type: "photo" | "bulk" | "video" | "before_after" | "text" | "html";
   order: number;
-  caption?: string;
+  caption?: any;
   url?: string;
   mimeType?: string;
   size?: number;
   originalName?: string;
         items?: PhotoMaterialItem[];
-  textContent?: string;
-  htmlContent?: string;
+  textContent?: any;
+  htmlContent?: any;
         thumbnail?: string | { url: string; mimeType?: string; size?: number; originalName?: string };
-    before?: { url: string; label?: string; type?: string; mimeType?: string; originalName?: string; size?: number };
-    after?: { url: string; label?: string; type?: string; mimeType?: string; originalName?: string; size?: number };
+    before?: { url: string; label?: any; type?: string; mimeType?: string; originalName?: string; size?: number };
+    after?: { url: string; label?: any; type?: string; mimeType?: string; originalName?: string; size?: number };
 }
 
 interface PhotoMaterialItem {
@@ -47,6 +49,8 @@ interface Cast {
   title: string;
   order: number;
     clientId?: string;
+    socialLinks?: { platform: string; url: string }[];
+    photo?: any;
 }
 
 const MAX_PHOTO_THUMBNAIL_BYTES = 50 * 1024;
@@ -54,13 +58,32 @@ const MAX_PHOTO_THUMBNAIL_BYTES = 50 * 1024;
 
 const EditProject: React.FC = () => {
     const { id } = useParams<{ id: string }>();
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const tr = (key: string, fallback: string) => {
         const v = t(key);
         return !v || v === key ? fallback : v;
     };
     void tr; // to avoid unused variable warning if translation is not used in this file
     const navigate = useNavigate();
+
+    const localizedToString = (value: any): string => {
+        if (!value) return "";
+        if (typeof value === "string") return value;
+        if (typeof value === "object") return value[lang] || value.en || value.ar || "";
+        return "";
+    };
+
+    const toLocalizedString = (value: any): { ar: string; en: string } => {
+        if (value && typeof value === "object") {
+            return { ar: value.ar ?? "", en: value.en ?? "" };
+        }
+        return { ar: value || "", en: value || "" };
+    };
+
+    const localizeSideLabel = (side: any): any => {
+        if (!side) return side;
+        return { ...side, label: toLocalizedString(side.label) };
+    };
 
     const { data: project, isLoading, error } = useProject(id);
     const { data: projectCast = []} = useProjectCast();
@@ -76,6 +99,7 @@ const EditProject: React.FC = () => {
         name: "",
         description: "",
         location: "",
+        order: 0,
         published: false,
         categories: [] as string[],
         tags: [] as string[],
@@ -93,6 +117,10 @@ const EditProject: React.FC = () => {
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
     const [draggedMaterialIndex, setDraggedMaterialIndex] = useState<number | null>(null);
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
+    const [castModalMode, setCastModalMode] = useState<"add" | "edit">("add");
+    const [editingCastIndex, setEditingCastIndex] = useState<number | null>(null);
+    const [newMembersRows, setNewMembersRows] = useState<Cast[]>([]);
+    const [selectedExistingCast, setSelectedExistingCast] = useState<any[]>([]);
     const [draggedCastIndex, setDraggedCastIndex] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -360,9 +388,28 @@ const EditProject: React.FC = () => {
         };
     };
 
+    const unwrapMaterialFromServer = (material: any): Material => {
+        const unwrapped: any = { ...material };
+        unwrapped.caption = toLocalizedString(material?.caption);
+        unwrapped.textContent = toLocalizedString(material?.textContent);
+        unwrapped.htmlContent = toLocalizedString(material?.htmlContent);
+        if (material?.before) unwrapped.before = localizeSideLabel(material.before);
+        if (material?.after) unwrapped.after = localizeSideLabel(material.after);
+        if (Array.isArray(material?.items)) {
+            unwrapped.items = material.items.map((item: any) => ({
+                ...item,
+                caption: toLocalizedString(item?.caption),
+                before: item?.before ? localizeSideLabel(item.before) : item?.before,
+                after: item?.after ? localizeSideLabel(item.after) : item?.after,
+            }));
+        }
+        return unwrapped;
+    };
+
     const normalizeProjectMaterials = (materials: any[] = []): Material[] => {
         const sorted = [...materials].sort((a, b) => (a.order || 0) - (b.order || 0));
         return sorted
+            .map(unwrapMaterialFromServer)
             .map((material) => (isPhotoMaterialType(material.type) ? normalizePhotoMaterial({ ...material }) : { ...material }))
             .map((material, index) => ({ ...material, order: index + 1 }));
     };
@@ -383,7 +430,9 @@ const EditProject: React.FC = () => {
                 return {
                     _id: found?._id || undefined,
                     name: found?.name || c,
-                    title: "",
+                    title: (found as any)?.title || "",
+                    socialLinks: (found as any)?.socialLinks || [],
+                    photo: (found as any)?.photo || null,
                     order: idx + 1,
                 };
             }
@@ -398,6 +447,8 @@ const EditProject: React.FC = () => {
                             _id: found?._id,
                             name: found?.name || castEntry,
                             title: (found as any)?.title || "",
+                            socialLinks: (found as any)?.socialLinks || [],
+                            photo: (found as any)?.photo || null,
                             order: c.order || idx + 1,
                         };
                     }
@@ -408,12 +459,23 @@ const EditProject: React.FC = () => {
                             _id: castEntry._id || found?._id,
                             name: castEntry.name || found?.name || "",
                             title: castEntry.title || (found as any)?.title || "",
+                            socialLinks: castEntry.socialLinks || (found as any)?.socialLinks || [],
+                            photo: castEntry.photo || (found as any)?.photo || null,
                             order: c.order || idx + 1,
                         };
                     }
                 }
 
-                if (c.name) return { ...c, order: c.order || idx + 1 };
+                if (c.name) {
+                    const found = projectCast.find((pc: any) => (pc._id || pc.id) === c.name || pc.name === c.name);
+                    return {
+                        ...c,
+                        title: c.title || (found as any)?.title || "",
+                        socialLinks: c.socialLinks?.length ? c.socialLinks : (found as any)?.socialLinks || [],
+                        photo: c.photo || (found as any)?.photo || null,
+                        order: c.order || idx + 1,
+                    };
+                }
                 const found = projectCast.find((pc: any) => pc._id === c._id || pc.id === c._id || pc._id === c.id || pc.name === c.name);
                 return { ...(found || {}), ...c, order: c.order || idx + 1 };
             }
@@ -436,9 +498,10 @@ const EditProject: React.FC = () => {
         }
 
         setForm({
-            name: project.name || "",
-            description: project.description || "",
-            location: project.location || "",
+            name: toLocalizedString((project as any).localizedName ?? project.name),
+            description: toLocalizedString((project as any).localizedDescription ?? (project as any).description),
+            location: toLocalizedString((project as any).localizedLocation ?? (project as any).location),
+            order: Number((project as any).order) || 0,
             published: project.published || false,
             categories: project.categories || [],
             tags: project.tags || [],
@@ -479,7 +542,7 @@ const EditProject: React.FC = () => {
         const newMaterial: Material = {
             type: "photo",
             order: form.materials.length + 1,
-            caption: "",
+            caption: { ar: "", en: "" },
             url: "",
             mimeType: "image/jpeg",
             items: [],
@@ -601,7 +664,7 @@ const EditProject: React.FC = () => {
                     mimeType: file.type,
                     originalName: file.name,
                     size: file.size,
-                    label: which === 'before' ? 'Before' : 'After',
+                    label: which === 'before' ? { ar: 'قبل', en: 'Before' } : { ar: 'بعد', en: 'After' },
                     type: 'photo',
                 },
             } as any);
@@ -647,37 +710,118 @@ const EditProject: React.FC = () => {
     };
 
     // Cast Management
+    const getCastPhotoUrl = (photo: any): string => {
+        if (!photo) return "";
+        if (typeof photo === "string") return photo;
+        return photo.url || photo.publicId || "";
+    };
+
+    const handleCastPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !editingCast) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setEditingCast((prev) =>
+                prev
+                    ? { ...prev, photo: { url: reader.result as string, mimeType: file.type, originalName: file.name, size: file.size } }
+                    : prev
+            );
+        };
+        reader.readAsDataURL(file);
+        if (e.target) e.target.value = "";
+    };
+
+    const handleCastRowPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, rIdx: number) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setNewMembersRows((prev) =>
+                prev.map((p, i) => (i === rIdx ? { ...p, photo: { url: reader.result as string, mimeType: file.type, originalName: file.name, size: file.size } } : p))
+            );
+        };
+        reader.readAsDataURL(file);
+        if (e.target) e.target.value = "";
+    };
+
     const handleAddCast = () => {
+        const nextOrder = form.cast.length + 1;
+        setCastModalMode("add");
+        setEditingCastIndex(null);
         setEditingCast({
             name: "",
             title: "",
-            order: form.cast.length + 1,
+            order: nextOrder,
+            socialLinks: [],
+        });
+        setNewMembersRows([{ name: "", title: "", order: nextOrder, socialLinks: [], photo: null }]);
+        setSelectedExistingCast([]);
+    };
+
+    const handleEditCast = (cast: Cast, index: number) => {
+        const found = projectCast.find((pc: any) => cast._id && (pc._id || pc.id) === cast._id);
+        setCastModalMode("edit");
+        setEditingCastIndex(index);
+        setEditingCast({
+            ...cast,
+            title: cast.title || (found as any)?.title || "",
+            socialLinks: cast.socialLinks?.length ? cast.socialLinks : (found as any)?.socialLinks || [],
+            photo: cast.photo || (found as any)?.photo || null,
         });
     };
 
-    const handleEditCast = (cast: Cast) => {
-        setEditingCast({ ...cast });
-    };
-
     const handleSaveCast = () => {
-        if (editingCast) {
-            if (editingCast._id) {
-                // Update existing
-                setForm({
-                    ...form,
-                    cast: form.cast.map((c: Cast) =>
-                        c._id === editingCast._id ? editingCast : c
-                    ),
-                });
-            } else {
-                // Add new
-                setForm({
-                    ...form,
-                    cast: [...form.cast, { ...editingCast, order: form.cast.length + 1 }],
-                });
-            }
+        if (!editingCast) return;
+
+        if (castModalMode === "edit") {
+            // Update member at its list position (works for both saved and unsaved members)
+            if (editingCastIndex === null) return;
+            setForm((prev: any) => ({
+                ...prev,
+                cast: prev.cast.map((c: Cast, i: number) => (i === editingCastIndex ? { ...c, ...editingCast } : c)),
+            }));
             setEditingCast(null);
+            return;
         }
+
+        // Add selected existing members (as full objects for UI, but mark them)
+        const existing = selectedExistingCast || [];
+        const rows = (newMembersRows || []).filter((r) => (r.name || "").trim());
+
+        if (existing.length || rows.length) {
+            setForm((prev: any) => {
+                const next = [...prev.cast];
+                existing.forEach((ex) => {
+                    next.push({
+                        _id: ex._id || ex.id,
+                        name: ex.name || "",
+                        title: ex.title || "",
+                        order: next.length + 1,
+                        socialLinks: ex.socialLinks || [],
+                        photo: ex.photo || null,
+                        __existing: true,
+                    });
+                });
+
+                rows.forEach((r) => {
+                    next.push({ name: r.name, title: r.title || "", order: next.length + 1, socialLinks: r.socialLinks || [], photo: r.photo || null });
+                });
+
+                return { ...prev, cast: next };
+            });
+
+            setSelectedExistingCast([]);
+            setNewMembersRows([]);
+            setEditingCast(null);
+            return;
+        }
+
+        // Add single (fallback)
+        setForm((prev: any) => ({
+            ...prev,
+            cast: [...prev.cast, { ...editingCast, order: prev.cast.length + 1 }],
+        }));
+        setEditingCast(null);
     };
 
     const handleDeleteCast = (castIndex: number) => {
@@ -761,7 +905,7 @@ const EditProject: React.FC = () => {
                     return asset;
                 }
 
-                const uploaded = await uploadDataUrlToCloudinary(asset.url, {
+                const uploaded = await uploadDataUrlToR2(asset.url, {
                     resourceType,
                     fileName: asset.originalName || fallbackFileName,
                 });
@@ -775,8 +919,12 @@ const EditProject: React.FC = () => {
                 };
             };
 
+            // Extract the parent project id BEFORE deep-cloning — the option object can be a
+            // fully-populated project with circular references that would make JSON.stringify throw.
+            const { parentProject: _parentProject, ...cloneSource } = form;
+
             // Prepare data for submission (sanitize fields the server validation disallows)
-            const clone = JSON.parse(JSON.stringify(form));
+            const clone = JSON.parse(JSON.stringify(cloneSource));
 
             if (clone.mainCover) {
                 const coverUploadSource = clone.mainCover.croppedUrl || clone.mainCover.url;
@@ -885,12 +1033,27 @@ const EditProject: React.FC = () => {
 
                         if (copy.before) {
                             const { url, label, type } = copy.before;
-                            copy.before = { url, label, type };
+                            copy.before = { url, label: toLocalizedString(label), type };
                         }
                         if (copy.after) {
                             const { url, label, type } = copy.after;
-                            copy.after = { url, label, type };
+                            copy.after = { url, label: toLocalizedString(label), type };
                         }
+
+                        if (Array.isArray(copy.items)) {
+                            copy.items = copy.items.map((item: any) => {
+                                const cleanItem: any = { ...item };
+                                delete cleanItem._id;
+                                cleanItem.caption = cleanItem.caption ? toLocalizedString(cleanItem.caption) : undefined;
+                                cleanItem.before = cleanItem.before ? localizeSideLabel(cleanItem.before) : cleanItem.before;
+                                cleanItem.after = cleanItem.after ? localizeSideLabel(cleanItem.after) : cleanItem.after;
+                                return cleanItem;
+                            });
+                        }
+
+                        if (copy.caption) copy.caption = toLocalizedString(copy.caption);
+                        if (copy.textContent) copy.textContent = toLocalizedString(copy.textContent);
+                        if (copy.htmlContent) copy.htmlContent = toLocalizedString(copy.htmlContent);
 
                         return copy;
                     }),
@@ -926,18 +1089,49 @@ const EditProject: React.FC = () => {
             }
 
             if (Array.isArray(clone.cast)) {
-                clone.cast = clone.cast.map((c: any) => {
-                    const copy: any = { ...c };
-                    delete copy._id;
-                    delete copy.id;
-                    return copy;
-                });
+                clone.cast = await Promise.all(
+                    clone.cast.map(async (c: any) => {
+                        if (!c) return c;
+                        if (typeof c === "string") return { name: c };
+                        const socialLinks = (c.socialLinks || [])
+                            .filter((l: any) => l && (l.platform || "").trim() && (l.url || "").trim())
+                            .map((l: any) => ({ platform: (l.platform || "").trim(), url: (l.url || "").trim() }));
+
+                        let photo: any = c.photo || null;
+                        let photoUrl = typeof photo === "string" ? photo : photo?.url;
+                        if (photoUrl && isDataUrl(photoUrl)) {
+const uploaded = await uploadDataUrlToR2(photoUrl, {
+                            resourceType: "image",
+                            fileName: (photo && photo.originalName) || `cast-photo-${Date.now()}.jpg`,
+                        });
+                            photo = uploaded.url;
+                        } else if (photo && typeof photo === "object" && !photoUrl && photo.publicId) {
+                            photo = photo.publicId;
+                        } else {
+                            photo = null;
+                        }
+
+                        // Existing members: send their cast id only so the backend references them instead of creating duplicates
+                        if (c._id || c.id) {
+                            const existingMember: any = { name: c._id || c.id, order: Number(c.order) || 0 };
+                            if (socialLinks.length) existingMember.socialLinks = socialLinks;
+                            if (photo) existingMember.photo = photo;
+                            return existingMember;
+                        }
+                        // New member — send inline for the backend to handle
+                        const newMember: any = { name: c.name || "", title: c.title || "", order: c.order };
+                        if (socialLinks.length) newMember.socialLinks = socialLinks;
+                        if (photo) newMember.photo = photo;
+                        return newMember;
+                    })
+                );
             }
 
             const submitData = {
-                name: clone.name,
-                description: clone.description,
-                location: clone.location,
+                name: toLocalizedString(clone.name),
+                description: toLocalizedString(clone.description),
+                location: toLocalizedString(clone.location),
+                order: clone.order,
                 published: clone.published,
                 categories: normalizeTaxonomyArrayField(clone.categories),
                 tags: normalizeArrayField(clone.tags),
@@ -949,7 +1143,7 @@ const EditProject: React.FC = () => {
             };
 
             update.mutate(
-                { id, data: submitData },
+                { id, data: submitData as any },
                 {
                     onSuccess: () => {
                         setSaveStatus("success");
@@ -977,8 +1171,8 @@ const EditProject: React.FC = () => {
         if (editingMaterial || editingCast) return;
 
         const target = e.target as HTMLElement | null;
-        // allow Enter inside textareas or contenteditable elements
-        if (target && (target.tagName === "TEXTAREA" || target.getAttribute?.("contenteditable") === "true")) {
+        // allow Enter inside textareas, contenteditable elements, or fields that add values on Enter
+        if (target && (target.tagName === "TEXTAREA" || target.getAttribute?.("contenteditable") === "true" || target.hasAttribute?.("data-enter-add") || target.closest?.(".MuiAutocomplete-root"))) {
             return;
         }
 
@@ -1158,46 +1352,80 @@ const EditProject: React.FC = () => {
                                 <div className="space-y-4">
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Project Name *
+                                            Project Name (English) *
                                         </label>
                                         <input
                                             type="text"
-                                            name="name"
-                                            value={form.name}
-                                            onChange={handleChange}
+                                            value={form.name?.en || ""}
+                                            onChange={(e) => setForm({ ...form, name: { ...form.name, en: e.target.value } })}
                                             required
                                             className="input w-full"
-                                            placeholder="Enter project name"
+                                            placeholder="Enter project name (English)"
+                                        />
+                                        <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                            Project Name (Arabic) *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            dir="rtl"
+                                            value={form.name?.ar || ""}
+                                            onChange={(e) => setForm({ ...form, name: { ...form.name, ar: e.target.value } })}
+                                            required
+                                            className="input w-full"
+                                            placeholder="أدخل اسم المشروع (بالعربية)"
                                         />
                                     </div>
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Description
+                                            Description (English)
                                         </label>
                                         <textarea
-                                            name="description"
-                                            value={form.description}
-                                            onChange={handleChange}
+                                            value={form.description?.en || ""}
+                                            onChange={(e) => setForm({ ...form, description: { ...form.description, en: e.target.value } })}
                                             rows={4}
                                             className="input w-full resize-y min-h-[100px]"
-                                            placeholder="Describe the project..."
+                                            placeholder="Describe the project... (English)"
+                                        />
+                                        <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                            Description (Arabic)
+                                        </label>
+                                        <textarea
+                                            dir="rtl"
+                                            value={form.description?.ar || ""}
+                                            onChange={(e) => setForm({ ...form, description: { ...form.description, ar: e.target.value } })}
+                                            rows={4}
+                                            className="input w-full resize-y min-h-[100px]"
+                                            placeholder="وصف المشروع (بالعربية)"
                                         />
                                     </div>
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Location
+                                            Location (English)
                                         </label>
                                         <div className="relative">
                                             <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500" />
                                             <input
                                                 type="text"
-                                                name="location"
-                                                value={form.location}
-                                                onChange={handleChange}
+                                                value={form.location?.en || ""}
+                                                onChange={(e) => setForm({ ...form, location: { ...form.location, en: e.target.value } })}
                                                 className="input w-full pl-9"
                                                 placeholder="e.g., Cairo, Egypt"
+                                            />
+                                        </div>
+                                        <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                            Location (Arabic)
+                                        </label>
+                                        <div className="relative">
+                                            <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500" />
+                                            <input
+                                                type="text"
+                                                dir="rtl"
+                                                value={form.location?.ar || ""}
+                                                onChange={(e) => setForm({ ...form, location: { ...form.location, ar: e.target.value } })}
+                                                className="input w-full pl-9"
+                                                placeholder="مثال: القاهرة، مصر"
                                             />
                                         </div>
                                     </div>
@@ -1221,6 +1449,24 @@ const EditProject: React.FC = () => {
                                             sx={taxonomyAutocompleteSx}
                                             slotProps={taxonomyAutocompleteSlotProps}
                                         />
+                                    </div>
+
+                                    <div>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                            Order
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            step={1}
+                                            value={form.order}
+                                            onChange={(e) => setForm({ ...form, order: Number(e.target.value) })}
+                                            className="input w-full"
+                                            placeholder="Project order (1, 2, 3...)"
+                                        />
+                                        <p className="mt-1 text-xs text-light-500 dark:text-dark-400">
+                                            Determines the display order of this project.
+                                        </p>
                                     </div>
 
                                     <div className="flex items-center gap-3 pt-2">
@@ -1288,6 +1534,7 @@ const EditProject: React.FC = () => {
                                                 value={newTag}
                                                 onChange={(e) => setNewTag(e.target.value)}
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
+                                                data-enter-add
                                                 className="input flex-1"
                                                 placeholder="Add a tag..."
                                             />
@@ -1366,8 +1613,8 @@ const EditProject: React.FC = () => {
                                                                 <BeforeAfterSlider
                                                                     beforeUrl={material.before?.url}
                                                                     afterUrl={material.after?.url}
-                                                                    beforeLabel={material.before?.label || "Before"}
-                                                                    afterLabel={material.after?.label || "After"}
+                                                                    beforeLabel={localizedToString(material.before?.label) || "Before"}
+                                                                    afterLabel={localizedToString(material.after?.label) || "After"}
                                                                     className="w-full h-full"
                                                                     mediaClassName="w-full h-full"
                                                                     showSlider={false}
@@ -1385,14 +1632,14 @@ const EditProject: React.FC = () => {
                                                                     }
 
                                                                     if (previewItems.length === 1) {
-                                                                        return <img src={previewItems[0].url} alt={material.caption || ''} className="w-full h-full object-cover" />;
+                                                                        return <img src={previewItems[0].url} alt={localizedToString(material.caption) || ''} className="w-full h-full object-cover" />;
                                                                     }
 
                                                                     return (
                                                                         <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
                                                                             {previewItems.slice(0, 4).map((item, itemIdx) => (
                                                                                 <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
-                                                                                    <img src={item.url} alt={material.caption || `Photo ${itemIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                    <img src={item.url} alt={localizedToString(material.caption) || `Photo ${itemIdx + 1}`} className="w-full h-full object-cover" />
                                                                                     {itemIdx === 3 && previewItems.length > 4 && (
                                                                                         <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
                                                                                             +{previewItems.length - 4}
@@ -1435,7 +1682,7 @@ const EditProject: React.FC = () => {
                                                                 </span>
 
                                                                 <div className="truncate">
-                                                                    {material.caption && <div className="text-sm font-medium text-light-900 dark:text-dark-50 truncate">{material.caption}</div>}
+                                                                    {localizedToString(material.caption) && <div className="text-sm font-medium text-light-900 dark:text-dark-50 truncate">{localizedToString(material.caption)}</div>}
                                                                 </div>
                                                             </div>
 
@@ -1464,7 +1711,7 @@ const EditProject: React.FC = () => {
                                                             <div className="mt-2">
                                                                 <div
                                                                     className="p-3 bg-light-100 dark:bg-dark-800 rounded-md text-sm text-light-700 dark:text-dark-300 max-h-28 overflow-auto break-words"
-                                                                    dangerouslySetInnerHTML={{ __html: formatRichText(material.textContent) }}
+                                                                    dangerouslySetInnerHTML={{ __html: formatRichText(localizedToString(material.textContent)) }}
                                                                 >
                                                                 </div>
                                                             </div>
@@ -1473,7 +1720,7 @@ const EditProject: React.FC = () => {
                                                         {material.htmlContent && (
                                                             <div className="mt-2">
                                                                 <div className="p-3 bg-light-100 dark:bg-dark-800 rounded-md text-sm text-light-700 dark:text-dark-300 max-h-28 overflow-auto">
-                                                                    <pre className="whitespace-pre-wrap text-xs break-words">{material.htmlContent}</pre>
+                                                                    <pre className="whitespace-pre-wrap text-xs break-words">{localizedToString(material.htmlContent)}</pre>
                                                                 </div>
                                                             </div>
                                                         )}
@@ -1532,19 +1779,30 @@ const EditProject: React.FC = () => {
                                                     <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/40 text-light-500 dark:text-dark-400">
                                                         <GripVertical className="w-4 h-4" />
                                                     </span>
-                                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-light-200 to-light-300 dark:from-dark-700 dark:to-dark-600 flex items-center justify-center text-light-700 dark:text-dark-300 font-semibold">
-                                                        {member.name ? member.name.charAt(0).toUpperCase() : "?"}
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-3">
-                                                            <h3 className="font-semibold text-light-900 dark:text-dark-50">{member.name}</h3>
-                                                            {member.title && <span className="text-sm text-secdark-500">{member.title}</span>}
+                                                    {(() => {
+                                                        const memberPhotoUrl = getCastPhotoUrl(member.photo);
+                                                        if (memberPhotoUrl) {
+                                                            return <img src={memberPhotoUrl} alt={member.name} className="w-12 h-12 rounded-full object-cover border border-light-200 dark:border-dark-700" />;
+                                                        }
+                                                        return (
+                                                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-light-200 to-light-300 dark:from-dark-700 dark:to-dark-600 flex items-center justify-center text-light-700 dark:text-dark-300 font-semibold">
+                                                                {member.name ? member.name.charAt(0).toUpperCase() : "?"}
+                                                            </div>
+                                                        );
+                                                    })()}
+<div>
+                                                            <div className="flex items-center gap-3">
+                                                                <h3 className="font-semibold text-light-900 dark:text-dark-50">{member.name}</h3>
+                                                                {member.title && <span className="text-sm text-secdark-500">{member.title}</span>}
+                                                            </div>
+                                                            <div className="mt-1.5">
+                                                                <SocialLinkIcons links={member.socialLinks} size={14} className="!gap-1.5" />
+                                                                <div className="text-xs text-light-400 dark:text-dark-500 mt-1">Order: {member.order}</div>
+                                                            </div>
                                                         </div>
-                                                        <div className="text-xs text-light-400 dark:text-dark-500 mt-1">Order: {member.order}</div>
-                                                    </div>
                                                 </div>
                                                 <div className="flex items-center justify-end gap-2">
-                                                    <button type="button" onClick={() => handleEditCast(member)} title="Edit" aria-label="Edit cast member" className="p-2 rounded-lg hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
+                                                    <button type="button" onClick={() => handleEditCast(member, idx)} title="Edit" aria-label="Edit cast member" className="p-2 rounded-lg hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
                                                         <Edit className="w-4 h-4" />
                                                     </button>
                                                     <button type="button" onClick={() => handleDeleteCast(idx)} title="Delete" aria-label="Delete cast member" className="p-2 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
@@ -1720,11 +1978,20 @@ const EditProject: React.FC = () => {
                             </div>
                             
                             <div>
-                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title</label>
+                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title (English)</label>
                                 <input                                    type="text"
-                                    value={editingMaterial.caption || ""}
-                                    onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: e.target.value })}
+                                    value={editingMaterial.caption?.en || ""}
+                                    onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: { ...editingMaterial.caption, en: e.target.value } })}
                                     className="input w-full"
+                                    placeholder="Optional caption (English)"
+                                />
+                                <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title (Arabic)</label>
+                                <input                                    type="text"
+                                    dir="rtl"
+                                    value={editingMaterial.caption?.ar || ""}
+                                    onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: { ...editingMaterial.caption, ar: e.target.value } })}
+                                    className="input w-full"
+                                    placeholder="عنوان اختياري (بالعربية)"
                                 />
                             </div>
 
@@ -1809,12 +2076,20 @@ const EditProject: React.FC = () => {
 
                             {editingMaterial.type === "text" && (
                                 <div>
-                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content</label>
+                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content (English)</label>
                                     <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
                                         <ReactQuill
                                             theme="snow"
-                                            value={editingMaterial.textContent || ""}
-                                            onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: value })}
+                                            value={editingMaterial.textContent?.en || ""}
+                                            onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: { ...editingMaterial.textContent, en: value } })}
+                                        />
+                                    </div>
+                                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content (Arabic)</label>
+                                    <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
+                                        <ReactQuill
+                                            theme="snow"
+                                            value={editingMaterial.textContent?.ar || ""}
+                                            onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: { ...editingMaterial.textContent, ar: value } })}
                                         />
                                     </div>
                                 </div>
@@ -1838,6 +2113,33 @@ const EditProject: React.FC = () => {
                                                 <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.before.originalName || 'Uploaded image'}</div>
                                             </div>
                                         )}
+                                        <div className="grid grid-cols-2 gap-2 mt-3">
+                                            <input
+                                                type="text"
+                                                value={editingMaterial.before?.label?.en || ""}
+                                                onChange={(e) =>
+                                                    setEditingMaterial({
+                                                        ...editingMaterial,
+                                                        before: { ...(editingMaterial.before as any), label: { ...((editingMaterial.before as any)?.label || {}), en: e.target.value } },
+                                                    } as any)
+                                                }
+                                                className="input w-full"
+                                                placeholder="Before label (EN)"
+                                            />
+                                            <input
+                                                type="text"
+                                                dir="rtl"
+                                                value={editingMaterial.before?.label?.ar || ""}
+                                                onChange={(e) =>
+                                                    setEditingMaterial({
+                                                        ...editingMaterial,
+                                                        before: { ...(editingMaterial.before as any), label: { ...((editingMaterial.before as any)?.label || {}), ar: e.target.value } },
+                                                    } as any)
+                                                }
+                                                className="input w-full"
+                                                placeholder="قبل (AR)"
+                                            />
+                                        </div>
                                     </div>
 
                                     <div>
@@ -1855,6 +2157,33 @@ const EditProject: React.FC = () => {
                                                 <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.after.originalName || 'Uploaded image'}</div>
                                             </div>
                                         )}
+                                        <div className="grid grid-cols-2 gap-2 mt-3">
+                                            <input
+                                                type="text"
+                                                value={editingMaterial.after?.label?.en || ""}
+                                                onChange={(e) =>
+                                                    setEditingMaterial({
+                                                        ...editingMaterial,
+                                                        after: { ...(editingMaterial.after as any), label: { ...((editingMaterial.after as any)?.label || {}), en: e.target.value } },
+                                                    } as any)
+                                                }
+                                                className="input w-full"
+                                                placeholder="After label (EN)"
+                                            />
+                                            <input
+                                                type="text"
+                                                dir="rtl"
+                                                value={editingMaterial.after?.label?.ar || ""}
+                                                onChange={(e) =>
+                                                    setEditingMaterial({
+                                                        ...editingMaterial,
+                                                        after: { ...(editingMaterial.after as any), label: { ...((editingMaterial.after as any)?.label || {}), ar: e.target.value } },
+                                                    } as any)
+                                                }
+                                                className="input w-full"
+                                                placeholder="بعد (AR)"
+                                            />
+                                        </div>
                                     </div>
 
                                 </>
@@ -1875,37 +2204,174 @@ const EditProject: React.FC = () => {
                     <div className="bg-white dark:bg-dark-800 rounded-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
                         <div className="border-b border-light-200 dark:border-dark-700 p-4 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">
-                                {editingCast._id ? "Edit Team Member" : "Add Team Member"}
+                                {castModalMode === "edit" ? "Edit Team Member" : "Add Team Member"}
                             </h3>
                             <button onClick={() => setEditingCast(null)} className="p-1 hover:bg-light-100 dark:hover:bg-dark-700 rounded">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
                         <div className="p-4 space-y-4">
-                            
-                            <div>
-                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Name</label>
-                                <input
-                                    type="text"
-                                    value={editingCast.name}
-                                    onChange={(e) => setEditingCast({ ...editingCast, name: e.target.value })}
-                                    className="input w-full"
-                                    placeholder="Full name"
-                                />
-                            </div>
-                            <div>
-                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title/Role</label>
-                                <input
-                                    type="text"
-                                    value={editingCast.title}
-                                    onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value })}
-                                    className="input w-full"
-                                    placeholder="e.g., Creative Director, Photographer"
-                                />
-                            </div>
+                            {castModalMode === "edit" ? (
+                                <>
+                                    <div>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Name</label>
+                                        <input
+                                            type="text"
+                                            value={editingCast.name}
+                                            onChange={(e) => setEditingCast({ ...editingCast, name: e.target.value })}
+                                            className="input w-full"
+                                            placeholder="Full name"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title/Role</label>
+                                        <input
+                                            type="text"
+                                            value={editingCast.title}
+                                            onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value })}
+                                            className="input w-full"
+                                            placeholder="e.g., Creative Director, Photographer"
+                                        />
+                                    </div>
+                                    <CastSocialLinks
+                                        value={editingCast.socialLinks || []}
+                                        onChange={(links) => setEditingCast({ ...editingCast, socialLinks: links })}
+                                    />
+                                    <div>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Photo</label>
+                                        {(() => {
+                                            const photoUrl = getCastPhotoUrl(editingCast.photo);
+                                            if (photoUrl) {
+                                                return (
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <img src={photoUrl} alt={editingCast.name || "Member"} className="w-16 h-16 rounded-full object-cover border border-light-200 dark:border-dark-700" />
+                                                        <button type="button" onClick={() => setEditingCast({ ...editingCast, photo: null })} className="btn-ghost">Remove</button>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
+                                        <input type="file" accept="image/*" onChange={handleCastPhotoUpload} className="input w-full" />
+                                    </div>
+                                </>
+                            ) : (
+                                <div>
+                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Members</label>
+                                    <p className="text-xs text-light-500 dark:text-dark-400 mb-2">Select existing members or add new ones below. Use <span className="font-medium">Add Member</span> to append rows.</p>
+
+                                    <Autocomplete
+                                        multiple
+                                        disablePortal
+                                        filterSelectedOptions
+                                        options={projectCast.filter(
+                                            (pc: any) => !form.cast.some(
+                                                (c: any) => (c._id || c.id) && (c._id || c.id) === (pc._id || pc.id)
+                                            )
+                                        )}
+                                        value={selectedExistingCast}
+                                        onChange={(_, val) => setSelectedExistingCast(val as any[])}
+                                        getOptionLabel={getOptionLabel}
+                                        isOptionEqualToValue={(o, v) => (o._id || o.id) === (v._id || v.id)}
+                                        className="w-full mb-3"
+                                        sx={taxonomyAutocompleteSx}
+                                        slotProps={taxonomyAutocompleteSlotProps}
+                                        renderOption={(props, option: any) => (
+                                            <li {...props} className="flex items-center gap-3 px-3 py-2">
+                                                <div className="w-8 h-8 rounded-full bg-light-100 dark:bg-dark-800 flex items-center justify-center text-sm font-medium text-light-700 dark:text-dark-200">
+                                                    {getOptionLabel(option).charAt(0).toUpperCase()}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-sm text-light-900 dark:text-dark-50">{getOptionLabel(option)}</div>
+                                                    {option.title && <div className="text-xs text-light-500 dark:text-dark-400">{option.title}</div>}
+                                                </div>
+                                            </li>
+                                        )}
+                                        renderTags={(value: any[], getTagProps) =>
+                                            value.map((option, index) => {
+                                                const label = getOptionLabel(option);
+                                                const initial = label ? label.charAt(0).toUpperCase() : "?";
+                                                return (
+                                                    <Chip
+                                                        label={label}
+                                                        avatar={<Avatar sx={{ width: 20, height: 20, fontSize: 12 }}>{initial}</Avatar>}
+                                                        size="small"
+                                                        {...getTagProps({ index })}
+                                                    />
+                                                );
+                                            })
+                                        }
+                                        renderInput={(params) => <TextField {...params} placeholder="Search existing members" size="small" />}
+                                    />
+
+                                    {newMembersRows.map((row, rIdx) => (
+                                        <div key={rIdx} className="mb-3">
+                                            <div className="grid grid-cols-12 gap-2 items-center mb-2">
+                                                <input
+                                                    type="text"
+                                                    value={row.name}
+                                                    onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, name: e.target.value } : p)))}
+                                                    className="input col-span-7"
+                                                    placeholder="Full name"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={row.title}
+                                                    onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value } : p)))}
+                                                    className="input col-span-4"
+                                                    placeholder="Title/Role (optional)"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setNewMembersRows((prev) => prev.filter((_, i) => i !== rIdx))}
+                                                    className="p-2 rounded hover:bg-light-100 dark:hover:bg-dark-800 text-danger-500"
+                                                    title="Remove"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            <CastSocialLinks
+                                                value={row.socialLinks || []}
+                                                onChange={(links) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, socialLinks: links } : p)))}
+                                            />
+                                            <div className="mt-2">
+                                                {(() => {
+                                                    const rowPhotoUrl = getCastPhotoUrl(row.photo);
+                                                    if (rowPhotoUrl) {
+                                                        return (
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <img src={rowPhotoUrl} alt={row.name || "Member"} className="w-10 h-10 rounded-full object-cover border border-light-200 dark:border-dark-700" />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, photo: null } : p)))}
+                                                                    className="btn-ghost text-xs"
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                                <input type="file" accept="image/*" onChange={(e) => handleCastRowPhotoUpload(e, rIdx)} className="input w-full" />
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setNewMembersRows((prev) => [...prev, { name: "", title: "", order: form.cast.length + prev.length + 1, socialLinks: [], photo: null }])}
+                                            className="btn-secondary"
+                                        >
+                                            <Plus className="w-4 h-4 inline mr-2" />
+                                            Add Member
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                             <div className="flex justify-end gap-2 pt-4">
                                 <button onClick={() => setEditingCast(null)} className="btn-ghost">Cancel</button>
-                                <button onClick={handleSaveCast} className="btn-primary">Save Member</button>
+                                <button onClick={handleSaveCast} className="btn-primary">{castModalMode === "edit" ? "Save Member" : "Save Members"}</button>
                             </div>
                         </div>
                     </div>

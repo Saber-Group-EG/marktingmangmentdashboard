@@ -1,8 +1,85 @@
-import React, { useMemo, useState } from "react";
-import { Plus, Search, RefreshCw } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Search, RefreshCw, GripVertical } from "lucide-react";
+import { motion } from "framer-motion";
+import { DndProvider, useDrag, useDrop } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useProjects, useProjectCast } from "@/hooks/queries";
+import { useProjects, useProjectCast, useReorderProjects } from "@/hooks/queries";
+
+const PROJECT_CARD_TYPE = "PROJECT_CARD";
+
+const getProjectId = (p: any): string => p?.id || p?._id || "";
+
+interface SortableProjectCardProps {
+    project: any;
+    dragIdRef: React.RefObject<string | null>;
+    onMove: (dragId: string, hoverId: string) => void;
+    onDragStart: () => void;
+    onDrop: () => void;
+    children: React.ReactNode;
+}
+
+const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
+    project,
+    dragIdRef,
+    onMove,
+    onDragStart,
+    onDrop,
+    children,
+}) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const id = getProjectId(project);
+
+    const [{ isDragging }, drag] = useDrag({
+        type: PROJECT_CARD_TYPE,
+        item: () => {
+            dragIdRef.current = id;
+            onDragStart();
+            return { id };
+        },
+        collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+        end: () => {
+            onDrop();
+            dragIdRef.current = null;
+        },
+    });
+
+    const [, drop] = useDrop({
+        accept: PROJECT_CARD_TYPE,
+        hover: (item: any, monitor) => {
+            if (!ref.current) return;
+            const offset = monitor.getClientOffset();
+            if (!offset) return;
+
+            const rect = ref.current.getBoundingClientRect();
+            if (offset.x < rect.left || offset.x > rect.right || offset.y < rect.top || offset.y > rect.bottom) {
+                return;
+            }
+
+            const dragId = dragIdRef.current;
+            if (!dragId || dragId === id) return;
+
+            onMove(dragId, id);
+        },
+    });
+
+    drag(drop(ref));
+
+    return (
+        <motion.div
+            ref={ref}
+            layout
+            initial={false}
+            animate={{ opacity: isDragging ? 0.4 : 1, scale: isDragging ? 0.97 : 1 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="relative cursor-grab active:cursor-grabbing"
+            style={{ touchAction: "none" }}
+        >
+            {children}
+        </motion.div>
+    );
+};
 
 const ProjectsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -15,19 +92,82 @@ const ProjectsPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState<string>("");
     const { data: projects = [], isLoading, error, refetch } = useProjects();
     const { data: projectCast = [] } = useProjectCast();
+    const { mutate: reorderProjects } = useReorderProjects();
+
+    const [orderedProjects, setOrderedProjects] = useState<any[]>([]);
+    const orderedProjectsRef = useRef<any[]>([]);
+
+    useEffect(() => {
+        const sorted = [...projects].sort(
+            (a: any, b: any) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+        );
+        setOrderedProjects(sorted);
+    }, [projects]);
+
+    useEffect(() => {
+        orderedProjectsRef.current = orderedProjects;
+    }, [orderedProjects]);
 
     const total = projects.length;
     const published = projects.filter((p: any) => p.published).length;
     const drafts = total - published;
 
+    const localizedText = (value: any): string => {
+        if (!value) return "";
+        if (typeof value === "string") return value;
+        if (typeof value === "object") return value.en || value.ar || value.name || "";
+        return "";
+    };
+
     const filtered = useMemo(() => {
         const q = searchTerm.trim().toLowerCase();
-        return projects.filter((p: any) => {
-            const name = (p?.name || "").toLowerCase();
-            const category = (p?.category || "").toLowerCase();
+        return orderedProjects.filter((p: any) => {
+            const name = localizedText(p?.name || p?.localizedName).toLowerCase();
+            const category = localizedText(p?.category).toLowerCase();
             return !q || name.includes(q) || category.includes(q);
         });
-    }, [projects, searchTerm]);
+    }, [orderedProjects, searchTerm]);
+
+    const lastSwapRef = useRef<{ dragId: string; hoverId: string } | null>(null);
+    const orderChangedRef = useRef(false);
+
+    const handleMove = useCallback((dragId: string, hoverId: string) => {
+        if (lastSwapRef.current && lastSwapRef.current.dragId === dragId && lastSwapRef.current.hoverId === hoverId) return;
+        lastSwapRef.current = { dragId, hoverId };
+
+        setOrderedProjects((prev) => {
+            const dragIndex = prev.findIndex((p: any) => getProjectId(p) === dragId);
+            const hoverIndex = prev.findIndex((p: any) => getProjectId(p) === hoverId);
+            if (dragIndex < 0 || hoverIndex < 0 || dragIndex === hoverIndex) return prev;
+
+            orderChangedRef.current = true;
+
+            const next = [...prev];
+            const [moved] = next.splice(dragIndex, 1);
+            next.splice(hoverIndex, 0, moved);
+            return next;
+        });
+    }, []);
+
+    const handleDragStart = useCallback(() => {
+        orderChangedRef.current = false;
+        lastSwapRef.current = null;
+    }, []);
+
+    const handleDrop = useCallback(() => {
+        if (!orderChangedRef.current) return;
+        orderChangedRef.current = false;
+        lastSwapRef.current = null;
+
+        const orderedIds = orderedProjectsRef.current.map((p: any) => getProjectId(p)).filter(Boolean);
+        if (orderedIds.length) {
+            reorderProjects(orderedIds, {
+                onError: () => refetch(),
+            });
+        }
+    }, [reorderProjects, refetch]);
+
+    const dragSourceIdRef = useRef<string | null>(null);
 
     const getClientOrCastName = (project: any): string => {
         const clientName =
@@ -168,28 +308,44 @@ const ProjectsPage: React.FC = () => {
                     </button>
                 </div>
             ) : (
+                <DndProvider backend={HTML5Backend}>
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                     {filtered.map((project: any) => (
-                        <div key={project.id} className="group relative flex flex-col overflow-hidden rounded-3xl card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-                            <div className="absolute top-0 right-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-gradient-to-br blur-3xl from-secdark-300/20 to-secdark-700/10" />
+                        <SortableProjectCard
+                            key={getProjectId(project)}
+                            project={project}
+                            dragIdRef={dragSourceIdRef}
+                            onMove={handleMove}
+                            onDragStart={handleDragStart}
+                            onDrop={handleDrop}
+                        >
+                            <div className="group relative flex h-full flex-col overflow-hidden rounded-3xl card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                                <div className="absolute top-0 right-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-gradient-to-br blur-3xl from-secdark-300/20 to-secdark-700/10" />
 
-                            <div className="relative z-10 mb-4 flex items-center justify-between">
-                                <h3 className="text-lg font-extrabold text-light-900 dark:text-dark-50">{project.name}</h3>
-                                <div className="text-sm text-light-500 dark:text-dark-400">{project.published ? tr("published", "Published") : tr("draft", "Draft")}</div>
-                            </div>
+                                <div className="relative z-10 mb-4 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <GripVertical size={16} className="text-light-400 dark:text-dark-500 shrink-0" />
+                                        <h3 className="text-lg font-extrabold text-light-900 dark:text-dark-50">{localizedText(project.name || project.localizedName) || "Untitled"}</h3>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-sm text-light-500 dark:text-dark-400">{project.published ? tr("published", "Published") : tr("draft", "Draft")}</div>
+                                    </div>
+                                </div>
 
-                            <div className="relative z-10 mb-4 flex-1">
-                                <p className="text-sm text-light-600 dark:text-dark-400 line-clamp-2">{project.description || "-"}</p>
-                                <div className="text-xs text-light-500 dark:text-dark-500 mt-3">Cast/Client: {getClientOrCastName(project)}</div>
-                            </div>
+                                <div className="relative z-10 mb-4 flex-1">
+                                    <p className="text-sm text-light-600 dark:text-dark-400 line-clamp-2">{localizedText(project.description) || "-"}</p>
+                                    <div className="text-xs text-light-500 dark:text-dark-500 mt-3">Cast/Client: {getClientOrCastName(project)}</div>
+                                </div>
 
-                            <div className="relative z-10 mt-auto flex gap-2">
-                                <Link to={`/projects/${project.id}`} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("view", "View")}</Link>
-                                <Link to={`/projects/${project.id}/edit`} className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("edit", "Edit")}</Link>
+                                <div className="relative z-10 mt-auto flex gap-2">
+                                    <Link to={`/projects/${project.id}`} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("view", "View")}</Link>
+                                    <Link to={`/projects/${project.id}/edit`} className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("edit", "Edit")}</Link>
+                                </div>
                             </div>
-                        </div>
+                        </SortableProjectCard>
                     ))}
                 </div>
+            </DndProvider>
             )}
         </div>
     );

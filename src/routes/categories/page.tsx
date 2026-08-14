@@ -3,7 +3,8 @@ import { Plus, Edit2, Trash2, Check, X, Loader2, Layers, Package as PackageIcon,
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
 import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from "@/hooks/queries";
-import type { Category, CategoryType, CategoryListResponse } from "@/api/requests/categoriesService";
+import { getCategories } from "@/api/requests/categoriesService";
+import type { Category, CategoryType } from "@/api/requests/categoriesService";
 
 type CategorySectionProps = {
     type: CategoryType;
@@ -74,9 +75,8 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
         
         setIsLoadingMore(true);
         try {
-            const response = await fetch(`/api/categories?type=${type}&page=${page}&limit=${PAGE_SIZE}`);
-            const data: CategoryListResponse = await response.json();
-            
+            const data = await getCategories({ type, page });
+
             setAllCategories(prev => {
                 const existingIds = new Set(prev.map(c => c._id));
                 const newCategories = data.categories.filter(c => !existingIds.has(c._id));
@@ -152,8 +152,8 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
         // Refetch pages 1 and 2
         try {
             const [newPage1, newPage2] = await Promise.all([
-                fetch(`/api/categories?type=${type}&page=1&limit=${PAGE_SIZE}`).then(r => r.json()),
-                fetch(`/api/categories?type=${type}&page=2&limit=${PAGE_SIZE}`).then(r => r.json())
+                getCategories({ type, page: 1 }),
+                getCategories({ type, page: 2 }),
             ]);
             
             if (newPage1) {

@@ -6,6 +6,7 @@ export interface Project {
   parentProject?: string;
   rootOnly?: boolean;
   published?: boolean;
+  order?: number;
   type?: string;
   category?: string;
   tag?: string;
@@ -65,6 +66,8 @@ export interface CastMember {
   name?: string;
   title?: string;
   order?: number;
+  socialLinks?: { platform: string; url: string }[];
+  photo?: any;
   [key: string]: any;
 }
 

@@ -5,7 +5,9 @@ import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useCate
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
-import { isDataUrl, uploadDataUrlToCloudinary } from "@/utils/cloudinaryUpload";
+import CastSocialLinks from "@/components/CastSocialLinks";
+import SocialLinkIcons from "@/components/SocialLinkIcons";
+import { isDataUrl, uploadDataUrlToR2 } from "@/utils/r2Upload";
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
 import { 
@@ -22,17 +24,17 @@ interface Material {
   _id?: string;
     type: "photo" | "bulk" | "video" | "before_after" | "text" | "html";
   order: number;
-  caption?: string;
+  caption?: any;
   url?: string;
   mimeType?: string;
   size?: number;
   originalName?: string;
     thumbnail?: string | { url: string; mimeType?: string; size?: number; originalName?: string };
     items?: PhotoMaterialItem[];
-  textContent?: string;
-  htmlContent?: string;
-    before?: { url: string; label?: string; type?: string; mimeType?: string; originalName?: string; size?: number };
-    after?: { url: string; label?: string; type?: string; mimeType?: string; originalName?: string; size?: number };
+  textContent?: any;
+  htmlContent?: any;
+    before?: { url: string; label?: any; type?: string; mimeType?: string; originalName?: string; size?: number };
+    after?: { url: string; label?: any; type?: string; mimeType?: string; originalName?: string; size?: number };
 }
 
 interface PhotoMaterialItem {
@@ -49,18 +51,39 @@ interface Cast {
     title: string;
     order: number;
     clientId?: string;
+    socialLinks?: { platform: string; url: string }[];
+    photo?: any;
 }
 
 const MAX_PHOTO_THUMBNAIL_BYTES = 50 * 1024;
 
 const AddProject: React.FC = () => {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const navigate = useNavigate();
     const tr = (key: string, fallback: string) => {
         const v = t(key);
         return !v || v === key ? fallback : v;
     };
     void tr; // avoid unused variable warning
+
+    const localizedToString = (value: any): string => {
+        if (!value) return "";
+        if (typeof value === "string") return value;
+        if (typeof value === "object") return value[lang] || value.en || value.ar || "";
+        return "";
+    };
+
+    const toLocalizedString = (value: any): { ar: string; en: string } => {
+        if (value && typeof value === "object") {
+            return { ar: value.ar ?? "", en: value.en ?? "" };
+        }
+        return { ar: value || "", en: value || "" };
+    };
+
+    const localizeSideLabel = (side: any): any => {
+        if (!side) return side;
+        return { ...side, label: toLocalizedString(side.label) };
+    };
     
     const mutation = useCreateProject();
     // Replace useProjectCategories with useCategories
@@ -70,9 +93,10 @@ const AddProject: React.FC = () => {
     const { data: projectCast = []} = useProjectCast();
     const { data: allProjects = [] as any[]} = useProjects();
     const [form, setForm] = useState<any>({
-        name: "",
-        description: "",
-        location: "",
+        name: { ar: "", en: "" },
+        description: { ar: "", en: "" },
+        location: { ar: "", en: "" },
+        order: (allProjects?.length || 0) + 1,
         published: false,
         categories: [] as string[],
         tags: [] as string[],
@@ -89,6 +113,8 @@ const AddProject: React.FC = () => {
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
     const [draggedMaterialIndex, setDraggedMaterialIndex] = useState<number | null>(null);
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
+    const [castModalMode, setCastModalMode] = useState<"add" | "edit">("add");
+    const [editingCastIndex, setEditingCastIndex] = useState<number | null>(null);
     const [draggedCastIndex, setDraggedCastIndex] = useState<number | null>(null);
     const [newMembersRows, setNewMembersRows] = useState<Cast[]>([]);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
@@ -409,7 +435,7 @@ const AddProject: React.FC = () => {
         const newMaterial: Material = {
             type: "photo",
             order: form.materials.length + 1,
-            caption: "",
+            caption: { ar: "", en: "" },
             url: "",
             mimeType: "image/jpeg",
             items: [],
@@ -531,7 +557,7 @@ const AddProject: React.FC = () => {
                     mimeType: file.type,
                     originalName: file.name,
                     size: file.size,
-                    label: which === 'before' ? 'Before' : 'After',
+                    label: which === 'before' ? { ar: 'قبل', en: 'Before' } : { ar: 'بعد', en: 'After' },
                     type: 'photo',
                 },
             } as any);
@@ -595,29 +621,75 @@ const AddProject: React.FC = () => {
     };
 
     // Cast Management
+    const getCastPhotoUrl = (photo: any): string => {
+        if (!photo) return "";
+        if (typeof photo === "string") return photo;
+        return photo.url || photo.publicId || "";
+    };
+
+    const handleCastPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !editingCast) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setEditingCast((prev) =>
+                prev
+                    ? { ...prev, photo: { url: reader.result as string, mimeType: file.type, originalName: file.name, size: file.size } }
+                    : prev
+            );
+        };
+        reader.readAsDataURL(file);
+        if (e.target) e.target.value = "";
+    };
+
+    const handleCastRowPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, rIdx: number) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setNewMembersRows((prev) =>
+                prev.map((p, i) => (i === rIdx ? { ...p, photo: { url: reader.result as string, mimeType: file.type, originalName: file.name, size: file.size } } : p))
+            );
+        };
+        reader.readAsDataURL(file);
+        if (e.target) e.target.value = "";
+    };
+
     const handleAddCast = () => {
         const nextOrder = form.cast.length + 1;
+        setCastModalMode("add");
+        setEditingCastIndex(null);
         setEditingCast({
             name: "",
             title: "",
             order: nextOrder,
+            socialLinks: [],
         });
-        setNewMembersRows([{ name: "", title: "", order: nextOrder }]);
+        setNewMembersRows([{ name: "", title: "", order: nextOrder, socialLinks: [], photo: null }]);
         setSelectedExistingCast([]);
     };
 
-    const handleEditCast = (cast: Cast) => {
-        setEditingCast({ ...cast });
+    const handleEditCast = (cast: Cast, index: number) => {
+        const found = projectCast.find((pc: any) => cast._id && (pc._id || pc.id) === cast._id);
+        setCastModalMode("edit");
+        setEditingCastIndex(index);
+        setEditingCast({
+            ...cast,
+            title: cast.title || (found as any)?.title || "",
+            socialLinks: cast.socialLinks?.length ? cast.socialLinks : (found as any)?.socialLinks || [],
+            photo: cast.photo || (found as any)?.photo || null,
+        });
     };
 
     const handleSaveCast = () => {
         if (!editingCast) return;
 
-        if (editingCast._id) {
-            // Update existing
+        if (castModalMode === "edit") {
+            // Update member at its list position (works for both saved and unsaved members)
+            if (editingCastIndex === null) return;
             setForm((prev: any) => ({
                 ...prev,
-                cast: prev.cast.map((c: Cast) => (c._id === editingCast._id ? { ...c, ...editingCast } : c)),
+                cast: prev.cast.map((c: Cast, i: number) => (i === editingCastIndex ? { ...c, ...editingCast } : c)),
             }));
             setEditingCast(null);
             return;
@@ -636,12 +708,14 @@ const AddProject: React.FC = () => {
                         name: ex.name || "",
                         title: ex.title || "",
                         order: next.length + 1,
+                        socialLinks: ex.socialLinks || [],
+                        photo: ex.photo || null,
                         __existing: true,
                     });
                 });
 
                 rows.forEach((r) => {
-                    next.push({ name: r.name, title: r.title || "", order: next.length + 1 });
+                    next.push({ name: r.name, title: r.title || "", order: next.length + 1, socialLinks: r.socialLinks || [], photo: r.photo || null });
                 });
 
                 return { ...prev, cast: next };
@@ -858,8 +932,8 @@ const handleDateChange = (date: Date | null) => {
  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!form.name.trim()) {
-        alert("Project name is required");
+    if (!(form.name?.en && form.name.en.trim()) || !(form.name?.ar && form.name.ar.trim())) {
+        alert("English and Arabic project names are required");
         return;
     }
 
@@ -889,6 +963,13 @@ const handleDateChange = (date: Date | null) => {
                 if (mThumbUrl && isDataUrl(mThumbUrl)) uploadsCount += 1;
                 if (m.before?.url && isDataUrl(m.before.url)) uploadsCount += 1;
                 if (m.after?.url && isDataUrl(m.after.url)) uploadsCount += 1;
+            });
+        }
+
+        if (Array.isArray(clone.cast)) {
+            clone.cast.forEach((c: any) => {
+                const photoUrl = c && (typeof c.photo === "string" ? c.photo : c.photo?.url);
+                if (photoUrl && isDataUrl(photoUrl)) uploadsCount += 1;
             });
         }
 
@@ -924,7 +1005,7 @@ const handleDateChange = (date: Date | null) => {
                 return asset;
             }
 
-            const uploaded = await uploadDataUrlToCloudinary(asset.url, {
+            const uploaded = await uploadDataUrlToR2(asset.url, {
                 resourceType,
                 fileName: asset.originalName || fallbackFileName,
             });
@@ -1047,12 +1128,27 @@ const handleDateChange = (date: Date | null) => {
 
                     if (copy.before) {
                         const { url, label, type } = copy.before;
-                        copy.before = { url, label, type };
+                        copy.before = { url, label: toLocalizedString(label), type };
                     }
                     if (copy.after) {
                         const { url, label, type } = copy.after;
-                        copy.after = { url, label, type };
+                        copy.after = { url, label: toLocalizedString(label), type };
                     }
+
+                    if (Array.isArray(copy.items)) {
+                        copy.items = copy.items.map((item: any) => {
+                            const cleanItem: any = { ...item };
+                            delete cleanItem._id;
+                            cleanItem.caption = cleanItem.caption ? toLocalizedString(cleanItem.caption) : undefined;
+                            cleanItem.before = cleanItem.before ? localizeSideLabel(cleanItem.before) : cleanItem.before;
+                            cleanItem.after = cleanItem.after ? localizeSideLabel(cleanItem.after) : cleanItem.after;
+                            return cleanItem;
+                        });
+                    }
+
+                    if (copy.caption) copy.caption = toLocalizedString(copy.caption);
+                    if (copy.textContent) copy.textContent = toLocalizedString(copy.textContent);
+                    if (copy.htmlContent) copy.htmlContent = toLocalizedString(copy.htmlContent);
 
                     return copy;
                 }),
@@ -1087,23 +1183,53 @@ const handleDateChange = (date: Date | null) => {
             });
         }
 
-        // Prepare cast for submission: existing members are sent as their id only; new members include name/title
+        // Prepare cast for submission: existing members are sent as their id only; new members are sent inline for the backend to handle
         if (Array.isArray(clone.cast)) {
-            clone.cast = clone.cast.map((c: any) => {
-                if (!c) return c;
-                // If the cast item is a plain string (id), convert to object form expected by backend
-                if (typeof c === "string") return { name: c };
-                // If it's marked as existing, send as object with name set to the id
-                if (c.__existing && (c._id || c.id)) return { name: c._id || c.id };
-                // New members: send name/title/order
-                return { name: c.name || "", title: c.title || "", order: c.order };
-            });
+            clone.cast = await Promise.all(
+                clone.cast.map(async (c: any) => {
+                    if (!c) return c;
+                    // If the cast item is a plain string (id), convert to object form expected by backend
+                    if (typeof c === "string") return { name: c };
+                    const socialLinks = (c.socialLinks || [])
+                        .filter((l: any) => l && (l.platform || "").trim() && (l.url || "").trim())
+                        .map((l: any) => ({ platform: (l.platform || "").trim(), url: (l.url || "").trim() }));
+
+                    let photo: any = c.photo || null;
+                    let photoUrl = typeof photo === "string" ? photo : photo?.url;
+                    if (photoUrl && isDataUrl(photoUrl)) {
+                        const uploaded = await uploadDataUrlToR2(photoUrl, {
+                            resourceType: "image",
+                            fileName: (photo && photo.originalName) || `cast-photo-${Date.now()}.jpg`,
+                        });
+                        updateProgress();
+                        photo = uploaded.url;
+                    } else if (photo && typeof photo === "object" && !photoUrl && photo.publicId) {
+                        photo = photo.publicId;
+                    } else {
+                        photo = photoUrl || null;
+                    }
+
+                    // If it's marked as existing, send as object with name set to the id
+                    if ((c.__existing || c._id || c.id) && (c._id || c.id)) {
+                        const member: any = { name: c._id || c.id, order: Number(c.order) || 0 };
+                        if (socialLinks.length) member.socialLinks = socialLinks;
+                        if (photo) member.photo = photo;
+                        return member;
+                    }
+                    // New member — send inline
+                    const newMember: any = { name: c.name || "", title: c.title || "", order: c.order };
+                    if (socialLinks.length) newMember.socialLinks = socialLinks;
+                    if (photo) newMember.photo = photo;
+                    return newMember;
+                })
+            );
         }
 
         const submitData = {
-            name: clone.name,
-            description: clone.description,
-            location: clone.location,
+            name: toLocalizedString(clone.name),
+            description: toLocalizedString(clone.description),
+            location: toLocalizedString(clone.location),
+            order: clone.order,
             published: clone.published,
             publishedAt: clone.publishAt ? new Date(clone.publishAt).toISOString() : undefined,
             categories: normalizeTaxonomyArrayField(clone.categories),
@@ -1145,8 +1271,8 @@ const handleDateChange = (date: Date | null) => {
         if (editingMaterial || editingCast) return;
 
         const target = e.target as HTMLElement | null;
-        // allow Enter inside textareas or contenteditable elements
-        if (target && (target.tagName === "TEXTAREA" || target.getAttribute?.("contenteditable") === "true")) {
+        // allow Enter inside textareas, contenteditable elements, or fields that add values on Enter
+        if (target && (target.tagName === "TEXTAREA" || target.getAttribute?.("contenteditable") === "true" || target.hasAttribute?.("data-enter-add") || target.closest?.(".MuiAutocomplete-root"))) {
             return;
         }
 
@@ -1306,46 +1432,80 @@ const handleDateChange = (date: Date | null) => {
             <div className="space-y-4">
                 <div>
                     <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Project Name *
+                        Project Name (English) *
                     </label>
                     <input
                         type="text"
-                        name="name"
-                        value={form.name}
-                        onChange={handleChange}
+                        value={form.name?.en || ""}
+                        onChange={(e) => setForm({ ...form, name: { ...form.name, en: e.target.value } })}
                         required
                         className="input w-full"
-                        placeholder="Enter project name"
+                        placeholder="Enter project name (English)"
+                    />
+                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                        Project Name (Arabic) *
+                    </label>
+                    <input
+                        type="text"
+                        dir="rtl"
+                        value={form.name?.ar || ""}
+                        onChange={(e) => setForm({ ...form, name: { ...form.name, ar: e.target.value } })}
+                        required
+                        className="input w-full"
+                        placeholder="أدخل اسم المشروع (بالعربية)"
                     />
                 </div>
 
                 <div>
                     <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Description
+                        Description (English)
                     </label>
                     <textarea
-                        name="description"
-                        value={form.description}
-                        onChange={handleChange}
+                        value={form.description?.en || ""}
+                        onChange={(e) => setForm({ ...form, description: { ...form.description, en: e.target.value } })}
                         rows={4}
                         className="input w-full resize-y min-h-[100px]"
-                        placeholder="Describe the project..."
+                        placeholder="Describe the project... (English)"
+                    />
+                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                        Description (Arabic)
+                    </label>
+                    <textarea
+                        dir="rtl"
+                        value={form.description?.ar || ""}
+                        onChange={(e) => setForm({ ...form, description: { ...form.description, ar: e.target.value } })}
+                        rows={4}
+                        className="input w-full resize-y min-h-[100px]"
+                        placeholder="وصف المشروع (بالعربية)"
                     />
                 </div>
 
                 <div>
                     <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Location
+                        Location (English)
                     </label>
                     <div className="relative">
                         <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500" />
                         <input
                             type="text"
-                            name="location"
-                            value={form.location}
-                            onChange={handleChange}
+                            value={form.location?.en || ""}
+                            onChange={(e) => setForm({ ...form, location: { ...form.location, en: e.target.value } })}
                             className="input w-full pl-9"
                             placeholder="e.g., Cairo, Egypt"
+                        />
+                    </div>
+                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                        Location (Arabic)
+                    </label>
+                    <div className="relative">
+                        <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500" />
+                        <input
+                            type="text"
+                            dir="rtl"
+                            value={form.location?.ar || ""}
+                            onChange={(e) => setForm({ ...form, location: { ...form.location, ar: e.target.value } })}
+                            className="input w-full pl-9"
+                            placeholder="مثال: القاهرة، مصر"
                         />
                     </div>
                 </div>
@@ -1369,6 +1529,24 @@ const handleDateChange = (date: Date | null) => {
                         sx={taxonomyAutocompleteSx}
                         slotProps={taxonomyAutocompleteSlotProps}
                     />
+                </div>
+
+                <div>
+                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                        Order
+                    </label>
+                    <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={form.order}
+                        onChange={(e) => setForm({ ...form, order: Number(e.target.value) })}
+                        className="input w-full"
+                        placeholder="Project order (1, 2, 3...)"
+                    />
+                    <p className="mt-1 text-xs text-light-500 dark:text-dark-400">
+                        Determines the display order of this project.
+                    </p>
                 </div>
 
                 <div className="space-y-3 pt-2">
@@ -1465,6 +1643,7 @@ const handleDateChange = (date: Date | null) => {
                                                 value={newTag}
                                                 onChange={(e) => setNewTag(e.target.value)}
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
+                                                data-enter-add
                                                 className="input flex-1"
                                                 placeholder="Add a tag..."
                                             />
@@ -1543,8 +1722,8 @@ const handleDateChange = (date: Date | null) => {
                                                             <BeforeAfterSlider
                                                                 beforeUrl={material.before?.url}
                                                                 afterUrl={material.after?.url}
-                                                                beforeLabel={material.before?.label || "Before"}
-                                                                afterLabel={material.after?.label || "After"}
+                                                                beforeLabel={localizedToString(material.before?.label) || "Before"}
+                                                                afterLabel={localizedToString(material.after?.label) || "After"}
                                                                 className="w-full h-full"
                                                                 mediaClassName="w-full h-full"
                                                                 showSlider={false}
@@ -1562,14 +1741,14 @@ const handleDateChange = (date: Date | null) => {
                                                                 }
 
                                                                 if (previewItems.length === 1) {
-                                                                    return <img src={previewItems[0].url} alt={material.caption || ""} className="w-full h-full object-cover" />;
+                                                                    return <img src={previewItems[0].url} alt={localizedToString(material.caption)} className="w-full h-full object-cover" />;
                                                                 }
 
                                                                 return (
                                                                     <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
                                                                         {previewItems.slice(0, 4).map((item, itemIdx) => (
                                                                             <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
-                                                                                <img src={item.url} alt={material.caption || `Photo ${itemIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                <img src={item.url} alt={localizedToString(material.caption) || `Photo ${itemIdx + 1}`} className="w-full h-full object-cover" />
                                                                                 {itemIdx === 3 && previewItems.length > 4 && (
                                                                                     <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
                                                                                         +{previewItems.length - 4}
@@ -1608,8 +1787,8 @@ const handleDateChange = (date: Date | null) => {
                                                         <span className="text-sm font-medium text-light-900 dark:text-dark-50">
                                                             {material.type.toUpperCase()} #{material.order}
                                                         </span>
-                                                        {material.caption && (
-                                                            <span className="text-xs text-light-500 dark:text-secdark-500">{material.caption}</span>
+                                                        {localizedToString(material.caption) && (
+                                                            <span className="text-xs text-light-500 dark:text-secdark-500">{localizedToString(material.caption)}</span>
                                                         )}
                                                     </div>
 
@@ -1646,7 +1825,7 @@ const handleDateChange = (date: Date | null) => {
                                                         <div className="mt-2">
                                                             <div
                                                                 className="p-3 bg-light-100 dark:bg-dark-800 rounded-md text-sm text-light-700 dark:text-dark-300 max-h-28 overflow-auto break-words"
-                                                                dangerouslySetInnerHTML={{ __html: formatRichText(material.textContent) }}
+                                                                dangerouslySetInnerHTML={{ __html: formatRichText(localizedToString(material.textContent)) }}
                                                             >
                                                             </div>
                                                         </div>
@@ -1655,7 +1834,7 @@ const handleDateChange = (date: Date | null) => {
                                                     {material.htmlContent && (
                                                         <div className="mt-2">
                                                             <div className="p-3 bg-light-100 dark:bg-dark-800 rounded-md text-sm text-light-700 dark:text-dark-300 max-h-28 overflow-auto">
-                                                                <pre className="whitespace-pre-wrap text-xs break-words">{material.htmlContent}</pre>
+                                                                <pre className="whitespace-pre-wrap text-xs break-words">{localizedToString(material.htmlContent)}</pre>
                                                             </div>
                                                         </div>
                                                     )}
@@ -1718,15 +1897,24 @@ const handleDateChange = (date: Date | null) => {
                                                     </span>
                                                     <div>
                                                     <div className="flex items-center gap-2 mb-1">
-                                                        <User className="w-4 h-4 text-light-500" />
+                                                        {(() => {
+                                                            const memberPhotoUrl = getCastPhotoUrl(member.photo);
+                                                            if (memberPhotoUrl) {
+                                                                return <img src={memberPhotoUrl} alt={member.name} className="w-8 h-8 rounded-full object-cover" />;
+                                                            }
+                                                            return <User className="w-4 h-4 text-light-500" />;
+                                                        })()}
                                                         <span className="font-medium text-light-900 dark:text-dark-50">{member.name}</span>
                                                         <span className="text-sm text-light-500 dark:text-secdark-500">{member.title}</span>
+                                                    </div>
+                                                    <div className="mb-1">
+                                                        <SocialLinkIcons links={member.socialLinks} size={14} className="!gap-1.5" />
                                                     </div>
                                                     <div className="text-xs text-light-400 dark:text-dark-500">Order: {member.order}</div>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <button type="button" onClick={() => handleEditCast(member)} title="Edit" aria-label="Edit cast member" className="p-2 rounded-lg hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
+                                                    <button type="button" onClick={() => handleEditCast(member, idx)} title="Edit" aria-label="Edit cast member" className="p-2 rounded-lg hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
                                                         <Edit className="w-4 h-4" />
                                                     </button>
                                                     <button type="button" onClick={() => handleDeleteCast(idx)} title="Delete" aria-label="Delete cast member" className="p-2 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
@@ -1950,13 +2138,22 @@ const handleDateChange = (date: Date | null) => {
                             </div>
                             
                             <div>
-                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title</label>
+                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title (English)</label>
                                 <input
                                     type="text"
-                                    value={editingMaterial.caption || ""}
-                                    onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: e.target.value })}
+                                    value={editingMaterial.caption?.en || ""}
+                                    onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: { ...editingMaterial.caption, en: e.target.value } })}
                                     className="input w-full"
-                                    placeholder="Optional caption"
+                                    placeholder="Optional caption (English)"
+                                />
+                                <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title (Arabic)</label>
+                                <input
+                                    type="text"
+                                    dir="rtl"
+                                    value={editingMaterial.caption?.ar || ""}
+                                    onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: { ...editingMaterial.caption, ar: e.target.value } })}
+                                    className="input w-full"
+                                    placeholder="عنوان اختياري (بالعربية)"
                                 />
                             </div>
 
@@ -2041,13 +2238,22 @@ const handleDateChange = (date: Date | null) => {
 
                             {editingMaterial.type === "text" && (
                                 <div>
-                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content</label>
+                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content (English)</label>
                                     <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
                                         <ReactQuill
                                             theme="snow"
-                                            value={editingMaterial.textContent || ""}
-                                            onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: value })}
-                                            placeholder="Enter your text content here..."
+                                            value={editingMaterial.textContent?.en || ""}
+                                            onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: { ...editingMaterial.textContent, en: value } })}
+                                            placeholder="Enter your text content here... (English)"
+                                        />
+                                    </div>
+                                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content (Arabic)</label>
+                                    <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
+                                        <ReactQuill
+                                            theme="snow"
+                                            value={editingMaterial.textContent?.ar || ""}
+                                            onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: { ...editingMaterial.textContent, ar: value } })}
+                                            placeholder="أدخل محتوى النص هنا (بالعربية)"
                                         />
                                     </div>
                                 </div>
@@ -2072,6 +2278,33 @@ const handleDateChange = (date: Date | null) => {
                                                 <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.before.originalName || 'Uploaded image'}</div>
                                             </div>
                                         )}
+                                        <div className="grid grid-cols-2 gap-2 mt-3">
+                                            <input
+                                                type="text"
+                                                value={editingMaterial.before?.label?.en || ""}
+                                                onChange={(e) =>
+                                                    setEditingMaterial({
+                                                        ...editingMaterial,
+                                                        before: { ...(editingMaterial.before as any), label: { ...((editingMaterial.before as any)?.label || {}), en: e.target.value } },
+                                                    } as any)
+                                                }
+                                                className="input w-full"
+                                                placeholder="Before label (EN)"
+                                            />
+                                            <input
+                                                type="text"
+                                                dir="rtl"
+                                                value={editingMaterial.before?.label?.ar || ""}
+                                                onChange={(e) =>
+                                                    setEditingMaterial({
+                                                        ...editingMaterial,
+                                                        before: { ...(editingMaterial.before as any), label: { ...((editingMaterial.before as any)?.label || {}), ar: e.target.value } },
+                                                    } as any)
+                                                }
+                                                className="input w-full"
+                                                placeholder="قبل (AR)"
+                                            />
+                                        </div>
                                     </div>
 
                                     <div>
@@ -2089,6 +2322,33 @@ const handleDateChange = (date: Date | null) => {
                                                 <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.after.originalName || 'Uploaded image'}</div>
                                             </div>
                                         )}
+                                        <div className="grid grid-cols-2 gap-2 mt-3">
+                                            <input
+                                                type="text"
+                                                value={editingMaterial.after?.label?.en || ""}
+                                                onChange={(e) =>
+                                                    setEditingMaterial({
+                                                        ...editingMaterial,
+                                                        after: { ...(editingMaterial.after as any), label: { ...((editingMaterial.after as any)?.label || {}), en: e.target.value } },
+                                                    } as any)
+                                                }
+                                                className="input w-full"
+                                                placeholder="After label (EN)"
+                                            />
+                                            <input
+                                                type="text"
+                                                dir="rtl"
+                                                value={editingMaterial.after?.label?.ar || ""}
+                                                onChange={(e) =>
+                                                    setEditingMaterial({
+                                                        ...editingMaterial,
+                                                        after: { ...(editingMaterial.after as any), label: { ...((editingMaterial.after as any)?.label || {}), ar: e.target.value } },
+                                                    } as any)
+                                                }
+                                                className="input w-full"
+                                                placeholder="بعد (AR)"
+                                            />
+                                        </div>
                                     </div>
 
                                 </>
@@ -2111,7 +2371,7 @@ const handleDateChange = (date: Date | null) => {
                     <div className="bg-white dark:bg-dark-800 rounded-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
                         <div className="border-b border-light-200 dark:border-dark-700 p-4 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">
-                                {editingCast._id ? "Edit Team Member" : "Add Team Member"}
+                                {castModalMode === "edit" ? "Edit Team Member" : "Add Team Member"}
                             </h3>
                             <button onClick={() => setEditingCast(null)} className="p-1 hover:bg-light-100 dark:hover:bg-dark-700 rounded">
                                 <X className="w-5 h-5" />
@@ -2119,7 +2379,7 @@ const handleDateChange = (date: Date | null) => {
                         </div>
                         <div className="p-4 space-y-4">
 
-                                    {editingCast && editingCast._id ? (
+                                    {castModalMode === "edit" ? (
                                 <>
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Name</label>
@@ -2140,6 +2400,26 @@ const handleDateChange = (date: Date | null) => {
                                             className="input w-full"
                                             placeholder="e.g., Creative Director, Photographer"
                                         />
+                                    </div>
+                                    <CastSocialLinks
+                                        value={editingCast.socialLinks || []}
+                                        onChange={(links) => setEditingCast({ ...editingCast, socialLinks: links })}
+                                    />
+                                    <div>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Photo</label>
+                                        {(() => {
+                                            const photoUrl = getCastPhotoUrl(editingCast.photo);
+                                            if (photoUrl) {
+                                                return (
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <img src={photoUrl} alt={editingCast.name || "Member"} className="w-16 h-16 rounded-full object-cover border border-light-200 dark:border-dark-700" />
+                                                        <button type="button" onClick={() => setEditingCast({ ...editingCast, photo: null })} className="btn-ghost">Remove</button>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
+                                        <input type="file" accept="image/*" onChange={handleCastPhotoUpload} className="input w-full" />
                                     </div>
                                 </>
                             ) : (
@@ -2188,36 +2468,63 @@ const handleDateChange = (date: Date | null) => {
                                             />
 
                                             {newMembersRows.map((row, rIdx) => (
-                                                <div key={rIdx} className="grid grid-cols-12 gap-2 items-center mb-2">
-                                                    <input
-                                                        type="text"
-                                                        value={row.name}
-                                                        onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, name: e.target.value } : p)))}
-                                                        className="input col-span-7"
-                                                        placeholder="Full name"
+                                                <div key={rIdx} className="mb-3">
+                                                    <div className="grid grid-cols-12 gap-2 items-center mb-2">
+                                                        <input
+                                                            type="text"
+                                                            value={row.name}
+                                                            onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, name: e.target.value } : p)))}
+                                                            className="input col-span-7"
+                                                            placeholder="Full name"
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            value={row.title}
+                                                            onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value } : p)))}
+                                                            className="input col-span-4"
+                                                            placeholder="Title/Role (optional)"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setNewMembersRows((prev) => prev.filter((_, i) => i !== rIdx))}
+                                                            className="p-2 rounded hover:bg-light-100 dark:hover:bg-dark-800 text-danger-500"
+                                                            title="Remove"
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                    <CastSocialLinks
+                                                        value={row.socialLinks || []}
+                                                        onChange={(links) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, socialLinks: links } : p)))}
                                                     />
-                                                    <input
-                                                        type="text"
-                                                        value={row.title}
-                                                        onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value } : p)))}
-                                                        className="input col-span-4"
-                                                        placeholder="Title/Role (optional)"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setNewMembersRows((prev) => prev.filter((_, i) => i !== rIdx))}
-                                                        className="p-2 rounded hover:bg-light-100 dark:hover:bg-dark-800 text-danger-500"
-                                                        title="Remove"
-                                                    >
-                                                        <X className="w-4 h-4" />
-                                                    </button>
+                                                    <div className="mt-2">
+                                                        {(() => {
+                                                            const rowPhotoUrl = getCastPhotoUrl(row.photo);
+                                                            if (rowPhotoUrl) {
+                                                                return (
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <img src={rowPhotoUrl} alt={row.name || "Member"} className="w-10 h-10 rounded-full object-cover border border-light-200 dark:border-dark-700" />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, photo: null } : p)))}
+                                                                            className="btn-ghost text-xs"
+                                                                        >
+                                                                            Remove
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                        <input type="file" accept="image/*" onChange={(e) => handleCastRowPhotoUpload(e, rIdx)} className="input w-full" />
+                                                    </div>
                                                 </div>
                                             ))}
 
                                             <div className="flex gap-2">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setNewMembersRows((prev) => [...prev, { name: "", title: "", order: form.cast.length + prev.length + 1 }])}
+                                                    onClick={() => setNewMembersRows((prev) => [...prev, { name: "", title: "", order: form.cast.length + prev.length + 1, socialLinks: [], photo: null }])}
                                                     className="btn-secondary"
                                                 >
                                                     <Plus className="w-4 h-4 inline mr-2" />
@@ -2228,7 +2535,7 @@ const handleDateChange = (date: Date | null) => {
                             )}
                             <div className="flex justify-end gap-2 pt-4">
                                 <button onClick={() => setEditingCast(null)} className="btn-ghost">Cancel</button>
-                                <button onClick={handleSaveCast} className="btn-primary">{editingCast && editingCast._id ? "Save Member" : "Save Members"}</button>
+                                <button onClick={handleSaveCast} className="btn-primary">{castModalMode === "edit" ? "Save Member" : "Save Members"}</button>
                             </div>
                         </div>
                     </div>
