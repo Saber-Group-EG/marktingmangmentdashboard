@@ -1,9 +1,12 @@
-import { useState, KeyboardEvent } from "react";
+import { useState, KeyboardEvent, ChangeEvent } from "react";
 import { Plus, Edit2, Trash2, Check, X, Loader2, Building2 } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
 import { useProjectCompanies, useCreateProjectCompany, useUpdateProjectCompany, useDeleteProjectCompany } from "@/hooks/queries";
 import type { ProjectCompany } from "@/api/requests/projectCompaniesService";
+import UploadProgressOverlay from "@/components/UploadProgressOverlay";
+import { useUploadProgress } from "@/hooks/useUploadProgress";
+import { uploadDataUrlToR2 } from "@/utils/r2Upload";
 
 const getCompanyNameEn = (company: ProjectCompany): string => {
     const name = company.name;
@@ -17,6 +20,20 @@ const getCompanyNameAr = (company: ProjectCompany): string => {
     return typeof name === "string" ? "" : name.ar || "";
 };
 
+const getCompanyLogoUrl = (logo: any): string => {
+    if (!logo) return "";
+    if (typeof logo === "string") return logo;
+    return logo.url || logo.publicId || "";
+};
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+    });
+
 const ProjectCompaniesPage = () => {
     const { t } = useLang();
     const tr = (key: string, fallback: string) => {
@@ -27,11 +44,15 @@ const ProjectCompaniesPage = () => {
     // Add form states
     const [inputNameEn, setInputNameEn] = useState("");
     const [inputNameAr, setInputNameAr] = useState("");
+    const [inputField, setInputField] = useState("");
+    const [inputLogo, setInputLogo] = useState("");
 
     // Edit modal states
     const [editingCompany, setEditingCompany] = useState<ProjectCompany | null>(null);
     const [editNameEn, setEditNameEn] = useState("");
     const [editNameAr, setEditNameAr] = useState("");
+    const [editField, setEditField] = useState("");
+    const [editLogo, setEditLogo] = useState("");
 
     const [error, setError] = useState("");
 
@@ -43,6 +64,30 @@ const ProjectCompaniesPage = () => {
     const deleteProjectCompanyMutation = useDeleteProjectCompany();
 
     const isSaving = createProjectCompanyMutation.isPending || updateProjectCompanyMutation.isPending;
+    const logoUpload = useUploadProgress();
+
+    const handleLogoSelect = async (e: ChangeEvent<HTMLInputElement>, setLogo: (url: string) => void) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            await logoUpload.run({
+                title: tr("uploading_logo", "Uploading logo..."),
+                label: file.name,
+                task: async () => {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    const uploaded = await uploadDataUrlToR2(dataUrl, {
+                        fileName: file.name || `company-${Date.now()}.jpg`,
+                        resourceType: "image",
+                    });
+                    setLogo(uploaded.url);
+                },
+            });
+        } catch (e: any) {
+            setError(e?.message || tr("logo_upload_failed", "Failed to upload logo"));
+        } finally {
+            e.target.value = "";
+        }
+    };
 
     const handleAdd = () => {
         const nameEn = (inputNameEn || "").trim();
@@ -59,11 +104,17 @@ const ProjectCompaniesPage = () => {
 
         setError("");
         createProjectCompanyMutation.mutate(
-            { name: { en: nameEn, ar: nameAr } },
+            {
+                name: { en: nameEn, ar: nameAr },
+                field: (inputField || "").trim() || undefined,
+                logo: inputLogo || undefined,
+            },
             {
                 onSuccess: () => {
                     setInputNameEn("");
                     setInputNameAr("");
+                    setInputField("");
+                    setInputLogo("");
                 },
                 onError: (e: any) => {
                     setError(e?.response?.data?.message || "Failed to create company");
@@ -83,6 +134,8 @@ const ProjectCompaniesPage = () => {
         setEditingCompany(company);
         setEditNameEn(getCompanyNameEn(company));
         setEditNameAr(getCompanyNameAr(company));
+        setEditField(company.field || "");
+        setEditLogo(getCompanyLogoUrl(company.logo));
         setError("");
     };
 
@@ -90,6 +143,8 @@ const ProjectCompaniesPage = () => {
         setEditingCompany(null);
         setEditNameEn("");
         setEditNameAr("");
+        setEditField("");
+        setEditLogo("");
         setError("");
     };
 
@@ -118,7 +173,11 @@ const ProjectCompaniesPage = () => {
             setError("");
             await updateProjectCompanyMutation.mutateAsync({
                 id: editingCompany._id,
-                data: { name: { en: nameEn, ar: nameAr } },
+                data: {
+                    name: { en: nameEn, ar: nameAr },
+                    field: (editField || "").trim() || undefined,
+                    logo: editLogo || undefined,
+                },
             });
             closeEditModal();
         } catch (e: any) {
@@ -213,6 +272,55 @@ const ProjectCompaniesPage = () => {
                         />
                     </div>
 
+                    <div>
+                        <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
+                            {tr("project_company_field", "Field")}
+                        </label>
+                        <input
+                            value={inputField}
+                            onChange={(e) => setInputField(e.target.value)}
+                            onKeyDown={handleCreateKeyDown}
+                            placeholder={tr("project_company_field", "Field")}
+                            disabled={isSaving}
+                            className="input w-full disabled:opacity-50"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
+                            {tr("project_company_logo", "Logo")}
+                        </label>
+                        <div className="mb-2 flex items-center gap-3">
+                            {inputLogo ? (
+                                <img
+                                    src={inputLogo}
+                                    alt={tr("project_company_logo", "Logo")}
+                                    className="h-12 w-12 rounded-xl border border-light-200 object-cover dark:border-dark-700"
+                                />
+                            ) : (
+                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-light-100 text-light-500 dark:bg-dark-700 dark:text-dark-400">
+                                    <Building2 size={20} />
+                                </div>
+                            )}
+                            {inputLogo && (
+                                <button
+                                    type="button"
+                                    onClick={() => setInputLogo("")}
+                                    className="btn-ghost text-xs"
+                                >
+                                    {tr("remove_logo", "Remove")}
+                                </button>
+                            )}
+                        </div>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleLogoSelect(e, setInputLogo)}
+                            disabled={isSaving}
+                            className="input w-full disabled:opacity-50"
+                        />
+                    </div>
+
                     <div className="flex items-end">
                         <button
                             onClick={handleAdd}
@@ -246,21 +354,35 @@ const ProjectCompaniesPage = () => {
                             allCompanies.map((company) => {
                                 const nameEn = getCompanyNameEn(company);
                                 const nameAr = getCompanyNameAr(company);
+                                const logoUrl = getCompanyLogoUrl(company.logo);
                                 return (
                                     <div
                                         key={company._id}
                                         className="group flex flex-col gap-3 rounded-2xl border border-light-200/80 bg-white px-4 py-3 text-light-900 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-dark-700/80 dark:bg-dark-800 dark:text-dark-50 sm:flex-row sm:items-center sm:justify-between"
                                     >
-                                        <div className="flex w-full min-w-0 flex-col gap-1">
-                                            <span className="flex items-center gap-2 text-sm font-semibold break-words">
-                                                <Building2 size={16} className="shrink-0 text-light-500 dark:text-dark-400" />
-                                                {nameEn}
-                                            </span>
-                                            {nameAr && (
-                                                <span dir="rtl" className="text-sm break-words text-light-600 dark:text-dark-300">
-                                                    {nameAr}
+                                        <div className="flex w-full min-w-0 items-center gap-3">
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-light-200 bg-light-100 dark:border-dark-700 dark:bg-dark-700">
+                                                {logoUrl ? (
+                                                    <img src={logoUrl} alt={nameEn} className="h-full w-full object-cover" />
+                                                ) : (
+                                                    <Building2 size={18} className="text-light-500 dark:text-dark-400" />
+                                                )}
+                                            </div>
+                                            <div className="flex min-w-0 flex-col gap-1">
+                                                <span className="flex items-center gap-2 text-sm font-semibold break-words">
+                                                    {nameEn}
                                                 </span>
-                                            )}
+                                                {nameAr && (
+                                                    <span dir="rtl" className="text-sm break-words text-light-600 dark:text-dark-300">
+                                                        {nameAr}
+                                                    </span>
+                                                )}
+                                                {company.field && (
+                                                    <span className="text-xs break-words text-light-500 dark:text-dark-400">
+                                                        {company.field}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
                                             <button
@@ -350,6 +472,53 @@ const ProjectCompaniesPage = () => {
                                         dir="rtl"
                                     />
                                 </div>
+
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("project_company_field", "Field")}
+                                    </label>
+                                    <input
+                                        value={editField}
+                                        onChange={(e) => setEditField(e.target.value)}
+                                        onKeyDown={handleEditKeyDown}
+                                        className="w-full rounded-lg border border-light-300 px-4 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700 dark:text-light-100"
+                                        placeholder={tr("project_company_field", "Field")}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-light-700 dark:text-dark-300">
+                                    {tr("project_company_logo", "Logo")}
+                                </label>
+                                <div className="mb-2 flex items-center gap-3">
+                                    {editLogo ? (
+                                        <img
+                                            src={editLogo}
+                                            alt={tr("project_company_logo", "Logo")}
+                                            className="h-14 w-14 rounded-xl border border-light-200 object-cover dark:border-dark-700"
+                                        />
+                                    ) : (
+                                        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-light-100 text-light-500 dark:bg-dark-700 dark:text-dark-400">
+                                            <Building2 size={22} />
+                                        </div>
+                                    )}
+                                    {editLogo && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditLogo("")}
+                                            className="btn-ghost text-xs"
+                                        >
+                                            {tr("remove_logo", "Remove")}
+                                        </button>
+                                    )}
+                                </div>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => handleLogoSelect(e, setEditLogo)}
+                                    className="input w-full"
+                                />
                             </div>
                         </div>
 
@@ -382,6 +551,14 @@ const ProjectCompaniesPage = () => {
                     </div>
                 </div>
             )}
+
+            <UploadProgressOverlay
+                open={logoUpload.open}
+                progress={logoUpload.progress}
+                estimatedSecondsLeft={logoUpload.estimatedSecondsLeft}
+                title={logoUpload.title || tr("uploading_logo", "Uploading logo...")}
+                label={logoUpload.label}
+            />
         </div>
     );
 };

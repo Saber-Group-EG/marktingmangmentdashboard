@@ -3,12 +3,16 @@ import axiosInstance from "../axios";
 export interface ProjectCompany {
     _id: string;
     name: { en: string; ar: string } | string;
+    logo?: string;
+    field?: string;
     createdAt?: string;
     updatedAt?: string;
 }
 
 export interface ProjectCompanyInput {
     name: { en: string; ar: string };
+    logo?: string;
+    field?: string;
 }
 
 const extractProjectCompanies = (payload: any): ProjectCompany[] => {

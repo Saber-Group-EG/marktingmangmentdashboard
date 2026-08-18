@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useProject, useUpdateProject, useDeleteProject, useProjectTypes, useProjectCast, useProjects, useCategories, useProjectCompanies } from "@/hooks/queries";
+import { useProject, useUpdateProject, useDeleteProject, useProjectTypes, useProjectCast, useProjects, useCategories, useProjectCompanies, useCreateProjectCompany } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
@@ -124,6 +124,10 @@ const EditProject: React.FC = () => {
     const [newTypeAr, setNewTypeAr] = useState("");
     const [selectedExistingCategory, setSelectedExistingCategory] = useState("");
     const [selectedExistingType, setSelectedExistingType] = useState("");
+    const [newCompanyEn, setNewCompanyEn] = useState("");
+    const [newCompanyAr, setNewCompanyAr] = useState("");
+    const [newCompanyField, setNewCompanyField] = useState("");
+    const [newCompanyLogo, setNewCompanyLogo] = useState("");
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
@@ -690,6 +694,51 @@ const EditProject: React.FC = () => {
         if (!selected) return;
         if (!form.types.some((t: any) => isSameOption(t, selected))) {
             setForm({ ...form, types: [...form.types, selected] });
+        }
+    };
+
+    const createCompanyMutation = useCreateProjectCompany();
+
+    const handleCompanyLogoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            await photoUpload.run({
+                title: "Uploading logo...",
+                label: file.name,
+                task: async () => {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    const uploaded = await uploadDataUrlToR2(dataUrl, {
+                        fileName: file.name || `company-${Date.now()}.jpg`,
+                        resourceType: "image",
+                    });
+                    setNewCompanyLogo(uploaded.url);
+                },
+            });
+        } catch (e: any) {
+            console.error("Failed to upload company logo:", e);
+        } finally {
+            e.target.value = "";
+        }
+    };
+
+    const handleAddCompany = async () => {
+        const en = newCompanyEn.trim();
+        const ar = newCompanyAr.trim();
+        if (!en || !ar) return;
+        try {
+            const created = await createCompanyMutation.mutateAsync({
+                name: { en, ar },
+                field: newCompanyField.trim() || undefined,
+                logo: newCompanyLogo || undefined,
+            });
+            setForm({ ...form, company: created });
+            setNewCompanyEn("");
+            setNewCompanyAr("");
+            setNewCompanyField("");
+            setNewCompanyLogo("");
+        } catch (e: any) {
+            console.error("Failed to create company:", e);
         }
     };
 
@@ -1718,6 +1767,75 @@ if (Array.isArray(clone.cast)) {
                                             sx={taxonomyAutocompleteSx}
                                             slotProps={taxonomyAutocompleteSlotProps}
                                         />
+
+                                        <div className="mt-4 border-t border-light-200 dark:border-dark-700 pt-4">
+                                            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-light-500 dark:text-dark-400">
+                                                Or create a new company
+                                            </p>
+                                            <div className="grid gap-3 sm:grid-cols-2">
+                                                <input
+                                                    type="text"
+                                                    value={newCompanyEn}
+                                                    onChange={(e) => setNewCompanyEn(e.target.value)}
+                                                    className="input w-full"
+                                                    placeholder="Company name (EN)..."
+                                                />
+                                                <input
+                                                    type="text"
+                                                    dir="rtl"
+                                                    value={newCompanyAr}
+                                                    onChange={(e) => setNewCompanyAr(e.target.value)}
+                                                    className="input w-full"
+                                                    placeholder="Company name (AR)..."
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={newCompanyField}
+                                                    onChange={(e) => setNewCompanyField(e.target.value)}
+                                                    className="input w-full"
+                                                    placeholder="Field (e.g. Production)..."
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={handleCompanyLogoSelect}
+                                                        className="input w-full flex-1"
+                                                    />
+                                                    {newCompanyLogo && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setNewCompanyLogo("")}
+                                                            className="btn-ghost text-xs shrink-0"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 flex items-center gap-3">
+                                                {newCompanyLogo && (
+                                                    <img
+                                                        src={newCompanyLogo}
+                                                        alt="Company logo"
+                                                        className="h-10 w-10 rounded-lg border border-light-200 object-cover dark:border-dark-700"
+                                                    />
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddCompany}
+                                                    disabled={createCompanyMutation.isPending}
+                                                    className="btn-secondary flex items-center gap-2 disabled:opacity-50"
+                                                >
+                                                    {createCompanyMutation.isPending ? (
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                    ) : (
+                                                        <Plus size={14} />
+                                                    )}
+                                                    Add Company
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <div>
