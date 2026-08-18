@@ -19,9 +19,12 @@ const extractArrayFromResponse = (payload: any): any[] => {
   if (Array.isArray(payload?.types)) return payload.types;
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.cast)) return payload.cast;
+  if (Array.isArray(payload?.companies)) return payload.companies;
   if (Array.isArray(payload?.data?.categories)) return payload.data.categories;
   if (Array.isArray(payload?.data?.types)) return payload.data.types;
   if (Array.isArray(payload?.data?.items)) return payload.data.items;
+  if (Array.isArray(payload?.data?.cast)) return payload.data.cast;
   return [];
 };
 
@@ -37,7 +40,8 @@ const normalizeTaxonomyOption = (item: any): ProjectTaxonomyOption | null => {
   }
 
   const id = String(item._id || item.id || "").trim();
-  const name = String(item.name || item.title || item.label || item.value || id || "").trim();
+  const rawName = item.name || item.title || item.label || item.value || id || "";
+  const name = (rawName && typeof rawName === "object" ? rawName.en || rawName.ar || "" : String(rawName)).trim();
   if (!name) return null;
 
   return {
@@ -205,9 +209,7 @@ export const getProjectCategories = async (): Promise<ProjectTaxonomyOption[]> =
 
 export const getProjectTypes = async (): Promise<ProjectTaxonomyOption[]> => {
   try {
-    const response = await axiosInstance.get(`${PROJECTS_ENDPOINT}/types`, {
-      params: { PageCount: "all" },
-    });
+    const response = await axiosInstance.get("/types");
     const raw = extractArrayFromResponse(response.data);
     const normalized = raw
       .map(normalizeTaxonomyOption)
@@ -220,17 +222,19 @@ export const getProjectTypes = async (): Promise<ProjectTaxonomyOption[]> => {
 
 
 export const getProjectCast = async (): Promise<ProjectTaxonomyOption[]> => {
+  const normalize = (raw: any[]) =>
+    uniqueTaxonomyOptions(
+      raw.map(normalizeTaxonomyOption).filter((item): item is ProjectTaxonomyOption => !!item),
+    );
+
   try {
-    const response = await axiosInstance.get(`${PROJECTS_ENDPOINT}/cast`, {
+    const response = await axiosInstance.get("/cast");
+    return normalize(extractArrayFromResponse(response.data));
+  } catch {
+    const fallbackResponse = await axiosInstance.get(`${PROJECTS_ENDPOINT}/cast`, {
       params: { PageCount: "all" },
     });
-    const raw = extractArrayFromResponse(response.data);
-    const normalized = raw
-      .map(normalizeTaxonomyOption)
-      .filter((item): item is ProjectTaxonomyOption => !!item);
-    return uniqueTaxonomyOptions(normalized);
-  } catch (error) {
-    throw error;
+    return normalize(extractArrayFromResponse(fallbackResponse.data));
   }
 };
 

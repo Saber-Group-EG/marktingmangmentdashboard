@@ -4,6 +4,7 @@ import LocalizedArrow from "@/components/LocalizedArrow";
 import { useLang } from "@/hooks/useLang";
 import { showAlert, showToast } from "@/utils/swal";
 import { useCreateContract, useUpdateContract, useQuotations, useItems, useContracts, useCategories } from "@/hooks/queries";
+import { getCategoryDisplayName } from "@/api/requests/categoriesService";
 import { useContractTerms } from "@/hooks/queries/useContractTermsQuery";
 import { getQuotationById } from "@/api/requests/quotationsService";
 import { getContractById, type Contract } from "@/api/requests/contractsService";
@@ -936,7 +937,7 @@ const CreateContract = ({ clientId, clientName, onBack, onSuccess, editContract,
                                                                 : "border-light-300 bg-white text-light-700 hover:border-light-400 hover:bg-light-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
                                                         }`}
                                                     >
-                                                        {category.name}
+                                                        {getCategoryDisplayName(category, lang)}
                                                         <span className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs ${
                                                             selectedTermCategory === category._id
                                                                 ? "bg-white/20 text-white"

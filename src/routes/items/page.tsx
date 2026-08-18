@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, Check, X, Loader2, Search } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem, useCategories } from "@/hooks/queries";
+import { getCategoryDisplayName } from "@/api/requests/categoriesService";
 import type { Item } from "@/api/requests/itemsService";
 
 const ItemsPage = () => {
@@ -178,7 +179,7 @@ const ItemsPage = () => {
 
     const getCategoryName = (categoryId: string) => {
         const category = itemCategories.find(c => c._id === categoryId);
-        return category ? category.name : tr("no_category", "No category");
+        return category ? getCategoryDisplayName(category, lang) : tr("no_category", "No category");
     };
 
     return (
@@ -298,7 +299,7 @@ const ItemsPage = () => {
                             ) : (
                                 itemCategories.map((category) => (
                                     <option key={category._id} value={category._id}>
-                                        {category.name}
+                                        {getCategoryDisplayName(category, lang)}
                                     </option>
                                 ))
                             )}
@@ -375,7 +376,7 @@ const ItemsPage = () => {
                                         : "bg-light-100 text-light-700 hover:bg-light-200 dark:bg-dark-800 dark:text-dark-300 dark:hover:bg-dark-700"
                                 }`}
                             >
-                                {category.name}
+                                {getCategoryDisplayName(category, lang)}
                                 <span className={`ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs ${
                                     selectedCategory === category._id
                                         ? "bg-white/20 text-white"
@@ -600,7 +601,7 @@ const ItemsPage = () => {
                                         ) : (
                                             itemCategories.map((category) => (
                                                 <option key={category._id} value={category._id}>
-                                                    {category.name}
+                                                    {getCategoryDisplayName(category, lang)}
                                                 </option>
                                             ))
                                         )}

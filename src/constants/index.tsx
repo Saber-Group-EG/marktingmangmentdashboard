@@ -11,6 +11,7 @@ import {
     FileText,
     NotepadText,
     Tag,
+    Building2,
     // Settings,
     // MessageSquare,
     UserCircle,
@@ -99,6 +100,16 @@ export const navbarLinks = [
                 label: "Categories",
                 icon: Tag,
                 path: "/categories",
+            },
+            {
+                label: "Cast",
+                icon: Users,
+                path: "/cast",
+            },
+            {
+                label: "Project Company",
+                icon: Building2,
+                path: "/project-companies",
             },
             
         ],

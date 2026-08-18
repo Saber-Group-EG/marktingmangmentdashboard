@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useProject, useUpdateProject, useDeleteProject, useProjectTypes, useProjectCast, useProjects, useCategories } from "@/hooks/queries";
+import { useProject, useUpdateProject, useDeleteProject, useProjectTypes, useProjectCast, useProjects, useCategories, useProjectCompanies } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
@@ -9,8 +9,10 @@ import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
-import { isDataUrl, uploadDataUrlToR2 } from "@/utils/r2Upload";
+import { isDataUrl, uploadDataUrlToR2Cached, uploadDataUrlToR2 } from "@/utils/r2Upload";
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
+import { createCategory } from "@/api/requests/categoriesService";
+import { createType } from "@/api/requests/typesService";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
 import { 
   Save, Trash2, X, ArrowLeft, Loader2, 
@@ -96,6 +98,7 @@ const EditProject: React.FC = () => {
     const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading } = useCategories({ type: "project" });
     const projectCategories = projectCategoriesResponse?.categories || [];
     const { data: projectTypes = [], isLoading: projectTypesLoading } = useProjectTypes();
+    const { data: projectCompanies = [] } = useProjectCompanies();
 
     const [form, setForm] = useState<any>({
         name: "",
@@ -110,9 +113,17 @@ const EditProject: React.FC = () => {
         cast: [] as Cast[],
         mainCover: null as any,
         parentProject: null as any,
+        company: null as any,
     });
     
     const [newTag, setNewTag] = useState("");
+    const [newTagAr, setNewTagAr] = useState("");
+    const [newCategory, setNewCategory] = useState("");
+    const [newCategoryAr, setNewCategoryAr] = useState("");
+    const [newType, setNewType] = useState("");
+    const [newTypeAr, setNewTypeAr] = useState("");
+    const [selectedExistingCategory, setSelectedExistingCategory] = useState("");
+    const [selectedExistingType, setSelectedExistingType] = useState("");
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
@@ -132,7 +143,10 @@ const EditProject: React.FC = () => {
     const getOptionLabel = (value: any): string => {
         if (typeof value === "string") return value;
         if (!value || typeof value !== "object") return "";
-        return value.name || value.title || value.label || value.value || value._id || value.id || "";
+        const name = value.name;
+        if (name && typeof name === "object") return name.en || name.ar || "";
+        if (value.en || value.ar) return value.en || value.ar || "";
+        return name || value.title || value.label || value.value || value._id || value.id || "";
     };
 
     const getOptionValue = (value: any): string => {
@@ -141,21 +155,71 @@ const EditProject: React.FC = () => {
         return value._id || value.id || value.name || value.title || value.value || "";
     };
 
-    const normalizeArrayField = (arr: any[] = []): string[] =>
-        arr
-            .map((item) => getOptionValue(item))
-            .filter((item, index, all) => !!item && all.indexOf(item) === index);
+    // company names may be localized objects {en, ar} — resolve to a display string
+    const getCompanyLabel = (opt: any): string => {
+        if (!opt) return "";
+        if (typeof opt === "string") return opt;
+        const name = opt.name;
+        if (name && typeof name === "object") return name.en || name.ar || name || "";
+        return getOptionLabel(opt);
+    };
 
-    const normalizeTaxonomyArrayField = (arr: any[] = []): string[] =>
-        arr
-            .map((item) => {
-                if (typeof item === "string") return item.trim();
-                if (!item || typeof item !== "object") return "";
-                const existingId = String(item._id || item.id || "").trim();
-                if (existingId) return existingId;
-                return getOptionLabel(item).trim();
-            })
-            .filter((item, index, all) => !!item && all.indexOf(item) === index);
+    const makeLocalizedName = (en: string, ar: string): { en: string; ar: string } => ({ en: en.trim(), ar: ar.trim() });
+
+    const normalizeArrayField = (arr: any[] = []): { en: string; ar: string }[] => {
+        const seen = new Set<string>();
+        const result: { en: string; ar: string }[] = [];
+        for (const item of arr || []) {
+            let en = "";
+            let ar = "";
+            if (typeof item === "string") {
+                en = item.trim();
+            } else if (item && typeof item === "object") {
+                const name = item.name;
+                if (name && typeof name === "object") {
+                    en = String(name.en || "").trim();
+                    ar = String(name.ar || "").trim();
+                } else if (item.en !== undefined || item.ar !== undefined) {
+                    en = String(item.en || "").trim();
+                    ar = String(item.ar || "").trim();
+                } else {
+                    en = getOptionLabel(item).trim();
+                }
+            }
+            if (!en) continue;
+            const key = `${en.toLowerCase()}__${ar.toLowerCase()}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            result.push({ en, ar });
+        }
+        return result;
+    };
+
+    const resolveTaxonomyIds = async (items: any[], kind: "category" | "type"): Promise<string[]> => {
+        const options = kind === "category" ? projectCategories : projectTypes;
+        const resolved: string[] = [];
+        for (const item of items || []) {
+            const label = getOptionLabel(item).trim();
+            if (!label) continue;
+            const existing = options.find((o: any) => getOptionLabel(o).toLowerCase() === label.toLowerCase());
+            if (existing && getOptionValue(existing)) {
+                resolved.push(getOptionValue(existing));
+                continue;
+            }
+            const rawId = typeof item === "string" ? item.trim() : getOptionValue(item);
+            if (rawId && /^[0-9a-fA-F]{24}$/.test(rawId)) {
+                resolved.push(rawId);
+                continue;
+            }
+            const ar = item && typeof item === "object" ? String(item.ar || "").trim() : "";
+            const created = kind === "category"
+                ? await createCategory({ name: { en: label, ar }, type: "project" })
+                : await createType({ name: { en: label, ar } });
+            const createdId = (created as any)?._id || (created as any)?.id;
+            if (createdId) resolved.push(createdId);
+        }
+        return resolved.filter(Boolean);
+    };
 
     const isSameOption = (a: any, b: any): boolean => {
         const aId = a && typeof a === "object" ? String(a._id || a.id || "").trim() : "";
@@ -332,6 +396,10 @@ const EditProject: React.FC = () => {
                 label: file.name,
                 task: async () => {
                     const dataUrl = await readFileAsDataUrl(file);
+                    uploadDataUrlToR2Cached(dataUrl, {
+                        resourceType: "image",
+                        fileName: file.name,
+                    }).catch(() => {});
                     setEditingMaterial((prev) => (prev ? { ...prev, thumbnail: { url: dataUrl, mimeType: file.type, originalName: file.name, size: file.size } } : prev));
                 },
             });
@@ -508,6 +576,20 @@ const EditProject: React.FC = () => {
             }
         }
 
+        // derive project company option from server payload when available
+        let companyInitial: any = null;
+        const rawCompany: any = (project as any).company;
+        if (rawCompany) {
+            if (typeof rawCompany === "string") {
+                const found = projectCompanies.find((pc: any) => (pc._id || pc.id) === rawCompany);
+                companyInitial = found || rawCompany;
+            } else if (typeof rawCompany === "object") {
+                const cid = rawCompany._id || rawCompany.id;
+                const found = cid ? projectCompanies.find((pc: any) => (pc._id || pc.id) === cid) : null;
+                companyInitial = found || rawCompany;
+            }
+        }
+
         setForm({
             name: toLocalizedString((project as any).localizedName ?? project.name),
             description: toLocalizedString((project as any).localizedDescription ?? (project as any).description),
@@ -521,6 +603,7 @@ const EditProject: React.FC = () => {
             cast: mappedCast,
             mainCover: project.mainCover || null,
             parentProject: parentInitial,
+            company: companyInitial,
         });
     }, [project, projectCast, allProjects]);
 
@@ -537,15 +620,77 @@ const EditProject: React.FC = () => {
     // Tag Management
     const handleAddTag = () => {
         const next = newTag.trim();
+        const ar = newTagAr.trim();
+        if (!next) return;
         const exists = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === next.toLowerCase());
-        if (next && !exists) {
-            setForm({ ...form, tags: [...form.tags, next] });
+        if (exists) {
             setNewTag("");
+            setNewTagAr("");
+            return;
         }
+        setForm({ ...form, tags: [...form.tags, ar ? makeLocalizedName(next, ar) : next] });
+        setNewTag("");
+        setNewTagAr("");
     };
 
     const handleRemoveTag = (tag: any) => {
         setForm({ ...form, tags: form.tags.filter((t: any) => !isSameOption(t, tag)) });
+    };
+
+    const handleRemoveCategory = (cat: any) => {
+        setForm({ ...form, categories: form.categories.filter((c: any) => !isSameOption(c, cat)) });
+    };
+
+    const handleRemoveType = (type: any) => {
+        setForm({ ...form, types: form.types.filter((t: any) => !isSameOption(t, type)) });
+    };
+
+    const handleAddCategory = () => {
+        const next = newCategory.trim();
+        const ar = newCategoryAr.trim();
+        if (!next) return;
+        const exists = form.categories.some((c: any) => getOptionLabel(c).toLowerCase() === next.toLowerCase());
+        if (exists) {
+            setNewCategory("");
+            setNewCategoryAr("");
+            return;
+        }
+        setForm({ ...form, categories: [...form.categories, { en: next, ar }] });
+        setNewCategory("");
+        setNewCategoryAr("");
+    };
+
+    const handleAddType = () => {
+        const next = newType.trim();
+        const ar = newTypeAr.trim();
+        if (!next) return;
+        const exists = form.types.some((t: any) => getOptionLabel(t).toLowerCase() === next.toLowerCase());
+        if (exists) {
+            setNewType("");
+            setNewTypeAr("");
+            return;
+        }
+        setForm({ ...form, types: [...form.types, { en: next, ar }] });
+        setNewType("");
+        setNewTypeAr("");
+    };
+
+    const handleSelectExistingCategory = (value: string) => {
+        const idx = Number(value);
+        const selected = projectCategories[idx];
+        if (!selected) return;
+        if (!form.categories.some((c: any) => isSameOption(c, selected))) {
+            setForm({ ...form, categories: [...form.categories, selected] });
+        }
+    };
+
+    const handleSelectExistingType = (value: string) => {
+        const idx = Number(value);
+        const selected = projectTypes[idx];
+        if (!selected) return;
+        if (!form.types.some((t: any) => isSameOption(t, selected))) {
+            setForm({ ...form, types: [...form.types, selected] });
+        }
     };
 
     // Material Management
@@ -614,6 +759,13 @@ const EditProject: React.FC = () => {
                             })
                         );
 
+                        uploadedItems.forEach((item) => {
+                            uploadDataUrlToR2Cached(item.url, {
+                                resourceType: "image",
+                                fileName: item.originalName || "project-photo.jpg",
+                            }).catch(() => {});
+                        });
+
                         setEditingMaterial((prev) => {
                             if (!prev || prev.type !== "photo") return prev;
                             const items = [...buildPhotoItems(prev), ...uploadedItems];
@@ -630,6 +782,10 @@ const EditProject: React.FC = () => {
                     } else {
                         const file = files[0];
                         const dataUrl = await readFileAsDataUrl(file);
+                        uploadDataUrlToR2Cached(dataUrl, {
+                            resourceType: "video",
+                            fileName: file.name,
+                        }).catch(() => {});
                         setEditingMaterial((prev) =>
                             prev
                                 ? {
@@ -676,6 +832,10 @@ const EditProject: React.FC = () => {
                 label: file.name,
                 task: async () => {
                     const dataUrl = await readFileAsDataUrl(file);
+                    uploadDataUrlToR2Cached(dataUrl, {
+                        resourceType: "image",
+                        fileName: file.name,
+                    }).catch(() => {});
                     setEditingMaterial({
                         ...editingMaterial,
                         [which]: {
@@ -912,7 +1072,7 @@ const EditProject: React.FC = () => {
                 label: file.name,
                 task: async () => {
                     const dataUrl = await readFileAsDataUrl(file);
-                    setForm({
+        setForm({
                         ...form,
                         mainCover: {
                             url: dataUrl,
@@ -952,7 +1112,7 @@ const EditProject: React.FC = () => {
                     return asset;
                 }
 
-                const uploaded = await uploadDataUrlToR2(asset.url, {
+                const uploaded = await uploadDataUrlToR2Cached(asset.url, {
                     resourceType,
                     fileName: asset.originalName || fallbackFileName,
                 });
@@ -1135,11 +1295,12 @@ const EditProject: React.FC = () => {
                 });
             }
 
-            if (Array.isArray(clone.cast)) {
+if (Array.isArray(clone.cast)) {
                 clone.cast = await Promise.all(
                     clone.cast.map(async (c: any) => {
                         if (!c) return c;
                         if (typeof c === "string") return { name: c };
+
                         const socialLinks = (c.socialLinks || [])
                             .filter((l: any) => l && (l.platform || "").trim() && (l.url || "").trim())
                             .map((l: any) => ({ platform: (l.platform || "").trim(), url: (l.url || "").trim() }));
@@ -1147,10 +1308,10 @@ const EditProject: React.FC = () => {
                         let photo: any = c.photo || null;
                         let photoUrl = typeof photo === "string" ? photo : photo?.url;
                         if (photoUrl && isDataUrl(photoUrl)) {
-const uploaded = await uploadDataUrlToR2(photoUrl, {
-                            resourceType: "image",
-                            fileName: (photo && photo.originalName) || `cast-photo-${Date.now()}.jpg`,
-                        });
+                            const uploaded = await uploadDataUrlToR2(photoUrl, {
+                                resourceType: "image",
+                                fileName: (photo && photo.originalName) || `cast-photo-${Date.now()}.jpg`,
+                            });
                             photo = uploaded.url;
                         } else if (photo && typeof photo === "object" && !photoUrl && photo.publicId) {
                             photo = photo.publicId;
@@ -1158,14 +1319,14 @@ const uploaded = await uploadDataUrlToR2(photoUrl, {
                             photo = null;
                         }
 
-                        // Existing members: send their cast id only so the backend references them instead of creating duplicates
+                        // Existing member — send its Cast id as name so the backend references the Cast doc
                         if (c._id || c.id) {
                             const existingMember: any = { name: c._id || c.id, order: Number(c.order) || 0 };
                             if (socialLinks.length) existingMember.socialLinks = socialLinks;
                             if (photo) existingMember.photo = photo;
                             return existingMember;
                         }
-                        // New member — send inline for the backend to handle
+                        // New member — backend findOrCreates the Cast doc from name/title/photo/socialLinks
                         const newMember: any = { name: c.name || "", title: c.title || "", order: c.order };
                         if (socialLinks.length) newMember.socialLinks = socialLinks;
                         if (photo) newMember.photo = photo;
@@ -1180,13 +1341,14 @@ const uploaded = await uploadDataUrlToR2(photoUrl, {
                 location: toLocalizedString(clone.location),
                 order: clone.order,
                 published: clone.published,
-                categories: normalizeTaxonomyArrayField(clone.categories),
+                categories: await resolveTaxonomyIds(clone.categories, "category"),
                 tags: normalizeArrayField(clone.tags),
-                types: normalizeTaxonomyArrayField(clone.types),
+                types: await resolveTaxonomyIds(clone.types, "type"),
                 material: clone.materials,
                 cast: clone.cast,
                 mainCover: clone.mainCover,
                 parentProject: getOptionValue(clone.parentProject) || undefined,
+                company: getOptionValue(clone.company) || undefined,
             };
 
             update.mutate(
@@ -1539,30 +1701,81 @@ const uploaded = await uploadDataUrlToR2(photoUrl, {
                                 <div className="space-y-6">
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Categories
+                                            Project Company
                                         </label>
                                         <Autocomplete
-                                            multiple
-                                            freeSolo
-                                            disablePortal
-                                            options={projectCategories}
-                                            loading={projectCategoriesLoading}
-                                            value={form.categories}
-                                            filterSelectedOptions
-                                            isOptionEqualToValue={(option, value) => isSameOption(option, value)}
-                                            getOptionLabel={(option) => getOptionLabel(option)}
-                                            onChange={(_, value) => setForm({ ...form, categories: value })}
-                                            className="w-full"
+                                            options={projectCompanies}
+                                            value={form.company || null}
+                                            onChange={(_, v) => setForm({ ...form, company: v })}
+                                            getOptionLabel={(opt) => getCompanyLabel(opt)}
+                                            isOptionEqualToValue={(o: any, v: any) => {
+                                                const oId = (o && (o._id || o.id)) || "";
+                                                const vId = (v && (v._id || v.id)) || "";
+                                                if (oId && vId) return String(oId) === String(vId);
+                                                return getCompanyLabel(o) === getCompanyLabel(v);
+                                            }}
+                                            renderInput={(params) => <TextField {...params} placeholder="Select project company" size="small" />}
                                             sx={taxonomyAutocompleteSx}
                                             slotProps={taxonomyAutocompleteSlotProps}
-                                            renderInput={(params) => (
-                                                <TextField
-                                                    {...params}
-                                                    placeholder="Select existing or type a new category"
-                                                    size="small"
-                                                />
-                                            )}
                                         />
+                                    </div>
+
+                                    <div>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                            Categories
+                                        </label>
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {form.categories.map((cat: any, idx: number) => (
+                                                <span key={getOptionValue(cat) || `${getOptionLabel(cat)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                    #{getOptionLabel(cat)}
+                                                    {cat && typeof cat === "object" && cat.ar && cat.ar.trim() ? (
+                                                        <span className="opacity-70"> / #{cat.ar}</span>
+                                                    ) : null}
+                                                    <button type="button" onClick={() => handleRemoveCategory(cat)} className="hover:text-light-500 dark:hover:text-secdark-500">
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <select
+                                            value={selectedExistingCategory}
+                                            onChange={(e) => {
+                                                handleSelectExistingCategory(e.target.value);
+                                                setSelectedExistingCategory("");
+                                            }}
+                                            className="input w-full mb-2"
+                                        >
+                                            <option value="">Select existing category...</option>
+                                            {projectCategoriesLoading ? (
+                                                <option value="" disabled>Loading categories...</option>
+                                            ) : (
+                                                projectCategories.map((c: any, idx: number) => (
+                                                    <option key={idx} value={idx}>{getOptionLabel(c)}</option>
+                                                ))
+                                            )}
+                                        </select>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={newCategory}
+                                                onChange={(e) => setNewCategory(e.target.value)}
+                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+                                                data-enter-add
+                                                className="input flex-1"
+                                                placeholder="Add the category (EN)..."
+                                            />
+                                            <input
+                                                type="text"
+                                                dir="rtl"
+                                                value={newCategoryAr}
+                                                onChange={(e) => setNewCategoryAr(e.target.value)}
+                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+                                                data-enter-add
+                                                className="input flex-1"
+                                                placeholder="Add the category (AR)..."
+                                            />
+                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">Add</button>
+                                        </div>
                                     </div>
 
                                     <div>
@@ -1571,6 +1784,9 @@ const uploaded = await uploadDataUrlToR2(photoUrl, {
                                             {form.tags.map((tag: any, idx: number) => (
                                                 <span key={getOptionValue(tag) || `${getOptionLabel(tag)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
                                                     #{getOptionLabel(tag)}
+                                                    {tag && typeof tag === "object" && tag.ar && tag.ar.trim() ? (
+                                                        <span className="opacity-70"> / #{tag.ar}</span>
+                                                    ) : null}
                                                     <button type="button" onClick={() => handleRemoveTag(tag)}>
                                                         <X className="w-3 h-3" />
                                                     </button>
@@ -1585,7 +1801,17 @@ const uploaded = await uploadDataUrlToR2(photoUrl, {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add a tag..."
+                                                placeholder="Add a tag (EN)..."
+                                            />
+                                            <input
+                                                type="text"
+                                                dir="rtl"
+                                                value={newTagAr}
+                                                onChange={(e) => setNewTagAr(e.target.value)}
+                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
+                                                data-enter-add
+                                                className="input flex-1"
+                                                placeholder="Add the tag (AR)..."
                                             />
                                             <button type="button" onClick={handleAddTag} className="btn-secondary">Add</button>
                                         </div>
@@ -1593,28 +1819,58 @@ const uploaded = await uploadDataUrlToR2(photoUrl, {
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Project Types</label>
-                                        <Autocomplete
-                                            multiple
-                                            freeSolo
-                                            disablePortal
-                                            options={projectTypes}
-                                            loading={projectTypesLoading}
-                                            value={form.types}
-                                            filterSelectedOptions
-                                            isOptionEqualToValue={(option, value) => isSameOption(option, value)}
-                                            getOptionLabel={(option) => getOptionLabel(option)}
-                                            onChange={(_, value) => setForm({ ...form, types: value })}
-                                            className="w-full"
-                                            sx={taxonomyAutocompleteSx}
-                                            slotProps={taxonomyAutocompleteSlotProps}
-                                            renderInput={(params) => (
-                                                <TextField
-                                                    {...params}
-                                                    placeholder="Select existing or type a new type"
-                                                    size="small"
-                                                />
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {form.types.map((type: any, idx: number) => (
+                                                <span key={getOptionValue(type) || `${getOptionLabel(type)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                    #{getOptionLabel(type)}
+                                                    {type && typeof type === "object" && type.ar && type.ar.trim() ? (
+                                                        <span className="opacity-70"> / #{type.ar}</span>
+                                                    ) : null}
+                                                    <button type="button" onClick={() => handleRemoveType(type)} className="hover:text-light-500 dark:hover:text-secdark-500">
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <select
+                                            value={selectedExistingType}
+                                            onChange={(e) => {
+                                                handleSelectExistingType(e.target.value);
+                                                setSelectedExistingType("");
+                                            }}
+                                            className="input w-full mb-2"
+                                        >
+                                            <option value="">Select existing type...</option>
+                                            {projectTypesLoading ? (
+                                                <option value="" disabled>Loading types...</option>
+                                            ) : (
+                                                projectTypes.map((t: any, idx: number) => (
+                                                    <option key={idx} value={idx}>{getOptionLabel(t)}</option>
+                                                ))
                                             )}
-                                        />
+                                        </select>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={newType}
+                                                onChange={(e) => setNewType(e.target.value)}
+                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
+                                                data-enter-add
+                                                className="input flex-1"
+                                                placeholder="Add the type (EN)..."
+                                            />
+                                            <input
+                                                type="text"
+                                                dir="rtl"
+                                                value={newTypeAr}
+                                                onChange={(e) => setNewTypeAr(e.target.value)}
+                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
+                                                data-enter-add
+                                                className="input flex-1"
+                                                placeholder="Add the type (AR)..."
+                                            />
+                                            <button type="button" onClick={handleAddType} className="btn-secondary">Add</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

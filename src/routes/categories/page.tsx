@@ -3,7 +3,7 @@ import { Plus, Edit2, Trash2, Check, X, Loader2, Layers, Package as PackageIcon,
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
 import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from "@/hooks/queries";
-import { getCategories } from "@/api/requests/categoriesService";
+import { getCategories, getCategoryDisplayName } from "@/api/requests/categoriesService";
 import type { Category, CategoryType } from "@/api/requests/categoriesService";
 
 type CategorySectionProps = {
@@ -16,15 +16,17 @@ type CategorySectionProps = {
 const PAGE_SIZE = 10;
 
 const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) => {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const tr = (key: string, fallback: string) => {
         const value = t(key);
         return !value || value === key ? fallback : value;
     };
 
     const [inputName, setInputName] = useState("");
+    const [inputNameAr, setInputNameAr] = useState("");
     const [editingId, setEditingId] = useState("");
     const [editingName, setEditingName] = useState("");
+    const [editingNameAr, setEditingNameAr] = useState("");
     const [error, setError] = useState("");
     
     // Pagination state
@@ -174,18 +176,20 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
 
     const handleAdd = () => {
         const name = (inputName || "").trim();
-        if (!name) {
-            setError(tr("category_name_required", "Category name is required"));
+        const nameAr = (inputNameAr || "").trim();
+        if (!name || !nameAr) {
+            setError(tr("category_name_required", "Category name is required in both languages"));
             return;
         }
 
         setError("");
         createCategoryMutation.mutate(
-            { name, type },
+            { name: { en: name, ar: nameAr }, type },
             {
                 onSuccess: () => {
                     refreshCategories();
                     setInputName("");
+                    setInputNameAr("");
                 },
                 onError: (e: any) => {
                     setError(e?.response?.data?.message || "Failed to create category");
@@ -210,13 +214,21 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
 
     const startEdit = (category: Category) => {
         setEditingId(category._id);
-        setEditingName(category.name || "");
+        const name = category.name;
+        if (typeof name === "object" && name) {
+            setEditingName(name.en || "");
+            setEditingNameAr(name.ar || "");
+        } else {
+            setEditingName(typeof name === "string" ? name : "");
+            setEditingNameAr("");
+        }
     };
 
     const saveEdit = async (id: string) => {
         const name = (editingName || "").trim();
-        if (!name) {
-            setError(tr("category_name_required", "Category name is required"));
+        const nameAr = (editingNameAr || "").trim();
+        if (!name || !nameAr) {
+            setError(tr("category_name_required", "Category name is required in both languages"));
             return;
         }
 
@@ -224,11 +236,12 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
             setError("");
             await updateCategoryMutation.mutateAsync({
                 id,
-                data: { name, type },
+                data: { name: { en: name, ar: nameAr }, type },
             });
             refreshCategories();
             setEditingId("");
             setEditingName("");
+            setEditingNameAr("");
         } catch (e: any) {
             setError(e?.response?.data?.message || "Failed to update category");
         }
@@ -237,6 +250,7 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
     const cancelEdit = () => {
         setEditingId("");
         setEditingName("");
+        setEditingNameAr("");
     };
 
     const remove = async (category: Category) => {
@@ -294,16 +308,26 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
                                 >
                                     <div className="w-full min-w-0">
                                         {editingId === category._id ? (
-                                            <input
-                                                value={editingName}
-                                                onChange={(e) => setEditingName(e.target.value)}
-                                                onKeyDown={handleEditKeyDown}
-                                                className="input w-full"
-                                                placeholder={tr("category_name", "Category name")}
-                                            />
+                                            <div className="flex flex-col gap-2">
+                                                <input
+                                                    value={editingName}
+                                                    onChange={(e) => setEditingName(e.target.value)}
+                                                    onKeyDown={handleEditKeyDown}
+                                                    className="input w-full"
+                                                    placeholder={tr("category_name", "Category name")}
+                                                />
+                                                <input
+                                                    value={editingNameAr}
+                                                    onChange={(e) => setEditingNameAr(e.target.value)}
+                                                    onKeyDown={handleEditKeyDown}
+                                                    className="input w-full"
+                                                    dir="rtl"
+                                                    placeholder={tr("category_name_ar", "اسم الفئة (بالعربية)")}
+                                                />
+                                            </div>
                                         ) : (
                                             <span className="text-light-900 dark:text-dark-50 break-words text-sm font-semibold">
-                                                {category.name}
+                                                {getCategoryDisplayName(category, lang)}
                                             </span>
                                         )}
                                     </div>
@@ -413,6 +437,15 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
                     onKeyDown={handleCreateKeyDown}
                     placeholder={tr("category_name", "Category name")}
                     disabled={isSaving}
+                    className="input w-full flex-1 disabled:opacity-50"
+                />
+                <input
+                    value={inputNameAr}
+                    onChange={(e) => setInputNameAr(e.target.value)}
+                    onKeyDown={handleCreateKeyDown}
+                    placeholder={tr("category_name_ar", "اسم الفئة (بالعربية)")}
+                    disabled={isSaving}
+                    dir="rtl"
                     className="input w-full flex-1 disabled:opacity-50"
                 />
                 <button

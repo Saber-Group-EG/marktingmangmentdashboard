@@ -143,6 +143,18 @@ export const uploadDataUrlToR2 = async (dataUrl: string, options: R2UploadOption
     };
 };
 
+const inFlightUploads = new Map<string, Promise<R2UploadResult>>();
+
+export const uploadDataUrlToR2Cached = (dataUrl: string, options: R2UploadOptions): Promise<R2UploadResult> => {
+    const existing = inFlightUploads.get(dataUrl);
+    if (existing) return existing;
+    const promise = uploadDataUrlToR2(dataUrl, options).finally(() => {
+        inFlightUploads.delete(dataUrl);
+    });
+    inFlightUploads.set(dataUrl, promise);
+    return promise;
+};
+
 export const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png"];
 export const ALLOWED_PHOTO_EXTENSIONS = [".jpg", ".jpeg", ".png"];
 export const ALLOWED_CV_TYPES = ["application/pdf"];

@@ -9,12 +9,13 @@ import type { Package as PackageType } from "@/api/requests/packagesService";
 import { getPackageById } from "@/api/requests/packagesService";
 import { packagesKeys, useCreatePackage, useDeletePackage, usePackages, useUpdatePackage } from "@/hooks/queries/usePackagesQuery";
 import { useServices, useCategories } from "@/hooks/queries";
+import { getCategoryDisplayName } from "@/api/requests/categoriesService";
 
 type DisplayType = "number" | "string" | "availability";
 type LocalItem = Item & { id?: string };
 
 const AddPackagePage = () => {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
@@ -96,7 +97,7 @@ const AddPackagePage = () => {
 
     const getPackageCategoryName = (categoryId: string) => {
         const category = packageCategories.find(c => c._id === categoryId);
-        return category ? category.name : tr("no_category", "No category");
+        return category ? getCategoryDisplayName(category, lang) : tr("no_category", "No category");
     };
 
     // Calculate category counts for packages
@@ -766,7 +767,7 @@ const AddPackagePage = () => {
                                     }`}
                                 >
                                     <FolderOpen size={12} className="inline mr-1" />
-                                    {category.name}
+                                    {getCategoryDisplayName(category, lang)}
                                     <span className={`ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] ${
                                         selectedPackageCategory === category._id
                                             ? "bg-white/20 text-white"
@@ -944,7 +945,7 @@ const AddPackagePage = () => {
                                         ) : (
                                             packageCategories.map((category) => (
                                                 <option key={category._id} value={category._id}>
-                                                    {category.name}
+                                                    {getCategoryDisplayName(category, lang)}
                                                 </option>
                                             ))
                                         )}
@@ -1034,7 +1035,7 @@ const AddPackagePage = () => {
                                                     : "bg-light-100 text-light-700 hover:bg-light-200 dark:bg-dark-800 dark:text-dark-300"
                                             }`}
                                         >
-                                            {cat.name}
+                                            {getCategoryDisplayName(cat, lang)}
                                             <span className="ml-1.5 inline-block rounded-full bg-white/20 px-1.5 text-[10px]">
                                                 {count}
                                             </span>

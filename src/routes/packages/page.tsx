@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useLang } from "@/hooks/useLang";
 import { Check, Loader2, Plus, RefreshCw, Search, X, Edit, Trash2 } from "lucide-react";
 import { usePackages, useServices, useItems, useCategories } from "@/hooks/queries";
+import { getCategoryDisplayName } from "@/api/requests/categoriesService";
 import type { Package } from "@/api/requests/packagesService";
 
 import { useNavigate } from "react-router-dom";
@@ -246,7 +247,7 @@ const PackagesPage = () => {
                                         : "border-light-300 bg-white text-light-700 hover:border-light-400 hover:bg-light-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
                                 }`}
                             >
-                                {category.name}
+                                {getCategoryDisplayName(category, lang)}
                                 <span className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs ${
                                     selectedCategoryId === category._id
                                         ? "bg-white/20 text-white"
@@ -260,7 +261,7 @@ const PackagesPage = () => {
 
                     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                         {filteredPackages.map((pkg) => {
-                            const categoryName = getPackageCategoryId(pkg) ? packageCategories.find(c => c._id === getPackageCategoryId(pkg))?.name : null;
+                            const categoryName = getPackageCategoryId(pkg) ? getCategoryDisplayName(packageCategories.find(c => c._id === getPackageCategoryId(pkg)), lang) : null;
                             
                             return (
                                 <div

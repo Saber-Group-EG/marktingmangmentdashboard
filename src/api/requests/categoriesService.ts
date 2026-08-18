@@ -4,11 +4,22 @@ export type CategoryType = "item" | "package" | "term" | "project";
 
 export interface Category {
     _id: string;
-    name: string;
+    name: string | { en: string; ar: string };
     type: CategoryType;
     createdAt?: string;
     updatedAt?: string;
 }
+
+export const getCategoryDisplayName = (
+    category: { name?: string | { en?: string; ar?: string } } | null | undefined,
+    lang: string = "en",
+): string => {
+    if (!category) return "";
+    const name = category.name;
+    if (typeof name === "string") return name;
+    if (name && typeof name === "object") return name[lang as keyof typeof name] || name.en || name.ar || "";
+    return "";
+};
 
 export interface CategoryListResponse {
     categories: Category[];
@@ -61,7 +72,7 @@ export const getCategories = async (params?: CategoryQueryParams): Promise<Categ
     return { categories, meta };
 };
 
-export const createCategory = async (data: { name: string; type: CategoryType }): Promise<Category> => {
+export const createCategory = async (data: { name: { en: string; ar: string }; type: CategoryType }): Promise<Category> => {
     const response = await axiosInstance.post("/categories", data);
     const raw = response.data?.category || response.data?.data || response.data;
     return raw as Category;
@@ -69,7 +80,7 @@ export const createCategory = async (data: { name: string; type: CategoryType })
 
 export const updateCategory = async (
     id: string,
-    data: { name: string; type: CategoryType },
+    data: { name: { en: string; ar: string }; type: CategoryType },
 ): Promise<Category> => {
     const response = await axiosInstance.put(`/categories/${id}`, data);
     const raw = response.data?.category || response.data?.data || response.data;

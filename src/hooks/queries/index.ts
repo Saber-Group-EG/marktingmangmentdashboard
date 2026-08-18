@@ -41,3 +41,9 @@ export * from "./useContractTermsQuery";
 
 // Categories
 export * from "./useCategoriesQuery";
+
+// Cast
+export * from "./useCastQuery";
+
+// Project Companies
+export * from "./useProjectCompaniesQuery";

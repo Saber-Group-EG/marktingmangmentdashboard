@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useProject, useProjectCast } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
+import { getCategoryDisplayName } from "@/api/requests/categoriesService";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 // framer-motion removed (no animations on this page)
@@ -67,7 +68,10 @@ const ProjectDetails: React.FC = () => {
     const getOptionLabel = (value: any): string => {
         if (typeof value === "string") return value;
         if (!value || typeof value !== "object") return "";
-        return value.name || value.title || value.label || value.value || value._id || value.id || "";
+        const name = value.name;
+        if (name && typeof name === "object") return name.en || name.ar || "";
+        if (value.en || value.ar) return value.en || value.ar || "";
+        return name || value.title || value.label || value.value || value._id || value.id || "";
     };
 
     const getOptionKey = (value: any, index: number): string => {
@@ -667,7 +671,7 @@ const ProjectDetails: React.FC = () => {
                             <div className="flex flex-wrap gap-2">
                                 {p.categories?.map((cat: any, idx: number) => (
                                     <span key={getOptionKey(cat, idx)} className="px-3 py-1.5 bg-light-500 text-white dark:bg-secdark-700 dark:text-white rounded-lg text-sm">
-                                        {getOptionLabel(cat)}
+                                        {getCategoryDisplayName(cat, lang)}
                                     </span>
                                 )) || <span className="text-light-400 dark:text-dark-500">No categories</span>}
                             </div>
