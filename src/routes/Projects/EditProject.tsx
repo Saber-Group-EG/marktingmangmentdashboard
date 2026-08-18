@@ -1299,7 +1299,7 @@ if (Array.isArray(clone.cast)) {
                 clone.cast = await Promise.all(
                     clone.cast.map(async (c: any) => {
                         if (!c) return c;
-                        if (typeof c === "string") return { name: c };
+                        if (typeof c === "string") return { castId: c };
 
                         const socialLinks = (c.socialLinks || [])
                             .filter((l: any) => l && (l.platform || "").trim() && (l.url || "").trim())
@@ -1319,18 +1319,18 @@ if (Array.isArray(clone.cast)) {
                             photo = null;
                         }
 
-                        // Existing member — send its Cast id as name so the backend references the Cast doc
+                        // Existing member — send its Cast id via castId so the backend references the Cast doc
                         if (c._id || c.id) {
-                            const existingMember: any = { name: c._id || c.id, order: Number(c.order) || 0 };
+                            const existingMember: any = { castId: c._id || c.id, order: Number(c.order) || 0 };
                             if (socialLinks.length) existingMember.socialLinks = socialLinks;
                             if (photo) existingMember.photo = photo;
                             return existingMember;
                         }
-                        // New member — backend findOrCreates the Cast doc from name/title/photo/socialLinks
+                        // New member — embed it under castId so the backend findOrCreates the Cast doc
                         const newMember: any = { name: c.name || "", title: c.title || "", order: c.order };
                         if (socialLinks.length) newMember.socialLinks = socialLinks;
                         if (photo) newMember.photo = photo;
-                        return newMember;
+                        return { castId: newMember, order: Number(c.order) || 0 };
                     })
                 );
             }

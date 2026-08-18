@@ -35,7 +35,7 @@ const ItemsPage = () => {
     // Category filter state - can be "all" or specific category ID
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
-    const { data: itemCategoriesResponse, isLoading: itemCategoriesLoading } = useCategories({ type: "item", page: 1});
+    const { data: itemCategoriesResponse, isLoading: itemCategoriesLoading } = useCategories({ type: "item" });
     const itemCategories = itemCategoriesResponse?.categories || [];
 
     const getCategoryId = (value: any): string => {

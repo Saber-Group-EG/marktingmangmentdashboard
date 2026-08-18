@@ -39,7 +39,7 @@ const PackagesPage = () => {
     const items = itemsResponse?.data || [];
     
     // Load categories for filtering
-    const { data: packageCategoriesResponse, isLoading: categoriesLoading } = useCategories({ type: "package", page: 1 });
+    const { data: packageCategoriesResponse, isLoading: categoriesLoading } = useCategories({ type: "package" });
     const packageCategories = packageCategoriesResponse?.categories || [];
 
     const itemsMap = useMemo(() => {

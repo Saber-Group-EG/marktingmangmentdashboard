@@ -22,7 +22,9 @@ const extractProjectCompanies = (payload: any): ProjectCompany[] => {
 };
 
 export const getProjectCompanies = async (): Promise<ProjectCompany[]> => {
-    const response = await axiosInstance.get("/project-companies");
+    const response = await axiosInstance.get("/project-companies", {
+        params: { PageCount: "all" },
+    });
     return extractProjectCompanies(response.data);
 };
 

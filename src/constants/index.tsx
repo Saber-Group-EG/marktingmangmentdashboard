@@ -96,21 +96,7 @@ export const navbarLinks = [
                 icon: Briefcase,
                 path: "/services",
             },
-            {
-                label: "Categories",
-                icon: Tag,
-                path: "/categories",
-            },
-            {
-                label: "Cast",
-                icon: Users,
-                path: "/cast",
-            },
-            {
-                label: "Project Company",
-                icon: Building2,
-                path: "/project-companies",
-            },
+            
             
         ],
     },
@@ -142,6 +128,21 @@ export const navbarLinks = [
                 label: "Projects",
                 icon: Target,
                 path: "/projects",
+            },
+            {
+                label: "Categories",
+                icon: Tag,
+                path: "/categories",
+            },
+            {
+                label: "Cast",
+                icon: Users,
+                path: "/cast",
+            },
+            {
+                label: "Project Company",
+                icon: Building2,
+                path: "/project-companies",
             },
             // {
             //     label: "Logout",

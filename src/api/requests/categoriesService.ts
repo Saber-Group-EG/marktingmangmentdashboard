@@ -65,7 +65,12 @@ const limit = Number((payload?.meta?.limit ?? payload?.limit ?? count) || 20);
 };
 
 export const getCategories = async (params?: CategoryQueryParams): Promise<CategoryListResponse> => {
-    const response = await axiosInstance.get("/categories", { params });
+    const response = await axiosInstance.get("/categories", {
+        params: {
+            ...params,
+            ...(params?.page ? {} : { PageCount: "all" }),
+        },
+    });
     const raw = response.data;
     const categories = extractCategories(raw);
     const meta = buildMeta(raw, categories.length);

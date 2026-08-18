@@ -76,7 +76,7 @@ const CreateContract = ({ clientId, clientName, onBack, onSuccess, editContract,
     const { data: termsResponse, isLoading: termsLoading } = useContractTerms({ page: 1, limit: 100 });
     const predefinedTerms = Array.isArray(termsResponse) ? termsResponse : termsResponse?.data || [];
     const getTermId = (term: any) => String(term?._id ?? term?.id ?? "");
-    const { data: termCategoriesResponse } = useCategories({ type: "term", page: 1 });
+    const { data: termCategoriesResponse } = useCategories({ type: "term" });
     const termCategories = termCategoriesResponse?.categories || [];
 
     const getCategoryId = (value: any): string => {

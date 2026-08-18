@@ -36,7 +36,7 @@ const TermsPage = () => {
     // Category filter state
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
-    const { data: termCategoriesResponse, isLoading: termCategoriesLoading } = useCategories({ type: "term", page: 1 });
+    const { data: termCategoriesResponse, isLoading: termCategoriesLoading } = useCategories({ type: "term" });
     const termCategories = termCategoriesResponse?.categories || [];
 
     const getCategoryId = (value: any): string => {

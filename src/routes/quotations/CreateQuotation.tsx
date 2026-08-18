@@ -38,7 +38,7 @@ const CreateQuotation = ({ clientId, clientName, onBack, onSuccess, editQuotatio
     const allPackagesCatalog = packagesResponse?.data || [];
     const { data: itemsResponse } = useItems({ limit: 1000 });
     const items = itemsResponse?.data || [];
-    const { data: packageCategoriesResponse } = useCategories({ type: "package", page: 1 });
+    const { data: packageCategoriesResponse } = useCategories({ type: "package" });
     const packageCategories = packageCategoriesResponse?.categories || [];
 
     const createQuotationMutation = useCreateQuotation();

@@ -5,16 +5,27 @@ import {
     updateCast,
     deleteCast,
     type CastListResponse,
+    type CastQueryParams,
     type CastUpdateInput,
 } from "@/api/requests/castService";
+import { projectsKeys } from "./useProjectsQuery";
 
 export const castKeys = {
     all: ["cast"] as const,
     lists: () => [...castKeys.all, "list"] as const,
-    list: () => [...castKeys.lists()] as const,
+    list: (params?: CastQueryParams) => [...castKeys.lists(), params ?? "all"] as const,
 };
 
-export const getCastQueryKey = () => castKeys.list();
+export const getCastQueryKey = (params?: CastQueryParams) => castKeys.list(params);
+
+export const normalizeCastParams = (params?: CastQueryParams): Record<string, any> | undefined => {
+    if (!params) return undefined;
+    const normalized: Record<string, any> = {};
+    if (typeof params.page === "number" && params.page > 0) normalized.page = params.page;
+    if (typeof params.limit === "number" && params.limit > 0) normalized.limit = params.limit;
+    if (typeof params.search === "string" && params.search.trim()) normalized.search = params.search.trim();
+    return Object.keys(normalized).length ? normalized : undefined;
+};
 
 export const useCastCacheActions = () => {
     const queryClient = useQueryClient();
@@ -34,10 +45,11 @@ export const useCastCacheActions = () => {
     return { removeCastCache, removeAllCastCache, invalidateCastCache };
 };
 
-export const useCast = () => {
+export const useCast = (params?: CastQueryParams) => {
+    const normalizedParams = normalizeCastParams(params);
     return useQuery({
-        queryKey: castKeys.list(),
-        queryFn: getCast,
+        queryKey: castKeys.list(params),
+        queryFn: () => getCast(normalizedParams),
     });
 };
 
@@ -48,6 +60,7 @@ export const useCreateCast = () => {
         mutationFn: createCast,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: castKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
         },
     });
 };
@@ -59,6 +72,7 @@ export const useUpdateCast = () => {
         mutationFn: ({ id, data }: { id: string; data: CastUpdateInput }) => updateCast(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: castKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
         },
     });
 };
@@ -98,6 +112,7 @@ export const useDeleteCast = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: castKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
         },
     });
 };

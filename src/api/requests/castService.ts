@@ -29,6 +29,12 @@ export interface CastCreateInput {
 
 export type CastUpdateInput = Partial<CastCreateInput>;
 
+export interface CastQueryParams {
+    page?: number;
+    limit?: number;
+    search?: string;
+}
+
 
 
 const extractCast = (payload: any): CastMember[] => {
@@ -59,8 +65,10 @@ const buildMeta = (payload: any, count: number): CastListResponse["meta"] => {
     };
 };
 
-export const getCast = async (): Promise<CastListResponse> => {
-    const response = await axiosInstance.get("/cast");
+export const getCast = async (params?: CastQueryParams): Promise<CastListResponse> => {
+    const response = await axiosInstance.get("/cast", {
+        params: { PageCount: "all", ...params },
+    });
     const raw = response.data;
     const cast = extractCast(raw);
     const meta = buildMeta(raw, cast.length);

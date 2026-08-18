@@ -209,7 +209,9 @@ export const getProjectCategories = async (): Promise<ProjectTaxonomyOption[]> =
 
 export const getProjectTypes = async (): Promise<ProjectTaxonomyOption[]> => {
   try {
-    const response = await axiosInstance.get("/types");
+    const response = await axiosInstance.get("/types", {
+      params: { PageCount: "all" },
+    });
     const raw = extractArrayFromResponse(response.data);
     const normalized = raw
       .map(normalizeTaxonomyOption)
@@ -228,7 +230,9 @@ export const getProjectCast = async (): Promise<ProjectTaxonomyOption[]> => {
     );
 
   try {
-    const response = await axiosInstance.get("/cast");
+    const response = await axiosInstance.get("/cast", {
+      params: { PageCount: "all" },
+    });
     return normalize(extractArrayFromResponse(response.data));
   } catch {
     const fallbackResponse = await axiosInstance.get(`${PROJECTS_ENDPOINT}/cast`, {

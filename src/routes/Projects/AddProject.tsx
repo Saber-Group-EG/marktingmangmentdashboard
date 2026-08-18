@@ -1372,13 +1372,13 @@ const handleDateChange = (date: Date | null) => {
             });
         }
 
-        // Prepare cast for submission: send name (Cast id or member name) + order; the backend
-        // resolves existing Cast docs by id and findOrCreates new ones from name/title/photo/socialLinks
+        // Prepare cast for submission: send castId (Cast id or embedded member) + order; the backend
+        // resolves existing Cast docs by id and findOrCreates new ones from the embedded member
         if (Array.isArray(clone.cast)) {
             clone.cast = await Promise.all(
                 clone.cast.map(async (c: any) => {
                     if (!c) return c;
-                    if (typeof c === "string") return { name: c };
+                    if (typeof c === "string") return { castId: c };
 
                     const socialLinks = (c.socialLinks || [])
                         .filter((l: any) => l && (l.platform || "").trim() && (l.url || "").trim())
@@ -1399,15 +1399,15 @@ const handleDateChange = (date: Date | null) => {
                         photo = photoUrl || null;
                     }
 
-                    // Existing member — send its Cast id as name so the backend references the Cast doc
+                    // Existing member — send its Cast id via castId so the backend references the Cast doc
                     if ((c.__existing || c._id || c.id) && (c._id || c.id)) {
-                        return { name: c._id || c.id, order: Number(c.order) || 0 };
+                        return { castId: c._id || c.id, order: Number(c.order) || 0 };
                     }
-                    // New member — backend findOrCreates the Cast doc from name/title/photo/socialLinks
+                    // New member — embed it under castId so the backend findOrCreates the Cast doc
                     const newMember: any = { name: c.name || "", title: c.title || "", order: c.order };
                     if (socialLinks.length) newMember.socialLinks = socialLinks;
                     if (photo) newMember.photo = photo;
-                    return newMember;
+                    return { castId: newMember, order: Number(c.order) || 0 };
                 })
             );
         }
