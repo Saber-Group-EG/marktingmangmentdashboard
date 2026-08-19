@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useCategories, useProjectCompanies, useCreateProjectCompany } from "@/hooks/queries";
+import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useProjectCompanies, useCreateProjectCompany } from "@/hooks/queries";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
@@ -16,7 +16,7 @@ import {
     Plus, X, ArrowLeft, CheckCircle, AlertCircle,
     Trash2, Edit, MapPin, Users, Layers, Loader2,
     Image as ImageIcon, Video, Code, Upload, GripVertical,
-    Camera, User, FileText, Info
+    Camera, User, FileText, Info, Copy
 } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -97,6 +97,8 @@ const AddProject: React.FC = () => {
     const { data: projectCast = []} = useProjectCast();
     const { data: projectCompanies = [] } = useProjectCompanies();
     const { data: allProjects = [] as any[]} = useProjects();
+    const [cloneProjectId, setCloneProjectId] = useState("");
+    const { data: cloneSourceProject } = useProject(cloneProjectId || undefined, { enabled: !!cloneProjectId });
     const [form, setForm] = useState<any>({
         name: { ar: "", en: "" },
         description: { ar: "", en: "" },
@@ -400,6 +402,147 @@ const AddProject: React.FC = () => {
             },
         },
     };
+
+    const emptyForm = () => ({
+        name: { ar: "", en: "" },
+        description: { ar: "", en: "" },
+        location: { ar: "", en: "" },
+        order: (allProjects?.length || 0) + 1,
+        published: false,
+        categories: [] as string[],
+        tags: [] as string[],
+        types: [] as string[],
+        publishAt: null as Date | null,
+        parentProject: null as any,
+        company: null as any,
+        materials: [] as Material[],
+        cast: [] as Cast[],
+        mainCover: null as any,
+    });
+
+    const resetCloneSelection = () => {
+        setCloneProjectId("");
+        setForm(emptyForm());
+    };
+
+    const applyCloneData = (source: any) => {
+        if (!source) return;
+
+        const rawParent: any = source.parentProject;
+        let parentInitial: any = null;
+        if (rawParent) {
+            if (typeof rawParent === "string") {
+                const found = allProjects.find((p: any) => (p.id || p._id) === rawParent || p.name === rawParent);
+                parentInitial = found || rawParent;
+            } else if (typeof rawParent === "object") {
+                const pid = rawParent._id || rawParent.id;
+                const found = pid ? allProjects.find((p: any) => (p.id || p._id) === pid) : null;
+                parentInitial = found || rawParent;
+            }
+        }
+
+        const rawCompany: any = source.company;
+        let companyInitial: any = null;
+        if (rawCompany) {
+            if (typeof rawCompany === "string") {
+                const found = projectCompanies.find((pc: any) => (pc._id || pc.id) === rawCompany);
+                companyInitial = found || rawCompany;
+            } else if (typeof rawCompany === "object") {
+                const cid = rawCompany._id || rawCompany.id;
+                const found = cid ? projectCompanies.find((pc: any) => (pc._id || pc.id) === cid) : null;
+                companyInitial = found || rawCompany;
+            }
+        }
+
+        const rawCast = source.cast || [];
+        const mappedCast = (Array.isArray(rawCast) ? rawCast : []).map((c: any, idx: number) => {
+            if (!c) return { name: "", title: "", order: idx + 1 };
+
+            if (typeof c === "string") {
+                const found = projectCast.find((pc: any) => (pc._id || pc.id) === c || pc.name === c);
+                return {
+                    _id: found?._id || undefined,
+                    name: found?.name || c,
+                    title: (found as any)?.title || "",
+                    socialLinks: (found as any)?.socialLinks || [],
+                    photo: (found as any)?.photo || null,
+                    order: idx + 1,
+                };
+            }
+
+            if (typeof c === "object") {
+                if (c.castId) {
+                    const castEntry = c.castId;
+                    if (typeof castEntry === "string") {
+                        const found = projectCast.find((pc: any) => (pc._id || pc.id) === castEntry || pc.name === castEntry);
+                        return {
+                            _id: found?._id,
+                            name: found?.name || castEntry,
+                            title: (found as any)?.title || "",
+                            socialLinks: (found as any)?.socialLinks || [],
+                            photo: (found as any)?.photo || null,
+                            order: c.order || idx + 1,
+                        };
+                    }
+                    if (typeof castEntry === "object") {
+                        const found = projectCast.find((pc: any) => (pc._id || pc.id) === (castEntry._id || castEntry.id) || pc.name === castEntry.name);
+                        return {
+                            _id: castEntry._id || found?._id,
+                            name: castEntry.name || found?.name || "",
+                            title: castEntry.title || (found as any)?.title || "",
+                            socialLinks: castEntry.socialLinks || (found as any)?.socialLinks || [],
+                            photo: castEntry.photo || (found as any)?.photo || null,
+                            order: c.order || idx + 1,
+                        };
+                    }
+                }
+
+                if (c.name) {
+                    const found = projectCast.find((pc: any) => (pc._id || pc.id) === (c._id || c.id) || pc.name === c.name);
+                    return {
+                        _id: c._id || found?._id,
+                        name: c.name,
+                        title: c.title || (found as any)?.title || "",
+                        socialLinks: c.socialLinks?.length ? c.socialLinks : (found as any)?.socialLinks || [],
+                        photo: c.photo || (found as any)?.photo || null,
+                        order: c.order || idx + 1,
+                    };
+                }
+
+                const found = projectCast.find((pc: any) => pc._id === c._id || pc.id === c._id || pc._id === c.id || pc.name === c.name);
+                return { ...(found || {}), ...c, order: c.order || idx + 1 };
+            }
+
+            return { name: String(c), title: "", order: idx + 1 };
+        }).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+
+        const srcName = source.localizedName ?? source.name;
+        const srcDesc = source.localizedDescription ?? source.description;
+        const srcLoc = source.localizedLocation ?? source.location;
+
+        setForm({
+            name: toLocalizedString(srcName),
+            description: toLocalizedString(srcDesc),
+            location: toLocalizedString(srcLoc),
+            order: Number(source.order) || (allProjects?.length || 0) + 1,
+            published: source.published || false,
+            publishAt: source.publishedAt ? new Date(source.publishedAt) : null,
+            categories: source.categories || [],
+            tags: source.tags || [],
+            types: source.types || [],
+            materials: [],
+            cast: mappedCast,
+            mainCover: null,
+            parentProject: parentInitial,
+            company: companyInitial,
+        });
+    };
+
+    useEffect(() => {
+        if (!cloneProjectId || !cloneSourceProject) return;
+        applyCloneData(cloneSourceProject);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cloneProjectId, cloneSourceProject]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -1664,6 +1807,44 @@ const handleDateChange = (date: Date | null) => {
                     {/* Basic Information Tab */}
 {activeTab === "basic" && (
     <div className="space-y-6">
+        <div className="card p-6">
+            <div className="flex items-center justify-between mb-1">
+                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">Clone from Existing Project</h2>
+                <Copy className="w-5 h-5 text-light-400 dark:text-dark-500" />
+            </div>
+            <p className="text-sm text-light-600 dark:text-dark-400 mb-4">
+                Select an existing project to copy all of its data into this form. Materials are not copied.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+                <select
+                    value={cloneProjectId}
+                    onChange={(e) => setCloneProjectId(e.target.value)}
+                    className="input w-full"
+                >
+                    <option value="">Select a project to clone...</option>
+                    {allProjects.map((p: any) => (
+                        <option key={p._id || p.id || getOptionLabel(p)} value={p._id || p.id}>
+                            {getOptionLabel(p)}
+                        </option>
+                    ))}
+                </select>
+                <button
+                    type="button"
+                    onClick={resetCloneSelection}
+                    disabled={!cloneProjectId}
+                    className="btn-ghost inline-flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+                >
+                    <X className="w-4 h-4" />
+                    Clear
+                </button>
+            </div>
+            {cloneSourceProject && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-danger-500 dark:text-danger-400">
+                    <CheckCircle className="w-4 h-4" />
+                    Cloned from &quot;{getOptionLabel(cloneSourceProject)}&quot; — materials and main cover were not copied.
+                </div>
+            )}
+        </div>
         <div className="card p-6">
             <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">Basic Information</h2>
             <div className="space-y-4">

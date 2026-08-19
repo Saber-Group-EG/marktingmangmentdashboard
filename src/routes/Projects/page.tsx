@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, RefreshCw, GripVertical } from "lucide-react";
+import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useProjects, useProjectCast, useReorderProjects } from "@/hooks/queries";
+import { useProjects, useProjectCast, useReorderProjects, useDeleteProject } from "@/hooks/queries";
+import { showConfirm } from "@/utils/swal";
 
 const PROJECT_CARD_TYPE = "PROJECT_CARD";
 
@@ -93,6 +94,20 @@ const ProjectsPage: React.FC = () => {
     const { data: projects = [], isLoading, error, refetch } = useProjects();
     const { data: projectCast = [] } = useProjectCast();
     const { mutate: reorderProjects } = useReorderProjects();
+    const deleteProject = useDeleteProject();
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    const handleDelete = async (project: any) => {
+        const id = getProjectId(project);
+        if (!id || deletingId) return;
+        const name = localizedText(project.name || project.localizedName) || "Untitled";
+        const confirmed = await showConfirm(`Delete "${name}"? This cannot be undone.`, "Delete", "Cancel");
+        if (!confirmed) return;
+        setDeletingId(id);
+        deleteProject.mutate(id, {
+            onSettled: () => setDeletingId(null),
+        });
+    };
 
     const [orderedProjects, setOrderedProjects] = useState<any[]>([]);
     const orderedProjectsRef = useRef<any[]>([]);
@@ -329,6 +344,20 @@ const ProjectsPage: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <div className="text-sm text-light-500 dark:text-dark-400">{project.published ? tr("published", "Published") : tr("draft", "Draft")}</div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDelete(project)}
+                                            disabled={deletingId === getProjectId(project)}
+                                            title={tr("delete", "Delete")}
+                                            aria-label={`Delete ${localizedText(project.name || project.localizedName) || "project"}`}
+                                            className="p-1.5 rounded-lg text-light-400 dark:text-dark-500 hover:text-danger-500 dark:hover:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors disabled:opacity-50"
+                                        >
+                                            {deletingId === getProjectId(project) ? (
+                                                <Loader2 size={15} className="animate-spin" />
+                                            ) : (
+                                                <Trash2 size={15} />
+                                            )}
+                                        </button>
                                     </div>
                                 </div>
 
