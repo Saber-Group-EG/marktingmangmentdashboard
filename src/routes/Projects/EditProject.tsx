@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useProject, useUpdateProject, useDeleteProject, useProjectTypes, useProjectCast, useProjects, useCategories, useProjectCompanies, useCreateProjectCompany } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
@@ -13,6 +13,9 @@ import { isDataUrl, uploadDataUrlToR2Cached, uploadDataUrlToR2 } from "@/utils/r
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
+import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
+import { useAutoTranslateList } from "@/hooks/useAutoTranslateList";
+import { stripHtml, toLocalizedItems, mergeLocalizedAr } from "@/utils/translateText";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
 import { 
   Save, Trash2, X, ArrowLeft, Loader2, 
@@ -140,6 +143,86 @@ const EditProject: React.FC = () => {
     const [selectedExistingCast, setSelectedExistingCast] = useState<any[]>([]);
     const [draggedCastIndex, setDraggedCastIndex] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useAutoTranslatePair(form.name?.en || "", form.name?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, name: { ...prev.name, ar: t } })));
+    useAutoTranslatePair(form.name?.ar || "", form.name?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, name: { ...prev.name, en: t } })));
+    useAutoTranslatePair(form.description?.en || "", form.description?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, description: { ...prev.description, ar: t } })));
+    useAutoTranslatePair(form.description?.ar || "", form.description?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, description: { ...prev.description, en: t } })));
+    useAutoTranslatePair(form.location?.en || "", form.location?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, location: { ...prev.location, ar: t } })));
+    useAutoTranslatePair(form.location?.ar || "", form.location?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, location: { ...prev.location, en: t } })));
+    useAutoTranslatePair(newTag, newTagAr, "ar", setNewTagAr);
+    useAutoTranslatePair(newTagAr, newTag, "en", setNewTag);
+    useAutoTranslatePair(newCategory, newCategoryAr, "ar", setNewCategoryAr);
+    useAutoTranslatePair(newCategoryAr, newCategory, "en", setNewCategory);
+    useAutoTranslatePair(newType, newTypeAr, "ar", setNewTypeAr);
+    useAutoTranslatePair(newTypeAr, newType, "en", setNewType);
+    useAutoTranslatePair(newCompanyEn, newCompanyAr, "ar", setNewCompanyAr);
+    useAutoTranslatePair(newCompanyAr, newCompanyEn, "en", setNewCompanyEn);
+    useAutoTranslatePair(editingMaterial?.caption?.en || "", editingMaterial?.caption?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, caption: { ...prev.caption, ar: t } } : prev)));
+    useAutoTranslatePair(editingMaterial?.caption?.ar || "", editingMaterial?.caption?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, caption: { ...prev.caption, en: t } } : prev)));
+    useAutoTranslatePair(stripHtml(editingMaterial?.textContent?.en || ""), editingMaterial?.textContent?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, textContent: { ...prev.textContent, ar: t } } : prev)));
+    useAutoTranslatePair(stripHtml(editingMaterial?.textContent?.ar || ""), editingMaterial?.textContent?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, textContent: { ...prev.textContent, en: t } } : prev)));
+    useAutoTranslatePair(editingMaterial?.before?.label?.en || "", editingMaterial?.before?.label?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, before: { ...prev.before, url: prev.before?.url || "", label: { ...prev.before?.label, ar: t } } } : prev)));
+    useAutoTranslatePair(editingMaterial?.before?.label?.ar || "", editingMaterial?.before?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, before: { ...prev.before, url: prev.before?.url || "", label: { ...prev.before?.label, en: t } } } : prev)));
+    useAutoTranslatePair(editingMaterial?.after?.label?.en || "", editingMaterial?.after?.label?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, ar: t } } } : prev)));
+    useAutoTranslatePair(editingMaterial?.after?.label?.ar || "", editingMaterial?.after?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, en: t } } } : prev)));
+
+    const tagItems = useMemo(() => toLocalizedItems(form.tags), [form.tags]);
+    useAutoTranslateList(tagItems, (index, ar) =>
+        setForm((prev: any) => ({ ...prev, tags: prev.tags.map((t: any, i: number) => (i === index ? mergeLocalizedAr(t, ar) : t)) })),
+    );
+    const categoryItems = useMemo(() => toLocalizedItems(form.categories), [form.categories]);
+    useAutoTranslateList(categoryItems, (index, ar) =>
+        setForm((prev: any) => ({ ...prev, categories: prev.categories.map((c: any, i: number) => (i === index ? mergeLocalizedAr(c, ar) : c)) })),
+    );
+    const typeItems = useMemo(() => toLocalizedItems(form.types), [form.types]);
+    useAutoTranslateList(typeItems, (index, ar) =>
+        setForm((prev: any) => ({ ...prev, types: prev.types.map((t: any, i: number) => (i === index ? mergeLocalizedAr(t, ar) : t)) })),
+    );
+    const materialCaptionItems = useMemo(
+        () => form.materials.map((m: Material) => ({ en: m.caption?.en || "", ar: m.caption?.ar || "" })),
+        [form.materials],
+    );
+    useAutoTranslateList(materialCaptionItems, (index, ar) =>
+        setForm((prev: any) => ({
+            ...prev,
+            materials: prev.materials.map((m: Material, i: number) => (i === index ? { ...m, caption: { ...m.caption, ar } } : m)),
+        })),
+    );
+    const materialTextItems = useMemo(
+        () => form.materials.map((m: Material) => ({ en: stripHtml(m.textContent?.en || ""), ar: stripHtml(m.textContent?.ar || "") })),
+        [form.materials],
+    );
+    useAutoTranslateList(materialTextItems, (index, ar) =>
+        setForm((prev: any) => ({
+            ...prev,
+            materials: prev.materials.map((m: Material, i: number) => (i === index ? { ...m, textContent: { ...m.textContent, ar } } : m)),
+        })),
+    );
+    const materialBeforeLabelItems = useMemo(
+        () => form.materials.map((m: Material) => ({ en: m.before?.label?.en || "", ar: m.before?.label?.ar || "" })),
+        [form.materials],
+    );
+    useAutoTranslateList(materialBeforeLabelItems, (index, ar) =>
+        setForm((prev: any) => ({
+            ...prev,
+            materials: prev.materials.map((m: Material, i: number) =>
+                i === index ? { ...m, before: { ...m.before, url: m.before?.url || "", label: { ...m.before?.label, ar } } } : m,
+            ),
+        })),
+    );
+    const materialAfterLabelItems = useMemo(
+        () => form.materials.map((m: Material) => ({ en: m.after?.label?.en || "", ar: m.after?.label?.ar || "" })),
+        [form.materials],
+    );
+    useAutoTranslateList(materialAfterLabelItems, (index, ar) =>
+        setForm((prev: any) => ({
+            ...prev,
+            materials: prev.materials.map((m: Material, i: number) =>
+                i === index ? { ...m, after: { ...m.after, url: m.after?.url || "", label: { ...m.after?.label, ar } } } : m,
+            ),
+        })),
+    );
 
     // Photo selection upload progress overlay
     const photoUpload = useUploadProgress();
