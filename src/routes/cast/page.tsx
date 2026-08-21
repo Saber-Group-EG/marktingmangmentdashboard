@@ -324,52 +324,64 @@ const CastPage = () => {
                         <Loader2 className="text-light-500 h-8 w-8 animate-spin" />
                     </div>
                 ) : members.length > 0 ? (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {members.map((member) => {
-                            const photoUrl = getCastPhotoUrl(member.photo);
-                            const initial = member.name ? member.name.charAt(0).toUpperCase() : "?";
-                            return (
-                                <div
-                                    key={member._id}
-                                    className="group flex flex-col items-center gap-3 rounded-2xl border border-light-200/80 bg-white px-4 py-5 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-dark-700/80 dark:bg-dark-800"
-                                >
-                                    <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-light-200 bg-light-100 dark:border-dark-700 dark:bg-dark-700">
-                                        {photoUrl ? (
-                                            <img src={photoUrl} alt={member.name} className="h-full w-full object-cover" />
-                                        ) : (
-                                            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-light-200 to-light-300 text-xl font-semibold text-light-700 dark:from-dark-700 dark:to-dark-600 dark:text-dark-300">
-                                                {initial}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="w-full min-w-0">
-                                        <h3 className="text-base font-semibold break-words text-light-900 dark:text-dark-50">
-                                            {member.name}
-                                        </h3>
-                                        {member.title && (
-                                            <p className="mt-0.5 text-sm break-words text-light-600 dark:text-dark-300">
-                                                {member.title}
-                                            </p>
-                                        )}
-                                    </div>
-                                    <SocialLinkIcons links={member.socialLinks} size={14} />
-                                    <div className="mt-auto flex items-center gap-2">
-                                        <button
-                                            onClick={() => openEditModal(member)}
-                                            className="btn-ghost flex items-center gap-2 rounded-xl"
-                                        >
-                                            <Edit2 size={14} />
-                                        </button>
-                                        <button
-                                            onClick={() => remove(member)}
-                                            className="btn-ghost text-danger-500 flex items-center gap-2 rounded-xl"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead>
+                                <tr className="border-b border-light-200 dark:border-dark-700">
+                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("photo", "Photo")}</th>
+                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_name", "Name")}</th>
+                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_title_role", "Title/Role")}</th>
+                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("social_links", "Social Links")}</th>
+                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("actions", "Actions")}</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-light-100 dark:divide-dark-700/50">
+                                {members.map((member) => {
+                                    const photoUrl = getCastPhotoUrl(member.photo);
+                                    const initial = member.name ? member.name.charAt(0).toUpperCase() : "?";
+                                    return (
+                                        <tr key={member._id} className="hover:bg-light-50/50 dark:hover:bg-dark-800/50 transition-colors">
+                                            <td className="py-3 pr-4">
+                                                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-light-200 bg-light-100 dark:border-dark-700 dark:bg-dark-700">
+                                                    {photoUrl ? (
+                                                        <img src={photoUrl} alt={member.name} className="h-full w-full object-cover" />
+                                                    ) : (
+                                                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-light-200 to-light-300 text-sm font-semibold text-light-700 dark:from-dark-700 dark:to-dark-600 dark:text-dark-300">
+                                                            {initial}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="py-3 pr-4 font-medium text-light-900 dark:text-dark-50 whitespace-nowrap">
+                                                {member.name}
+                                            </td>
+                                            <td className="py-3 pr-4 text-light-600 dark:text-dark-300 whitespace-nowrap">
+                                                {member.title || "-"}
+                                            </td>
+                                            <td className="py-3 pr-4">
+                                                <SocialLinkIcons links={member.socialLinks} size={14} />
+                                            </td>
+                                            <td className="py-3">
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => openEditModal(member)}
+                                                        className="btn-ghost rounded-lg p-1.5"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => remove(member)}
+                                                        className="btn-ghost text-danger-500 rounded-lg p-1.5"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 ) : (
                     <p className="text-light-600 dark:text-dark-300 py-8 text-center">
