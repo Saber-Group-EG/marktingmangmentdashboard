@@ -32,6 +32,7 @@ interface Material {
     type: "photo" | "bulk" | "video" | "before_after" | "text" | "html";
   order: number;
   caption?: any;
+  description?: any;
   url?: string;
   mimeType?: string;
   size?: number;
@@ -71,7 +72,6 @@ const AddProject: React.FC = () => {
         const v = t(key);
         return !v || v === key ? fallback : v;
     };
-    void tr; // avoid unused variable warning
 
     const localizedToString = (value: any): string => {
         if (!value) return "";
@@ -132,6 +132,7 @@ const AddProject: React.FC = () => {
     const [newCompanyLogo, setNewCompanyLogo] = useState("");
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+    const [editingMaterialIndex, setEditingMaterialIndex] = useState<number | null>(null);
     const [draggedMaterialIndex, setDraggedMaterialIndex] = useState<number | null>(null);
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
     const [castModalMode, setCastModalMode] = useState<"add" | "edit">("add");
@@ -188,6 +189,8 @@ const AddProject: React.FC = () => {
     useAutoTranslatePair(editingMaterial?.before?.label?.ar || "", editingMaterial?.before?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, before: { ...prev.before, url: prev.before?.url || "", label: { ...prev.before?.label, en: t } } } : prev)));
     useAutoTranslatePair(editingMaterial?.after?.label?.en || "", editingMaterial?.after?.label?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, ar: t } } } : prev)));
     useAutoTranslatePair(editingMaterial?.after?.label?.ar || "", editingMaterial?.after?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, en: t } } } : prev)));
+    useAutoTranslatePair(editingMaterial?.description?.en || "", editingMaterial?.description?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, ar: t } } : prev)));
+    useAutoTranslatePair(editingMaterial?.description?.ar || "", editingMaterial?.description?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, en: t } } : prev)));
 
     const tagItems = useMemo(() => toLocalizedItems(form.tags), [form.tags]);
     useAutoTranslateList(tagItems, (index, ar) =>
@@ -855,23 +858,40 @@ const dataUrl = await readFileAsDataUrl(file);
             mimeType: "image/jpeg",
             items: [],
         };
+        setForm({
+            ...form,
+            materials: [...form.materials, newMaterial],
+        });
         setEditingMaterial(newMaterial);
+        setEditingMaterialIndex(form.materials.length);
     };
 
     const handleEditMaterial = (material: Material) => {
         const normalized = isPhotoMaterialType(material.type) ? normalizePhotoMaterial({ ...material }) : { ...material };
+        const materialIndex = form.materials.findIndex(
+            (m: Material) => m._id === material._id || (m.type === material.type && m.order === material.order)
+        );
         setEditingMaterial(normalized);
+        setEditingMaterialIndex(materialIndex !== -1 ? materialIndex : form.materials.length - 1);
     };
 
     const handleSaveMaterial = () => {
         if (editingMaterial) {
             const materialToSave = isPhotoMaterialType(editingMaterial.type) ? normalizePhotoMaterial(editingMaterial) : editingMaterial;
-            if (editingMaterial._id) {
-                // Update existing
+            if (editingMaterial._id && editingMaterialIndex !== null) {
+                // Update existing material at specific index
                 setForm({
                     ...form,
-                    materials: form.materials.map((m: Material) =>
-                        m._id === editingMaterial._id ? materialToSave : m
+                    materials: form.materials.map((m: Material, idx: number) =>
+                        idx === editingMaterialIndex ? materialToSave : m
+                    ),
+                });
+            } else if (editingMaterialIndex !== null) {
+                // Update material at index (no _id case - replace existing at that position)
+                setForm({
+                    ...form,
+                    materials: form.materials.map((m: Material, idx: number) =>
+                        idx === editingMaterialIndex ? materialToSave : m
                     ),
                 });
             } else {
@@ -882,6 +902,7 @@ const dataUrl = await readFileAsDataUrl(file);
                 });
             }
             setEditingMaterial(null);
+            setEditingMaterialIndex(null);
         }
     };
 
@@ -1786,22 +1807,22 @@ const handleDateChange = (date: Date | null) => {
                                     <Link to="/projects" className="text-light-500 dark:text-secdark-500 hover:text-light-600 dark:hover:text-secdark-400 transition-colors">
                                         <ArrowLeft className="w-5 h-5" />
                                     </Link>
-                                    <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs uppercase tracking-wider text-light-400 dark:text-dark-300">
-                                        Create New
-                                    </span>
+                                        <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs uppercase tracking-wider text-light-400 dark:text-dark-300">
+                                         {tr("create_new", "Create New")}
+                                     </span>
                                 </div>
                                 <h1 className="mt-2 text-3xl sm:text-4xl font-semibold text-light-900 dark:text-dark-50 leading-tight">
-                                    Add New Project
+                                    {tr("add_new_project", "Add New Project")}
                                 </h1>
                                 <p className="mt-2 text-sm text-light-600 dark:text-dark-400 max-w-2xl">
-                                    Create a new project with complete details including materials, team members, and media
+                                    {tr("create_project_subtitle", "Create a new project with complete details including materials, team members, and media")}
                                 </p>
                             </div>
 
                             <div className="flex items-center gap-3">
                                 <Link to="/projects" className="btn-ghost inline-flex items-center gap-2">
                                     <ArrowLeft className="w-4 h-4" />
-                                    Back
+                                    {tr("back", "Back")}
                                 </Link>
                             </div>
                         </div>
@@ -1809,23 +1830,23 @@ const handleDateChange = (date: Date | null) => {
                         {/* Quick Stats */}
                         <div className="mt-6 grid grid-cols-2 sm:grid-cols-5 gap-4">
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Materials</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("materials_count", "Materials")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.materials.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Team Members</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("team_members_count", "Team Members")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.cast.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Categories</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Categories")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.categories.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Tags</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("tags_label", "Tags")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.tags.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Types</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("types", "Types")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.types.length}</div>
                             </div>
                         </div>
@@ -1845,7 +1866,7 @@ const handleDateChange = (date: Date | null) => {
                         }`}
                     >
                         <Info className="w-4 h-4 inline mr-2" />
-                        Basic Info
+                        {tr("basic_info", "Basic Info")}
                     </button>
                     <button
                         onClick={() => setActiveTab("materials")}
@@ -1856,7 +1877,7 @@ const handleDateChange = (date: Date | null) => {
                         }`}
                     >
                         <Layers className="w-4 h-4 inline mr-2" />
-                        Materials ({form.materials.length})
+                        {tr("materials_count", "Materials")} ({form.materials.length})
                     </button>
                     <button
                         onClick={() => setActiveTab("cast")}
@@ -1867,7 +1888,7 @@ const handleDateChange = (date: Date | null) => {
                         }`}
                     >
                         <Users className="w-4 h-4 inline mr-2" />
-                        Cast & Crew ({form.cast.length})
+                        {tr("cast_and_crew", "Cast & Crew")} ({form.cast.length})
                     </button>
                     <button
                         onClick={() => setActiveTab("media")}
@@ -1878,7 +1899,7 @@ const handleDateChange = (date: Date | null) => {
                         }`}
                     >
                         <Camera className="w-4 h-4 inline mr-2" />
-                        Main Cover
+                        {tr("main_cover", "Main Cover")}
                     </button>
                 </div>
             </div>
@@ -1891,11 +1912,11 @@ const handleDateChange = (date: Date | null) => {
     <div className="space-y-6">
         <div className="card p-6">
             <div className="flex items-center justify-between mb-1">
-                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">Clone from Existing Project</h2>
+                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("clone_from_existing", "Clone from Existing Project")}</h2>
                 <Copy className="w-5 h-5 text-light-400 dark:text-dark-500" />
             </div>
             <p className="text-sm text-light-600 dark:text-dark-400 mb-4">
-                Select an existing project to copy all of its data into this form. Materials are not copied.
+                {tr("clone_description", "Select an existing project to copy all of its data into this form. Materials are not copied.")}
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
                 <select
@@ -1903,7 +1924,7 @@ const handleDateChange = (date: Date | null) => {
                     onChange={(e) => setCloneProjectId(e.target.value)}
                     className="input w-full"
                 >
-                    <option value="">Select a project to clone...</option>
+                    <option value="">{tr("select_project_to_clone", "Select a project to clone...")}</option>
                     {allProjects.map((p: any) => (
                         <option key={p._id || p.id || getOptionLabel(p)} value={p._id || p.id}>
                             {getOptionLabel(p)}
@@ -1917,22 +1938,22 @@ const handleDateChange = (date: Date | null) => {
                     className="btn-ghost inline-flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
                 >
                     <X className="w-4 h-4" />
-                    Clear
+                    {tr("clear", "Clear")}
                 </button>
             </div>
             {cloneSourceProject && (
                 <div className="mt-3 flex items-center gap-2 text-sm text-danger-500 dark:text-danger-400">
                     <CheckCircle className="w-4 h-4" />
-                    Cloned from &quot;{getOptionLabel(cloneSourceProject)}&quot; — materials and main cover were not copied.
+                    {tr("cloned_from", "Cloned from")} &quot;{getOptionLabel(cloneSourceProject)}&quot; — {tr("materials_not_copied", "materials and main cover were not copied.")}
                 </div>
             )}
         </div>
         <div className="card p-6">
-            <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">Basic Information</h2>
+            <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("basic_information", "Basic Information")}</h2>
             <div className="space-y-4">
                 <div>
                     <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Project Name (English) *
+                        {tr("project_name_en", "Project Name (English) *")}
                     </label>
                     <input
                         type="text"
@@ -1940,10 +1961,10 @@ const handleDateChange = (date: Date | null) => {
                         onChange={(e) => setForm({ ...form, name: { ...form.name, en: e.target.value } })}
                         required
                         className="input w-full"
-                        placeholder="Enter project name (English)"
+                        placeholder={tr("enter_project_name_en", "Enter project name (English)")}
                     />
                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Project Name (Arabic) *
+                        {tr("project_name_ar", "Project Name (Arabic) *")}
                     </label>
                     <input
                         type="text"
@@ -1958,17 +1979,17 @@ const handleDateChange = (date: Date | null) => {
 
                 <div>
                     <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Description (English)
+                        {tr("description_en", "Description (English)")}
                     </label>
                     <textarea
                         value={form.description?.en || ""}
                         onChange={(e) => setForm({ ...form, description: { ...form.description, en: e.target.value } })}
                         rows={4}
                         className="input w-full resize-y min-h-[100px]"
-                        placeholder="Describe the project... (English)"
+                        placeholder={tr("describe_project_en", "Describe the project... (English)")}
                     />
                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Description (Arabic)
+                        {tr("description_ar", "Description (Arabic)")}
                     </label>
                     <textarea
                         dir="rtl"
@@ -1982,7 +2003,7 @@ const handleDateChange = (date: Date | null) => {
 
                 <div>
                     <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Location (English)
+                        {tr("location_en", "Location (English)")}
                     </label>
                     <div className="relative">
                         <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500" />
@@ -1991,11 +2012,11 @@ const handleDateChange = (date: Date | null) => {
                             value={form.location?.en || ""}
                             onChange={(e) => setForm({ ...form, location: { ...form.location, en: e.target.value } })}
                             className="input w-full pl-9"
-                            placeholder="e.g., Cairo, Egypt"
+                            placeholder={tr("location_placeholder", "e.g., Cairo, Egypt")}
                         />
                     </div>
                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Location (Arabic)
+                        {tr("location_ar", "Location (Arabic)")}
                     </label>
                     <div className="relative">
                         <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500" />
@@ -2012,7 +2033,7 @@ const handleDateChange = (date: Date | null) => {
 
                 <div>
                     <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                        Parent Project
+                        {tr("parent_project", "Parent Project")}
                     </label>
                     <Autocomplete
                         options={allProjects}
@@ -2025,7 +2046,7 @@ const handleDateChange = (date: Date | null) => {
                             if (oId && vId) return String(oId) === String(vId);
                             return getOptionLabel(o) === getOptionLabel(v);
                         }}
-                        renderInput={(params) => <TextField {...params} placeholder="Optional parent project" size="small" />}
+                        renderInput={(params) => <TextField {...params} placeholder={tr("optional_parent_project", "Optional parent project")} size="small" />}
                         sx={taxonomyAutocompleteSx}
                         slotProps={taxonomyAutocompleteSlotProps}
                     />
@@ -2042,14 +2063,14 @@ const handleDateChange = (date: Date | null) => {
                             className="w-4 h-4 rounded border-light-300 dark:border-dark-600 text-light-500 dark:text-secdark-500 focus:ring-light-500 dark:focus:ring-secdark-500"
                         />
                         <label htmlFor="published" className="text-sm text-light-700 dark:text-dark-300">
-                            Schedule for publishing (if unchecked, project will be published immediately)
+                            {tr("schedule_publish", "Schedule for publishing (if unchecked, project will be published immediately)")}
                         </label>
                     </div>
                     
                     {form.published && (
                         <div className="ml-7 mt-2">
                             <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                Publish Date & Time
+                                {tr("publish_date_time", "Publish Date & Time")}
                             </label>
                             <div className="relative">
                                 <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500 z-10" />
@@ -2058,17 +2079,17 @@ const handleDateChange = (date: Date | null) => {
                                     onChange={handleDateChange}
                                     showTimeSelect
                                     dateFormat="MMMM d, yyyy h:mm aa"
-                                    placeholderText="Select date and time to publish"
+                                    placeholderText={tr("select_datetime", "Select date and time to publish")}
                                     minDate={new Date()}
                                     className="input w-full pl-10"
                                     timeIntervals={15}
-                                    timeCaption="Time"
+                                    timeCaption={tr("time_label", "Time")}
                                     calendarClassName="dark:bg-dark-800 dark:text-dark-50"
                                     popperClassName="z-50"
                                 />
                             </div>
                             <p className="mt-1 text-xs text-light-500 dark:text-dark-400">
-                                The project will be automatically published at the selected date and time
+                                {tr("auto_publish_note", "The project will be automatically published at the selected date and time")}
                             </p>
                         </div>
                     )}
@@ -2077,11 +2098,11 @@ const handleDateChange = (date: Date | null) => {
         </div>
 
                             <div className="card p-6">
-                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">Categories & Tags</h2>
+                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("categories_and_tags", "Categories & Tags")}</h2>
                                 <div className="space-y-6">
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Project Company
+                                            {tr("project_company", "Project Company")}
                                         </label>
                                         <Autocomplete
                                             options={projectCompanies}
@@ -2094,14 +2115,14 @@ const handleDateChange = (date: Date | null) => {
                                                 if (oId && vId) return String(oId) === String(vId);
                                                 return getCompanyLabel(o) === getCompanyLabel(v);
                                             }}
-                                            renderInput={(params) => <TextField {...params} placeholder="Select project company" size="small" />}
+                                            renderInput={(params) => <TextField {...params} placeholder={tr("select_company", "Select project company")} size="small" />}
                                             sx={taxonomyAutocompleteSx}
                                             slotProps={taxonomyAutocompleteSlotProps}
                                         />
 
                                         <div className="mt-4 border-t border-light-200 dark:border-dark-700 pt-4">
                                             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-light-500 dark:text-dark-400">
-                                                Or create a new company
+                                                {tr("or_create_company", "Or create a new company")}
                                             </p>
                                             <div className="grid gap-3 sm:grid-cols-2">
                                                 <input
@@ -2109,7 +2130,7 @@ const handleDateChange = (date: Date | null) => {
                                                     value={newCompanyEn}
                                                     onChange={(e) => setNewCompanyEn(e.target.value)}
                                                     className="input w-full"
-                                                    placeholder="Company name (EN)..."
+                                                    placeholder={tr("company_name_en", "Company name (EN)...")}
                                                 />
                                                 <input
                                                     type="text"
@@ -2117,14 +2138,14 @@ const handleDateChange = (date: Date | null) => {
                                                     value={newCompanyAr}
                                                     onChange={(e) => setNewCompanyAr(e.target.value)}
                                                     className="input w-full"
-                                                    placeholder="Company name (AR)..."
+                                                    placeholder={tr("company_name_ar", "Company name (AR)...")}
                                                 />
                                                 <input
                                                     type="text"
                                                     value={newCompanyField}
                                                     onChange={(e) => setNewCompanyField(e.target.value)}
                                                     className="input w-full"
-                                                    placeholder="Field (e.g. Production)..."
+                                                    placeholder={tr("company_field", "Field (e.g. Production)...")}
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <input
@@ -2148,7 +2169,7 @@ const handleDateChange = (date: Date | null) => {
                                                 {newCompanyLogo && (
                                                     <img
                                                         src={newCompanyLogo}
-                                                        alt="Company logo"
+                                                        alt={tr("company_logo_alt", "Company logo")}
                                                         className="h-10 w-10 rounded-lg border border-light-200 object-cover dark:border-dark-700"
                                                     />
                                                 )}
@@ -2163,7 +2184,7 @@ const handleDateChange = (date: Date | null) => {
                                                     ) : (
                                                         <Plus size={14} />
                                                     )}
-                                                    Add Company
+                                                    {tr("add_company", "Add Company")}
                                                 </button>
                                             </div>
                                         </div>
@@ -2171,8 +2192,9 @@ const handleDateChange = (date: Date | null) => {
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Categories
+                                            {tr("categories_label", "Categories")}
                                         </label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("categories_hint", "The field or industry that the project or client belongs to")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
                                             {form.categories.map((cat: any, idx: number) => (
                                                 <span key={getOptionValue(cat) || `${getOptionLabel(cat)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
@@ -2194,9 +2216,9 @@ const handleDateChange = (date: Date | null) => {
                                             }}
                                             className="input w-full mb-2"
                                         >
-                                            <option value="">Select existing category...</option>
+                                            <option value="">{tr("select_existing_category", "Select existing category...")}</option>
                                             {projectCategoriesLoading ? (
-                                                <option value="" disabled>Loading categories...</option>
+                                                <option value="" disabled>{tr("loading_categories", "Loading categories...")}</option>
                                             ) : (
                                                 projectCategories.map((c: any, idx: number) => (
                                                     <option key={idx} value={idx}>{getOptionLabel(c)}</option>
@@ -2211,7 +2233,7 @@ const handleDateChange = (date: Date | null) => {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the category (EN)..."
+                                                placeholder={tr("add_category_en", "Add the category (EN)...")}
                                             />
                                             <input
                                                 type="text"
@@ -2221,14 +2243,15 @@ const handleDateChange = (date: Date | null) => {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the category (AR)..."
+                                                placeholder={tr("add_category_ar", "Add the category (AR)...")}
                                             />
-                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">Add</button>
+                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Tags</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("tags_label", "Tags")}</label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("tags_hint", "Keywords related to the project that make it easier to search")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
                                             {form.tags.map((tag: any, idx: number) => (
                                                 <span key={getOptionValue(tag) || `${getOptionLabel(tag)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
@@ -2250,7 +2273,7 @@ const handleDateChange = (date: Date | null) => {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add a tag (EN)..."
+                                                placeholder={tr("add_tag_en", "Add a tag (EN)...")}
                                             />
                                             <input
                                                 type="text"
@@ -2260,14 +2283,15 @@ const handleDateChange = (date: Date | null) => {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the tag (AR)..."
+                                                placeholder={tr("add_tag_ar", "Add the tag (AR)...")}
                                             />
-                                            <button type="button" onClick={handleAddTag} className="btn-secondary">Add</button>
+                                            <button type="button" onClick={handleAddTag} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Project Types</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("project_types", "Project Types")}</label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("types_hint", "The technical terms that describe the work done in the project")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
                                             {form.types.map((type: any, idx: number) => (
                                                 <span key={getOptionValue(type) || `${getOptionLabel(type)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
@@ -2289,9 +2313,9 @@ const handleDateChange = (date: Date | null) => {
                                             }}
                                             className="input w-full mb-2"
                                         >
-                                            <option value="">Select existing type...</option>
+                                            <option value="">{tr("select_existing_type", "Select existing type...")}</option>
                                             {projectTypesLoading ? (
-                                                <option value="" disabled>Loading types...</option>
+                                                <option value="" disabled>{tr("loading_types", "Loading types...")}</option>
                                             ) : (
                                                 projectTypes.map((t: any, idx: number) => (
                                                     <option key={idx} value={idx}>{getOptionLabel(t)}</option>
@@ -2306,7 +2330,7 @@ const handleDateChange = (date: Date | null) => {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the type (EN)..."
+                                                placeholder={tr("add_type_en", "Add the type (EN)...")}
                                             />
                                             <input
                                                 type="text"
@@ -2316,9 +2340,9 @@ const handleDateChange = (date: Date | null) => {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the type (AR)..."
+                                                placeholder={tr("add_type_ar", "Add the type (AR)...")}
                                             />
-                                            <button type="button" onClick={handleAddType} className="btn-secondary">Add</button>
+                                            <button type="button" onClick={handleAddType} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
                                 </div>
@@ -2331,10 +2355,10 @@ const handleDateChange = (date: Date | null) => {
                         <div className="space-y-6">
                             <div className="card p-6">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">Materials & Media</h2>
+                                    <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("materials_and_media", "Materials & Media")}</h2>
                                     <button type="button" onClick={handleAddMaterial} className="btn-primary inline-flex items-center gap-2">
                                         <Plus className="w-4 h-4" />
-                                        Add Material
+                                        {tr("add_material", "Add Material")}
                                     </button>
                                 </div>
 
@@ -2354,8 +2378,8 @@ const handleDateChange = (date: Date | null) => {
                                                         onDragStart={() => handleMaterialDragStart(idx)}
                                                         onDragEnd={handleMaterialDragEnd}
                                                         className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing"
-                                                        title="Drag to reorder"
-                                                        aria-label="Drag material to reorder"
+                                                         title={tr("drag_to_reorder", "Drag to reorder")}
+                                                         aria-label={tr("drag_material_to_reorder", "Drag material to reorder")}
                                                     >
                                                         <GripVertical className="w-4 h-4" />
                                                     </button>
@@ -2367,8 +2391,8 @@ const handleDateChange = (date: Date | null) => {
                                                             <BeforeAfterSlider
                                                                 beforeUrl={material.before?.url}
                                                                 afterUrl={material.after?.url}
-                                                                beforeLabel={localizedToString(material.before?.label) || "Before"}
-                                                                afterLabel={localizedToString(material.after?.label) || "After"}
+                                                                beforeLabel={localizedToString(material.before?.label) || tr("before_label", "Before")}
+                                                                afterLabel={localizedToString(material.after?.label) || tr("after_label", "After")}
                                                                 className="w-full h-full"
                                                                 mediaClassName="w-full h-full"
                                                                 showSlider={false}
@@ -2446,8 +2470,8 @@ const handleDateChange = (date: Date | null) => {
                                                                 return (
                                                             <div className="mt-2 text-xs text-light-500 dark:text-dark-400">
                                                                 {photoItems.length > 0
-                                                                    ? `${photoItems.length} ${photoItems.length === 1 ? "photo" : "photos"} grouped`
-                                                                    : (material.originalName ? `File: ${material.originalName}` : "Uploaded image")}
+                                                                    ? `${photoItems.length} ${photoItems.length === 1 ? tr("photo", "photo") : tr("photos", "photos")} ${tr("grouped", "grouped")}`
+                                                                    : (material.originalName ? `${tr("file_label", "File:")} ${material.originalName}` : tr("uploaded_image", "Uploaded image"))}
                                                                 {primarySize ? ` • ${formatBytes(primarySize || 0)}` : ""}
                                                             </div>
                                                                 );
@@ -2458,7 +2482,7 @@ const handleDateChange = (date: Date | null) => {
                                                     {material.type === "video" && material.url && (
                                                         <div>
                                                             <div className="mt-2 text-xs text-light-500 dark:text-dark-400">
-                                                                {material.originalName ? `File: ${material.originalName}` : "Uploaded video"}
+                                                                {material.originalName ? `${tr("file_label", "File:")} ${material.originalName}` : tr("uploaded_video", "Uploaded video")}
                                                                 {material.size ? ` • ${formatBytes(material.size)}` : ""}
                                                             </div>
                                                         </div>
@@ -2486,10 +2510,10 @@ const handleDateChange = (date: Date | null) => {
                                                 </div>
 
                                                 <div className="col-span-12 sm:col-span-2 sm:ml-auto flex items-center justify-end gap-2">
-                                                    <button type="button" onClick={() => handleEditMaterial(material)} title="Edit" aria-label="Edit material" className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
+                                                    <button type="button" onClick={() => handleEditMaterial(material)} title={tr("edit", "Edit")} aria-label={tr("edit_material", "Edit material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
                                                         <Edit className="w-4 h-4" />
                                                     </button>
-                                                    <button type="button" onClick={() => handleDeleteMaterial(material._id, idx)} title="Delete" aria-label="Delete material" className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-danger-200 dark:border-danger-900/40 bg-white/70 dark:bg-dark-900/50 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
+                                                    <button type="button" onClick={() => handleDeleteMaterial(material._id, idx)} title={tr("delete", "Delete")} aria-label={tr("delete_material", "Delete material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-danger-200 dark:border-danger-900/40 bg-white/70 dark:bg-dark-900/50 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </div>
@@ -2498,7 +2522,7 @@ const handleDateChange = (date: Date | null) => {
                                     ))}
                                     {form.materials.length === 0 && (
                                         <div className="text-center py-8 text-light-500 dark:text-dark-400">
-                                            No materials yet. Click "Add Material" to get started.
+                                            No materials yet. Click &quot;{tr("add_material", "Add Material")}&quot; to get started.
                                         </div>
                                     )}
                                 </div>
@@ -2511,11 +2535,11 @@ const handleDateChange = (date: Date | null) => {
                         <div className="space-y-6">
                             <div className="card p-6">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">Cast & Crew</h2>
+                                    <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("cast_and_crew", "Cast & Crew")}</h2>
                                     <div className="flex items-center gap-2">
                                             <button type="button" onClick={handleAddCast} className="btn-primary inline-flex items-center gap-2">
                                                 <Plus className="w-4 h-4" />
-                                                Add Member
+                                                {tr("add_member", "Add Member")}
                                             </button>
                                         </div>
                                 </div>
@@ -2555,14 +2579,14 @@ const handleDateChange = (date: Date | null) => {
                                                     <div className="mb-1">
                                                         <SocialLinkIcons links={member.socialLinks} size={14} className="!gap-1.5" />
                                                     </div>
-                                                    <div className="text-xs text-light-400 dark:text-dark-500">Order: {member.order}</div>
+                                                    <div className="text-xs text-light-400 dark:text-dark-500">{tr("order_label", "Order:")} {member.order}</div>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <button type="button" onClick={() => handleEditCast(member, idx)} title="Edit" aria-label="Edit cast member" className="p-2 rounded-lg hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
+                                                    <button type="button" onClick={() => handleEditCast(member, idx)} title={tr("edit", "Edit")} aria-label={tr("edit_team_member", "Edit cast member")} className="p-2 rounded-lg hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
                                                         <Edit className="w-4 h-4" />
                                                     </button>
-                                                    <button type="button" onClick={() => handleDeleteCast(idx)} title="Delete" aria-label="Delete cast member" className="p-2 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
+                                                    <button type="button" onClick={() => handleDeleteCast(idx)} title={tr("delete", "Delete")} aria-label={tr("delete_team_member", "Delete cast member")} className="p-2 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </div>
@@ -2571,7 +2595,7 @@ const handleDateChange = (date: Date | null) => {
                                     ))}
                                     {form.cast.length === 0 && (
                                         <div className="text-center py-8 text-light-500 dark:text-dark-400">
-                                            No team members yet. Click "Add Member" to add cast or crew.
+                                            No team members yet. Click &quot;{tr("add_member", "Add Member")}&quot; to add cast or crew.
                                         </div>
                                     )}
                                 </div>
@@ -2583,23 +2607,23 @@ const handleDateChange = (date: Date | null) => {
                     {activeTab === "media" && (
                         <div className="space-y-6">
                             <div className="card p-6">
-                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">Main Cover Image</h2>
+                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("main_cover_image", "Main Cover Image")}</h2>
                                 
                                 {form.mainCover ? (
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between gap-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="rounded-md text-sm px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300">Current Cover</div>
+                                                <div className="rounded-md text-sm px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300">{tr("current_cover", "Current Cover")}</div>
                                                 <div className="text-sm text-light-600 dark:text-dark-400">{form.mainCover.originalName}</div>
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 <label className="inline-flex items-center gap-2 text-sm">
                                                 </label>
                                                 <button type="button" onClick={() => fileInputRef.current?.click()} className="btn-secondary">
-                                                    <Upload className="w-4 h-4 inline mr-2" />Replace
+                                                    <Upload className="w-4 h-4 inline mr-2" />{tr("replace", "Replace")}
                                                 </button>
                                                 <button type="button" onClick={handleRemoveMainCover} className="btn-danger">
-                                                    <Trash2 className="w-4 h-4 inline mr-2" />Remove
+                                                    <Trash2 className="w-4 h-4 inline mr-2" />{tr("remove", "Remove")}
                                                 </button>
                                             </div>
                                         </div>
@@ -2611,7 +2635,7 @@ const handleDateChange = (date: Date | null) => {
                                                         <img
                                                             ref={(el) => { displayImgRef.current = el; }}
                                                             src={form.mainCover.url}
-                                                            alt="Main Cover"
+                                                            alt={tr("main_cover_alt", "Main Cover")}
                                                             className="w-full h-auto max-h-[420px] object-contain block"
                                                             onLoad={() => setTimeout(updateOverlayStyle, 20)}
                                                             onClick={(e) => handleImageClickToCenter(e)}
@@ -2623,40 +2647,40 @@ const handleDateChange = (date: Date | null) => {
                                                         />
                                                     </div>
                                                     <div className="mt-3 flex items-center gap-3">
-                                                        <label className="text-xs text-light-500 dark:text-dark-400">Zoom</label>
+                                                        <label className="text-xs text-light-500 dark:text-dark-400">{tr("zoom_label", "Zoom")}</label>
                                                         <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-full" />
-                                                        <button type="button" onClick={() => { setZoom(1); setCropCenter({ x: 0.5, y: 0.5 }); }} className="btn-ghost">Reset</button>
+                                                        <button type="button" onClick={() => { setZoom(1); setCropCenter({ x: 0.5, y: 0.5 }); }} className="btn-ghost">{tr("reset", "Reset")}</button>
                                                     </div>
 
-                                                    <div className="mt-2 text-sm text-light-500 dark:text-dark-400">Drag the square on the image to position the 1:1 crop. Use the zoom slider to scale.</div>
+                                                    <div className="mt-2 text-sm text-light-500 dark:text-dark-400">{tr("crop_help_text", "Drag the square on the image to position the 1:1 crop. Use the zoom slider to scale.")}</div>
                                                 </div>
 
                                                 <div className="col-span-1">
                                                     <div className="rounded-lg border border-light-200 dark:border-dark-700 overflow-hidden w-full aspect-square bg-white/5 flex items-center justify-center">
                                                         {croppedPreview ? (
-                                                            <img src={croppedPreview} alt="Cropped preview" className="w-full h-full object-cover" />
+                                                            <img src={croppedPreview} alt={tr("cropped_preview_alt", "Cropped preview")} className="w-full h-full object-cover" />
                                                         ) : (
-                                                            <div className="text-sm text-light-500 dark:text-dark-400 p-4">Cropped preview (1:1)</div>
+                                                            <div className="text-sm text-light-500 dark:text-dark-400 p-4">{tr("cropped_preview_1_1", "Cropped preview (1:1)")}</div>
                                                         )}
                                                     </div>
                                                     <div className="mt-3 flex gap-2">
-                                                        <button type="button" onClick={() => { generateCropPreview(); }} className="btn-secondary">Preview</button>
+                                                        <button type="button" onClick={() => { generateCropPreview(); }} className="btn-secondary">{tr("preview", "Preview")}</button>
                                                     </div>
                                                 </div>
                                             </div>
                                         ) : (
                                             <div className="space-y-4">
                                                 <div className="rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                                    <img src={form.mainCover.url} alt="Main Cover" className="w-full h-auto max-h-[400px] object-contain" />
+                                                    <img src={form.mainCover.url} alt={tr("main_cover_alt", "Main Cover")} className="w-full h-auto max-h-[400px] object-contain" />
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                                     <div>
-                                                        <span className="text-light-500 dark:text-dark-400">File Name:</span>
+                                                        <span className="text-light-500 dark:text-dark-400">{tr("file_name", "File Name:")}</span>
                                                         <span className="ml-2 text-light-900 dark:text-dark-50">{form.mainCover.originalName}</span>
                                                     </div>
                                                   
                                                     <div>
-                                                        <span className="text-light-500 dark:text-dark-400">Size:</span>
+                                                        <span className="text-light-500 dark:text-dark-400">{tr("size_label", "Size:")}</span>
                                                         <span className="ml-2 text-light-900 dark:text-dark-50">{form.mainCover.size ? formatBytes(form.mainCover.size) : "N/A"}</span>
                                                     </div>
                                                 </div>
@@ -2666,14 +2690,14 @@ const handleDateChange = (date: Date | null) => {
                                 ) : (
                                     <div className="text-center py-12 border-2 border-dashed border-light-200 dark:border-dark-700 rounded-lg">
                                         <Camera className="w-12 h-12 text-light-400 dark:text-dark-500 mx-auto mb-3" />
-                                        <p className="text-light-600 dark:text-dark-400 mb-4 mr-2">No main cover image set</p>
+                                        <p className="text-light-600 dark:text-dark-400 mb-4 mr-2">{tr("no_main_cover_set", "No main cover image set")}</p>
                                         <button
                                             type="button"
                                             onClick={() => fileInputRef.current?.click()}
                                             className="btn-primary inline-flex items-center gap-2"
                                         >
                                             <Upload className="w-4 h-4 inline mr-2" />
-                                            Upload Cover Image
+                                            {tr("upload_cover_image", "Upload Cover Image")}
                                         </button>
                                     </div>
                                 )}
@@ -2691,7 +2715,7 @@ const handleDateChange = (date: Date | null) => {
                     {/* Action Buttons */}
 <div className="flex items-center justify-between gap-4 pt-8 mt-8 border-t border-light-200 dark:border-dark-800">
     <Link to="/projects" className="btn-ghost">
-        Cancel
+        {tr("cancel", "Cancel")}
     </Link>
     
     <div className="flex items-center gap-3">
@@ -2707,7 +2731,7 @@ const handleDateChange = (date: Date | null) => {
     className="btn-primary inline-flex items-center gap-2"
 >
     <Plus className="w-4 h-4" />
-    Next
+    {tr("next", "Next")}
 </button>
 ) : (
     <button
@@ -2726,10 +2750,10 @@ const handleDateChange = (date: Date | null) => {
         {saveStatus === "success" && <CheckCircle className="w-4 h-4" />}
         {saveStatus === "error" && <AlertCircle className="w-4 h-4" />}
         {saveStatus === "idle" && <CheckCircle className="w-4 h-4" />}
-        {saveStatus === "saving" && "Creating..."}
-        {saveStatus === "success" && "Created!"}
-        {saveStatus === "error" && "Failed!"}
-        {saveStatus === "idle" && "Create Project"}
+        {saveStatus === "saving" && tr("creating", "Creating...")}
+        {saveStatus === "success" && tr("created", "Created!")}
+        {saveStatus === "error" && tr("failed", "Failed!")}
+        {saveStatus === "idle" && tr("create_project", "Create Project")}
     </button>
 )}
     </div>
@@ -2740,8 +2764,8 @@ const handleDateChange = (date: Date | null) => {
             {uploadModalOpen && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" style={{ zIndex: 9999 }}>
                     <div className="bg-white dark:bg-dark-800 rounded-xl max-w-md w-full p-6">
-                        <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">Creating project</h3>
-                        <div className="mt-2 text-sm text-light-600 dark:text-dark-400">{uploadLabel || "Working..."}</div>
+                        <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("creating_project", "Creating project")}</h3>
+                        <div className="mt-2 text-sm text-light-600 dark:text-dark-400">{uploadLabel || tr("working", "Working...")}</div>
 
                         <div className="mt-4 w-full bg-light-100 dark:bg-dark-700 h-3 rounded-full overflow-hidden">
                             <div className="h-3 bg-light-500 dark:bg-secdark-500 transition-all" style={{ width: `${uploadProgress}%` }} />
@@ -2749,7 +2773,7 @@ const handleDateChange = (date: Date | null) => {
 
                         <div className="mt-3 flex items-center justify-between text-xs text-light-500 dark:text-dark-400">
                             <div>{uploadProgress}%</div>
-                            <div>{estimatedSecondsLeft !== null ? `${formatTimeShort(estimatedSecondsLeft)} remaining` : "Estimating..."}</div>
+                            <div>{estimatedSecondsLeft !== null ? `${formatTimeShort(estimatedSecondsLeft)} ${tr("remaining", "remaining")}` : tr("estimating", "Estimating...")}</div>
                         </div>
                     </div>
                 </div>
@@ -2770,7 +2794,7 @@ const handleDateChange = (date: Date | null) => {
                     <div className="bg-white dark:bg-dark-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <div className="sticky top-0 bg-white dark:bg-dark-800 border-b border-light-200 dark:border-dark-700 p-4 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">
-                                {editingMaterial._id ? "Edit Material" : "Add Material"}
+                                {editingMaterial._id ? tr("edit_material", "Edit Material") : tr("add_material", "Add Material")}
                             </h3>
                             <button onClick={() => setEditingMaterial(null)} className="p-1 hover:bg-light-100 dark:hover:bg-dark-700 rounded">
                                 <X className="w-5 h-5" />
@@ -2778,29 +2802,29 @@ const handleDateChange = (date: Date | null) => {
                         </div>
                         <div className="p-4 space-y-4">
                             <div>
-                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Type</label>
+                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("type_label", "Type")}</label>
                                 <select
                                     value={editingMaterial.type}
                                     onChange={(e) => setEditingMaterial({ ...editingMaterial, type: e.target.value as any })}
                                     className="input w-full"
                                 >
-                                    <option value="photo">Photo</option>
-                                    <option value="video">Video</option>
-                                    <option value="before_after">Before/After</option>
-                                    <option value="text">Text</option>
+                                    <option value="photo">{tr("photo", "Photo")}</option>
+                                    <option value="video">{tr("video", "Video")}</option>
+                                    <option value="before_after">{tr("before_after", "Before/After")}</option>
+                                    <option value="text">{tr("text", "Text")}</option>
                                 </select>
                             </div>
                             
                             <div>
-                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title (English)</label>
+                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_en", "Title (English)")}</label>
                                 <input
                                     type="text"
                                     value={editingMaterial.caption?.en || ""}
                                     onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: { ...editingMaterial.caption, en: e.target.value } })}
                                     className="input w-full"
-                                    placeholder="Optional caption (English)"
+                                    placeholder={tr("optional_caption_en", "Optional caption (English)")}
                                 />
-                                <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title (Arabic)</label>
+                                <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_ar", "Title (Arabic)")}</label>
                                 <input
                                     type="text"
                                     dir="rtl"
@@ -2811,11 +2835,51 @@ const handleDateChange = (date: Date | null) => {
                                 />
                             </div>
 
+                            <div>
+                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("description_en", "Description (English)")}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editingMaterial.description?.en || ""}
+                                        onChange={(e) =>
+                                            setEditingMaterial({
+                                                ...editingMaterial,
+                                                description: {
+                                                    ...editingMaterial.description,
+                                                    en: e.target.value,
+                                                },
+                                            })
+                                        }
+                                        className="input w-full"
+                                        placeholder={t("material_description_en") || "Optional description (English)"}
+                                    />
+                                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("description_ar", "Description (Arabic)")}
+                                    </label>
+                                    <input
+                                        dir="rtl"
+                                        type="text"
+                                        value={editingMaterial.description?.ar || ""}
+                                        onChange={(e) =>
+                                            setEditingMaterial({
+                                                ...editingMaterial,
+                                                description: {
+                                                    ...editingMaterial.description,
+                                                    ar: e.target.value,
+                                                },
+                                            })
+                                        }
+                                        className="input w-full"
+                                        placeholder={t("material_description_ar") || "وصف اختياري (بالعربية)"}
+                                    />
+                                </div>
+
                             {(editingMaterial.type === "photo" || editingMaterial.type === "video") && (
                                 <>
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            {editingMaterial.type === "photo" ? "Upload photos" : "Upload file"}
+                                            {editingMaterial.type === "photo" ? tr("upload_photos", "Upload photos") : tr("upload_file", "Upload file")}
                                         </label>
                                         <input
                                             type="file"
@@ -2833,7 +2897,7 @@ const handleDateChange = (date: Date | null) => {
                                         return (
                                             <div className="mt-3">
                                                 <div className="text-xs text-light-500 dark:text-dark-400 mb-2">
-                                                    {groupedPhotoItems.length} {groupedPhotoItems.length === 1 ? "photo" : "photos"} grouped under this title
+                                                    {groupedPhotoItems.length} {groupedPhotoItems.length === 1 ? tr("photo", "photo") : tr("photos", "photos")} {tr("grouped_under_title", "grouped under this title")}
                                                 </div>
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                                     {groupedPhotoItems.map((item, itemIndex) => (
@@ -2843,8 +2907,8 @@ const handleDateChange = (date: Date | null) => {
                                                                 type="button"
                                                                 onClick={() => handleRemovePhotoItem(itemIndex)}
                                                                 className="absolute top-1 right-1 p-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                title="Remove photo"
-                                                                aria-label="Remove photo"
+                                                                title={tr("remove_photo", "Remove photo")}
+                                                                aria-label={tr("remove_photo", "Remove photo")}
                                                             >
                                                                 <X className="w-3 h-3" />
                                                             </button>
@@ -2863,16 +2927,16 @@ const handleDateChange = (date: Date | null) => {
 
                                     {editingMaterial.type === "video" && (
                                         <div className="mt-3">
-                                            <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Thumbnail</label>
+                                            <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("thumbnail_label", "Thumbnail")}</label>
                                             {(() => {
                                                 const thumbUrl = typeof editingMaterial.thumbnail === 'string' ? editingMaterial.thumbnail : editingMaterial.thumbnail?.url;
                                                 const thumbName = typeof editingMaterial.thumbnail === 'object' ? editingMaterial.thumbnail?.originalName : undefined;
                                                 if (thumbUrl) {
                                                     return (
                                                         <div className="flex items-center gap-3">
-                                                            <img src={thumbUrl} alt={thumbName || 'Thumbnail'} className="w-32 h-20 object-cover rounded border" />
+                                                            <img src={thumbUrl} alt={thumbName || tr("thumbnail_fallback", "Thumbnail")} className="w-32 h-20 object-cover rounded border" />
                                                             <div className="flex flex-col">
-                                                                <button type="button" onClick={() => setEditingMaterial(prev => prev ? { ...prev, thumbnail: undefined } : prev)} className="btn-ghost">Remove</button>
+                                                                <button type="button" onClick={() => setEditingMaterial(prev => prev ? { ...prev, thumbnail: undefined } : prev)} className="btn-ghost">{tr("remove", "Remove")}</button>
                                                             </div>
                                                         </div>
                                                     );
@@ -2892,16 +2956,16 @@ const handleDateChange = (date: Date | null) => {
 
                             {editingMaterial.type === "text" && (
                                 <div>
-                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content (English)</label>
+                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("text_content_en", "Text Content (English)")}</label>
                                     <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
                                         <ReactQuill
                                             theme="snow"
                                             value={editingMaterial.textContent?.en || ""}
                                             onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: { ...editingMaterial.textContent, en: value } })}
-                                            placeholder="Enter your text content here... (English)"
+                                            placeholder={tr("enter_text_content_en", "Enter your text content here... (English)")}
                                         />
                                     </div>
-                                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content (Arabic)</label>
+                                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("text_content_ar", "Text Content (Arabic)")}</label>
                                     <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
                                         <ReactQuill
                                             theme="snow"
@@ -2918,7 +2982,7 @@ const handleDateChange = (date: Date | null) => {
                             {editingMaterial.type === "before_after" && (
                                 <>
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Before Image</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("before_image", "Before Image")}</label>
                                         <input
                                             type="file"
                                             accept="image/*"
@@ -2928,8 +2992,8 @@ const handleDateChange = (date: Date | null) => {
 
                                         {editingMaterial.before?.url && (
                                             <div className="mt-3">
-                                                <img src={editingMaterial.before.url} alt="Before preview" className="w-full h-40 object-cover rounded" />
-                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.before.originalName || 'Uploaded image'}</div>
+                                                <img src={editingMaterial.before.url} alt={tr("before_preview_alt", "Before preview")} className="w-full h-40 object-cover rounded" />
+                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">{tr("file_label", "File:")} {editingMaterial.before.originalName || tr("uploaded_image", "Uploaded image")}</div>
                                             </div>
                                         )}
                                         <div className="grid grid-cols-2 gap-2 mt-3">
@@ -2943,7 +3007,7 @@ const handleDateChange = (date: Date | null) => {
                                                     } as any)
                                                 }
                                                 className="input w-full"
-                                                placeholder="Before label (EN)"
+                                                placeholder={tr("before_label_en", "Before label (EN)")}
                                             />
                                             <input
                                                 type="text"
@@ -2962,7 +3026,7 @@ const handleDateChange = (date: Date | null) => {
                                     </div>
 
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">After Image</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("after_image", "After Image")}</label>
                                         <input
                                             type="file"
                                             accept="image/*"
@@ -2972,8 +3036,8 @@ const handleDateChange = (date: Date | null) => {
 
                                         {editingMaterial.after?.url && (
                                             <div className="mt-3">
-                                                <img src={editingMaterial.after.url} alt="After preview" className="w-full h-40 object-cover rounded" />
-                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.after.originalName || 'Uploaded image'}</div>
+                                                <img src={editingMaterial.after.url} alt={tr("after_preview_alt", "After preview")} className="w-full h-40 object-cover rounded" />
+                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">{tr("file_label", "File:")} {editingMaterial.after.originalName || tr("uploaded_image", "Uploaded image")}</div>
                                             </div>
                                         )}
                                         <div className="grid grid-cols-2 gap-2 mt-3">
@@ -2987,7 +3051,7 @@ const handleDateChange = (date: Date | null) => {
                                                     } as any)
                                                 }
                                                 className="input w-full"
-                                                placeholder="After label (EN)"
+                                                placeholder={tr("after_label_en", "After label (EN)")}
                                             />
                                             <input
                                                 type="text"
@@ -3009,8 +3073,8 @@ const handleDateChange = (date: Date | null) => {
                             )}
 
                             <div className="flex justify-end gap-2 pt-4">
-                                <button onClick={() => setEditingMaterial(null)} className="btn-ghost">Cancel</button>
-                                <button onClick={handleSaveMaterial} className="btn-primary">Save Material</button>
+                                <button onClick={() => setEditingMaterial(null)} className="btn-ghost">{tr("cancel", "Cancel")}</button>
+                                <button onClick={handleSaveMaterial} className="btn-primary">{tr("save_material", "Save Material")}</button>
                             </div>
                         </div>
                     </div>
@@ -3025,7 +3089,7 @@ const handleDateChange = (date: Date | null) => {
                     <div className="bg-white dark:bg-dark-800 rounded-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
                         <div className="border-b border-light-200 dark:border-dark-700 p-4 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">
-                                {castModalMode === "edit" ? "Edit Team Member" : "Add Team Member"}
+                                {castModalMode === "edit" ? tr("edit_team_member", "Edit Team Member") : tr("add_team_member", "Add Team Member")}
                             </h3>
                             <button onClick={() => setEditingCast(null)} className="p-1 hover:bg-light-100 dark:hover:bg-dark-700 rounded">
                                 <X className="w-5 h-5" />
@@ -3036,23 +3100,23 @@ const handleDateChange = (date: Date | null) => {
                                     {castModalMode === "edit" ? (
                                 <>
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Name</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("name_label", "Name")}</label>
                                         <input
                                             type="text"
                                             value={editingCast.name}
                                             onChange={(e) => setEditingCast({ ...editingCast, name: e.target.value })}
                                             className="input w-full"
-                                            placeholder="Full name"
+                                            placeholder={tr("full_name", "Full name")}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title/Role</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_role", "Title/Role")}</label>
                                         <input
                                             type="text"
                                             value={editingCast.title}
                                             onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value })}
                                             className="input w-full"
-                                            placeholder="e.g., Creative Director, Photographer"
+                                            placeholder={tr("title_role_placeholder", "e.g., Creative Director, Photographer")}
                                         />
                                     </div>
                                     <CastSocialLinks
@@ -3060,14 +3124,14 @@ const handleDateChange = (date: Date | null) => {
                                         onChange={(links) => setEditingCast({ ...editingCast, socialLinks: links })}
                                     />
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Photo</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("photo_label", "Photo")}</label>
                                         {(() => {
                                             const photoUrl = getCastPhotoUrl(editingCast.photo);
                                             if (photoUrl) {
                                                 return (
                                                     <div className="flex items-center gap-3 mb-2">
                                                         <img src={photoUrl} alt={editingCast.name || "Member"} className="w-16 h-16 rounded-full object-cover border border-light-200 dark:border-dark-700" />
-                                                        <button type="button" onClick={() => setEditingCast({ ...editingCast, photo: null })} className="btn-ghost">Remove</button>
+                                                        <button type="button" onClick={() => setEditingCast({ ...editingCast, photo: null })} className="btn-ghost">{tr("remove", "Remove")}</button>
                                                     </div>
                                                 );
                                             }
@@ -3078,8 +3142,8 @@ const handleDateChange = (date: Date | null) => {
                                 </>
                             ) : (
                                         <div>
-                                            <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Members</label>
-                                            <p className="text-xs text-light-500 dark:text-dark-400 mb-2">Select existing members or add new ones below. Use <span className="font-medium">Add Member</span> to append rows.</p>
+                                            <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("members_label", "Members")}</label>
+                                            <p className="text-xs text-light-500 dark:text-dark-400 mb-2">{tr("members_hint", "Select existing members or add new ones below. Use")} <span className="font-medium">{tr("add_member", "Add Member")}</span> {tr("to_append_rows", "to append rows.")}</p>
 
                                             <Autocomplete
                                                 multiple
@@ -3133,7 +3197,7 @@ const handleDateChange = (date: Date | null) => {
                                                         );
                                                     })
                                                 }
-                                                renderInput={(params) => <TextField {...params} placeholder="Search existing members" size="small" />}
+                                                renderInput={(params) => <TextField {...params} placeholder={tr("search_existing_members", "Search existing members")} size="small" />}
                                             />
 
                                             {newMembersRows.map((row, rIdx) => (
@@ -3144,20 +3208,20 @@ const handleDateChange = (date: Date | null) => {
                                                             value={row.name}
                                                             onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, name: e.target.value } : p)))}
                                                             className="input col-span-7"
-                                                            placeholder="Full name"
+                                                            placeholder={tr("full_name", "Full name")}
                                                         />
                                                         <input
                                                             type="text"
                                                             value={row.title}
                                                             onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value } : p)))}
                                                             className="input col-span-4"
-                                                            placeholder="Title/Role (optional)"
+                                                            placeholder={tr("title_role_optional", "Title/Role (optional)")}
                                                         />
                                                         <button
                                                             type="button"
                                                             onClick={() => setNewMembersRows((prev) => prev.filter((_, i) => i !== rIdx))}
                                                             className="p-2 rounded hover:bg-light-100 dark:hover:bg-dark-800 text-danger-500"
-                                                            title="Remove"
+                                                            title={tr("remove", "Remove")}
                                                         >
                                                             <X className="w-4 h-4" />
                                                         </button>
@@ -3178,7 +3242,7 @@ const handleDateChange = (date: Date | null) => {
                                                                             onClick={() => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, photo: null } : p)))}
                                                                             className="btn-ghost text-xs"
                                                                         >
-                                                                            Remove
+                                                                            {tr("remove", "Remove")}
                                                                         </button>
                                                                     </div>
                                                                 );
@@ -3197,14 +3261,14 @@ const handleDateChange = (date: Date | null) => {
                                                     className="btn-secondary"
                                                 >
                                                     <Plus className="w-4 h-4 inline mr-2" />
-                                                    Add Member
+                                                    {tr("add_member", "Add Member")}
                                                 </button>
                                             </div>
                                         </div>
                             )}
                             <div className="flex justify-end gap-2 pt-4">
-                                <button onClick={() => setEditingCast(null)} className="btn-ghost">Cancel</button>
-                                <button onClick={handleSaveCast} className="btn-primary">{castModalMode === "edit" ? "Save Member" : "Save Members"}</button>
+                                <button onClick={() => setEditingCast(null)} className="btn-ghost">{tr("cancel", "Cancel")}</button>
+                                <button onClick={handleSaveCast} className="btn-primary">{castModalMode === "edit" ? tr("save_member", "Save Member") : tr("save_members", "Save Members")}</button>
                             </div>
                         </div>
                     </div>

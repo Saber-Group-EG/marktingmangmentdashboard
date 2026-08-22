@@ -22,7 +22,7 @@ const ProjectDetails: React.FC = () => {
         const v = t(key);
         return !v || v === key ? fallback : v;
     };
-    void tr; // to avoid unused variable warning since tr is used in JSX
+
 
     const localizedToString = (value: any): string => {
         if (!value) return "";
@@ -68,10 +68,9 @@ const ProjectDetails: React.FC = () => {
     const getOptionLabel = (value: any): string => {
         if (typeof value === "string") return value;
         if (!value || typeof value !== "object") return "";
-        const name = value.name;
-        if (name && typeof name === "object") return name.en || name.ar || "";
-        if (value.en || value.ar) return value.en || value.ar || "";
-        return name || value.title || value.label || value.value || value._id || value.id || "";
+        if (value[lang]) return String(value[lang]);
+        if (value.name && typeof value.name === "object" && value.name[lang]) return String(value.name[lang]);
+        return localizedToString(value.name) || localizedToString(value);
     };
 
     const getOptionKey = (value: any, index: number): string => {
@@ -196,6 +195,12 @@ const ProjectDetails: React.FC = () => {
     // derive project helpers and display data unconditionally to keep hooks order stable
     const p: any = project;
     const projectId = id || p?.id || p?._id;
+
+    // Use the original localized objects preserved by transformProject
+    const projectName = p?.localizedName || p?.name || "";
+    const projectDescription = p?.localizedDescription || p?.description || "";
+    const projectLocation = p?.localizedLocation || p?.location || "";
+
     const groupedMaterials = normalizeProjectMaterials(p?.material || []);
 
     const displayCast = useMemo(() => {
@@ -271,7 +276,7 @@ const ProjectDetails: React.FC = () => {
             <div className="min-h-screen bg-light-50 dark:bg-dark-950 flex items-center justify-center">
                 <div className="text-center">
                    
-                    <p className="text-light-600 dark:text-dark-400 font-light tracking-wide">Loading Projects</p>
+                    <p className="text-light-600 dark:text-dark-400 font-light tracking-wide">{tr("loading_projects", "Loading Projects")}</p>
                 </div>
             </div>
         );
@@ -284,10 +289,10 @@ const ProjectDetails: React.FC = () => {
                     <div className="w-24 h-24 mx-auto mb-6 bg-danger-50 dark:bg-danger-950/30 rounded-full flex items-center justify-center">
                         <X className="w-12 h-12 text-danger-500 dark:text-danger-400" />
                     </div>
-                    <h2 className="text-2xl font-light mb-2 text-light-900 dark:text-dark-50">Project Not Found</h2>
-                    <p className="text-light-600 dark:text-dark-400 mb-6">{(error as any)?.message || "The requested project doesn't exist or has been removed."}</p>
+                    <h2 className="text-2xl font-light mb-2 text-light-900 dark:text-dark-50">{tr("project_not_found", "Project Not Found")}</h2>
+                    <p className="text-light-600 dark:text-dark-400 mb-6">{(error as any)?.message || tr("project_not_found_msg", "The requested project doesn't exist or has been removed.")}</p>
                     <Link to="/projects" className="btn-primary inline-flex">
-                        Browse All Projects
+                        {tr("browse_all_projects", "Browse All Projects")}
                     </Link>
                 </div>
             </div>
@@ -301,6 +306,7 @@ const ProjectDetails: React.FC = () => {
             if (v === null || v === undefined || v === "") return "—";
             if (typeof v === "object") {
                 if (Array.isArray(v)) return v.join(", ");
+                if (v.en || v.ar) return v[lang] || v.en || v.ar || "";
                 return v.fullName ?? v.name ?? 'Hidden';
             }
             return String(v);
@@ -490,16 +496,16 @@ const ProjectDetails: React.FC = () => {
                         <BeforeAfterSlider
                             beforeUrl={m.before?.url}
                             afterUrl={m.after?.url}
-                            beforeLabel={localizedToString(m.before?.label) || "Before"}
-                            afterLabel={localizedToString(m.after?.label) || "After"}
+                            beforeLabel={localizedToString(m.before?.label) || tr("before_label", "Before")}
+                            afterLabel={localizedToString(m.after?.label) || tr("after_label", "After")}
                             mediaClassName="aspect-square w-full"
                             showSlider={false}
                         />
                         <div className="p-3">
                             {caption && <p className="text-sm text-light-600 dark:text-dark-400 mb-2">{caption}</p>}
                             <div className="text-xs text-light-400 dark:text-dark-500">
-                                <div>Order: {m.order}</div>
-                                <div className="mt-1">Before: {m.before?.type} • After: {m.after?.type}</div>
+                                <div>{tr("order_label", "Order:")} {m.order}</div>
+                                <div className="mt-1">{tr("before_label", "Before")}: {m.before?.type} • {tr("after_label", "After")}: {m.after?.type}</div>
                             </div>
                         </div>
                     </MediaCard>
@@ -573,17 +579,21 @@ const ProjectDetails: React.FC = () => {
                         <div className="flex items-start justify-between gap-4">
                             <div>
 
-                                <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs uppercase tracking-wider text-light-400 dark:text-dark-300">Project Library</span>
-                                <h1 className="mt-4 text-3xl sm:text-4xl md:text-5xl font-semibold text-light-900 dark:text-dark-50 leading-tight">{p.name}</h1>
-                                <p className="mt-2 text-sm text-light-600 dark:text-dark-400 max-w-3xl">{p.description}</p>
+                                <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs uppercase tracking-wider text-light-400 dark:text-dark-300">{tr("project_library", "Project Library")}</span>
+                                <h1 className="mt-4 text-3xl sm:text-4xl md:text-5xl font-semibold text-light-900 dark:text-dark-50 leading-tight">
+                                    {localizedToString(projectName)}
+                                </h1>
+                                <p className="mt-2 text-sm text-light-600 dark:text-dark-400 max-w-3xl">
+                                    {localizedToString(projectDescription)}
+                                </p>
 
                             </div>
 
                             <div className="flex flex-col items-end gap-3">
                                 <div className="flex items-center gap-3">
-                                    <Link to="/projects" className="btn-ghost">Back</Link>
+                                    <Link to="/projects" className="btn-ghost">{tr("back", "Back")}</Link>
                                     {projectId && (
-                                        <Link to={`/projects/${projectId}/edit`} className="btn-primary">Edit</Link>
+                                        <Link to={`/projects/${projectId}/edit`} className="btn-primary">{tr("edit", "Edit")}</Link>
                                     )}
                                 </div>
 
@@ -597,15 +607,15 @@ const ProjectDetails: React.FC = () => {
 
                         <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Materials</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("materials_count", "Materials")}</div>
                                 <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">{groupedMaterials.length || 0}</div>
                             </div>
                             <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Team Members</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("team_members_count", "Team Members")}</div>
                                 <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">{p.cast?.length || 0}</div>
                             </div>
                             <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Categories</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Categories")}</div>
                                 <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">{p.categories?.length || 0}</div>
                             </div>
                         </div>
@@ -640,22 +650,22 @@ const ProjectDetails: React.FC = () => {
                         </button>
                     </div>
                     <div className="text-sm text-light-500 dark:text-secdark-400">
-                        {groupedMaterials.length || 0} materials • {p.cast?.length || 0} team members
+                        {groupedMaterials.length || 0} {tr("materials_count", "materials")} • {p.cast?.length || 0} {tr("team_members_count", "team members")}
                     </div>
                 </div>
 
                 {/* Section: Basic Overview */}
-                <Section id="overview" title="Project Overview" icon={Info}>
+                <Section id="overview" title={tr("project_overview", "Project Overview")} icon={Info}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-3">
-                            <DetailRow label="Project Name" value={p.name} icon={FolderTree} copyable copyId="name" />
-                            <DetailRow label="Description" value={p.description} icon={FileText} />
-                            <DetailRow label="Location" value={p.location} icon={MapPin} copyable copyId="location" />
+                            <DetailRow label={tr("project_name_label", "Project Name")} value={projectName} icon={FolderTree} copyable copyId="name" />
+                            <DetailRow label={tr("description", "Description")} value={projectDescription} icon={FileText} />
+                            <DetailRow label={tr("location", "Location")} value={projectLocation} icon={MapPin} copyable copyId="location" />
                         </div>
                         <div className="space-y-3">
-                            <DetailRow label="Published" value={p.published ? "Yes ✓" : "No ✗"} icon={Globe} />
-                            <DetailRow label="Created By" value={typeof p.createdBy === 'object' ? (p.createdBy.fullName || p.createdBy.name || 'Hidden') : 'Hidden'} icon={User} />
-                            <DetailRow label="Parent Project" value={typeof p.parentProject === 'object' ? (p.parentProject?.name || 'Hidden') : 'Hidden'} icon={LinkIcon} />
+                            <DetailRow label={tr("published", "Published")} value={p.published ? tr("yes_value", "Yes") : tr("no_value", "No")} icon={Globe} />
+                            <DetailRow label={tr("created_by", "Created By")} value={typeof p.createdBy === 'object' ? (p.createdBy.fullName || p.createdBy.name || 'Hidden') : 'Hidden'} icon={User} />
+                            <DetailRow label={tr("parent_project", "Parent Project")} value={typeof p.parentProject === 'object' ? (p.parentProject?.name || 'Hidden') : 'Hidden'} icon={LinkIcon} />
 
                         </div>
                     </div>
@@ -664,45 +674,45 @@ const ProjectDetails: React.FC = () => {
                
 
                 {/* Section: Categories & Tags */}
-                <Section id="categories" title="Categories & Tags" icon={Tag}>
+                <Section id="categories" title={tr("categories_and_tags", "Categories & Tags")} icon={Tag}>
                     <div className="space-y-6">
                         <div>
-                            <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">Categories</h3>
+                            <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">{tr("categories_label", "Categories")}</h3>
                             <div className="flex flex-wrap gap-2">
                                 {p.categories?.map((cat: any, idx: number) => (
                                     <span key={getOptionKey(cat, idx)} className="px-3 py-1.5 bg-light-500 text-white dark:bg-secdark-700 dark:text-white rounded-lg text-sm">
                                         {getCategoryDisplayName(cat, lang)}
                                     </span>
-                                )) || <span className="text-light-400 dark:text-dark-500">No categories</span>}
+                                )) || <span className="text-light-400 dark:text-dark-500">{tr("no_categories", "No categories")}</span>}
                             </div>
                         </div>
                         <div>
-                            <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">Tags</h3>
+                            <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">{tr("tags_label", "Tags")}</h3>
                             <div className="flex flex-wrap gap-2">
                                 {p.tags?.map((tag: any, idx: number) => (
                                     <span key={getOptionKey(tag, idx)} className="px-3 py-1.5 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-lg text-sm">
                                         #{getOptionLabel(tag)}
                                     </span>
-                                )) || <span className="text-light-400 dark:text-dark-500">No tags</span>}
+                                )) || <span className="text-light-400 dark:text-dark-500">{tr("no_tags", "No tags")}</span>}
                             </div>
                         </div>
                         <div>
-                            <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">Project Types</h3>
+                            <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">{tr("project_types", "Project Types")}</h3>
                             <div className="flex flex-wrap gap-2">
                                 {p.types?.map((type: any, idx: number) => (
                                     <span key={getOptionKey(type, idx)} className="px-3 py-1.5 border border-light-200 dark:border-dark-700 text-light-700 dark:text-dark-300 rounded-lg text-sm">
                                         {getOptionLabel(type)}
                                     </span>
-                                )) || <span className="text-light-400 dark:text-dark-500">No types</span>}
+                                )) || <span className="text-light-400 dark:text-dark-500">{tr("no_types", "No types")}</span>}
                             </div>
                         </div>
                     </div>
                 </Section>
 
                 {/* Section: Materials & Media */}
-                <Section id="materials" title="Materials & Media" icon={Layers}>
+                <Section id="materials" title={tr("materials_and_media", "Materials & Media")} icon={Layers}>
                     <div className="mb-4 text-sm text-light-500 dark:text-secdark-400">
-                        Total: {groupedMaterials.length || 0} items • Types: {groupedMaterials.map((m: any) => m.type).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i).join(", ") || "None"}
+                        {tr("total", "Total:")} {groupedMaterials.length || 0} items • Types: {groupedMaterials.map((m: any) => m.type).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i).join(", ") || "None"}
                     </div>
                     <div className={viewMode === "grid" 
                         ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
@@ -713,7 +723,7 @@ const ProjectDetails: React.FC = () => {
                 </Section>
 
                 {/* Section: Cast & Crew */}
-                <Section id="cast" title="Cast & Crew" icon={Users}>
+                <Section id="cast" title={tr("cast_and_crew", "Cast & Crew")} icon={Users}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {displayCast.sort((a: any, b: any) => (a.order || 0) - (b.order || 0)).map((c: any) => (
                             <div
@@ -740,7 +750,7 @@ const ProjectDetails: React.FC = () => {
                                                 <p className="text-sm text-light-500 dark:text-secdark-400">{c.title}</p>
                                             </div>
                                         </div>
-                                    <span className="text-xs text-light-400 dark:text-dark-500">Order: {c.order}</span>
+                                    <span className="text-xs text-light-400 dark:text-dark-500">{tr("order_label", "Order:")} {c.order}</span>
                                 </div>
                                 <div className="pt-3 border-t border-light-100 dark:border-dark-700">
                                     <SocialLinkIcons links={c.socialLinks} size={15} />
@@ -759,31 +769,31 @@ const ProjectDetails: React.FC = () => {
               
 
                 {/* Section: Statistics */}
-                <Section id="stats" title="Statistics & Summary" icon={Award}>
+                <Section id="stats" title={tr("statistics_and_summary", "Statistics & Summary")} icon={Award}>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
                             <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{groupedMaterials.length || 0}</div>
-                            <div className="text-xs text-light-600 dark:text-dark-400">Materials</div>
+                            <div className="text-xs text-light-600 dark:text-dark-400">{tr("materials_count", "Materials")}</div>
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
                             <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{p.cast?.length || 0}</div>
-                            <div className="text-xs text-light-600 dark:text-dark-400">Team Members</div>
+                            <div className="text-xs text-light-600 dark:text-dark-400">{tr("team_members_count", "Team Members")}</div>
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
                             <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{p.categories?.length || 0}</div>
-                            <div className="text-xs text-light-600 dark:text-dark-400">Categories</div>
+                            <div className="text-xs text-light-600 dark:text-dark-400">{tr("categories_label", "Categories")}</div>
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
                             <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{p.tags?.length || 0}</div>
-                            <div className="text-xs text-light-600 dark:text-dark-400">Tags</div>
+                            <div className="text-xs text-light-600 dark:text-dark-400">{tr("tags_label", "Tags")}</div>
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
                             <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{p.types?.length || 0}</div>
-                            <div className="text-xs text-light-600 dark:text-dark-400">Project Types</div>
+                            <div className="text-xs text-light-600 dark:text-dark-400">{tr("project_types", "Project Types")}</div>
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
                             <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{Object.keys(p).length}</div>
-                            <div className="text-xs text-light-600 dark:text-dark-400">Total Fields</div>
+                            <div className="text-xs text-light-600 dark:text-dark-400">{tr("total_fields", "Total Fields")}</div>
                         </div>
                     </div>
                 </Section>

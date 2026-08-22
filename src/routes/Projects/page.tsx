@@ -84,7 +84,7 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
 
 const ProjectsPage: React.FC = () => {
     const navigate = useNavigate();
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const tr = (key: string, fallback: string) => {
         const value = t(key);
         return !value || value === key ? fallback : value;
@@ -100,8 +100,8 @@ const ProjectsPage: React.FC = () => {
     const handleDelete = async (project: any) => {
         const id = getProjectId(project);
         if (!id || deletingId) return;
-        const name = localizedText(project.name || project.localizedName) || "Untitled";
-        const confirmed = await showConfirm(`Delete "${name}"? This cannot be undone.`, "Delete", "Cancel");
+        const name = localizedText(project.localizedName || project.name) || tr("untitled", "Untitled");
+        const confirmed = await showConfirm(tr("delete_confirm_msg", 'Delete "{name}"? This cannot be undone.').replace("{name}", name), tr("delete_confirm", "Delete"), tr("cancel_confirm", "Cancel"));
         if (!confirmed) return;
         setDeletingId(id);
         deleteProject.mutate(id, {
@@ -130,14 +130,14 @@ const ProjectsPage: React.FC = () => {
     const localizedText = (value: any): string => {
         if (!value) return "";
         if (typeof value === "string") return value;
-        if (typeof value === "object") return value.en || value.ar || value.name || "";
+        if (typeof value === "object") return value[lang] || value.en || value.ar || value.name || "";
         return "";
     };
 
     const filtered = useMemo(() => {
         const q = searchTerm.trim().toLowerCase();
         return orderedProjects.filter((p: any) => {
-            const name = localizedText(p?.name || p?.localizedName).toLowerCase();
+            const name = localizedText(p?.localizedName || p?.name).toLowerCase();
             const category = localizedText(p?.category).toLowerCase();
             return !q || name.includes(q) || category.includes(q);
         });
@@ -340,7 +340,7 @@ const ProjectsPage: React.FC = () => {
                                 <div className="relative z-10 mb-4 flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
                                         <GripVertical size={16} className="text-light-400 dark:text-dark-500 shrink-0" />
-                                        <h3 className="text-lg font-extrabold text-light-900 dark:text-dark-50">{localizedText(project.name || project.localizedName) || "Untitled"}</h3>
+                                        <h3 className="text-lg font-extrabold text-light-900 dark:text-dark-50">{localizedText(project.localizedName || project.name) || tr("untitled", "Untitled")}</h3>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <div className="text-sm text-light-500 dark:text-dark-400">{project.published ? tr("published", "Published") : tr("draft", "Draft")}</div>
@@ -349,7 +349,7 @@ const ProjectsPage: React.FC = () => {
                                             onClick={() => handleDelete(project)}
                                             disabled={deletingId === getProjectId(project)}
                                             title={tr("delete", "Delete")}
-                                            aria-label={`Delete ${localizedText(project.name || project.localizedName) || "project"}`}
+                                            aria-label={`${tr("delete_confirm", "Delete")} ${localizedText(project.localizedName || project.name) || tr("project", "project")}`}
                                             className="p-1.5 rounded-lg text-light-400 dark:text-dark-500 hover:text-danger-500 dark:hover:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors disabled:opacity-50"
                                         >
                                             {deletingId === getProjectId(project) ? (
@@ -362,8 +362,8 @@ const ProjectsPage: React.FC = () => {
                                 </div>
 
                                 <div className="relative z-10 mb-4 flex-1">
-                                    <p className="text-sm text-light-600 dark:text-dark-400 line-clamp-2">{localizedText(project.description) || "-"}</p>
-                                    <div className="text-xs text-light-500 dark:text-dark-500 mt-3">Cast/Client: {getClientOrCastName(project)}</div>
+                                    <p className="text-sm text-light-600 dark:text-dark-400 line-clamp-2">{localizedText(project.localizedDescription || project.description) || "-"}</p>
+                                    <div className="text-xs text-light-500 dark:text-dark-500 mt-3">{tr("cast_client", "Cast/Client: ")}{getClientOrCastName(project)}</div>
                                 </div>
 
                                 <div className="relative z-10 mt-auto flex gap-2">

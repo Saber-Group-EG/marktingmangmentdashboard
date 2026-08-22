@@ -30,6 +30,7 @@ interface Material {
         type: "photo" | "bulk" | "video" | "before_after" | "text" | "html";
   order: number;
   caption?: any;
+  description?: any;
   url?: string;
   mimeType?: string;
   size?: number;
@@ -70,7 +71,6 @@ const EditProject: React.FC = () => {
         const v = t(key);
         return !v || v === key ? fallback : v;
     };
-    void tr; // to avoid unused variable warning if translation is not used in this file
     const navigate = useNavigate();
 
     const localizedToString = (value: any): string => {
@@ -134,6 +134,7 @@ const EditProject: React.FC = () => {
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+    const [editingMaterialIndex, setEditingMaterialIndex] = useState<number | null>(null);
     const [draggedMaterialIndex, setDraggedMaterialIndex] = useState<number | null>(null);
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
     const [castModalMode, setCastModalMode] = useState<"add" | "edit">("add");
@@ -165,6 +166,8 @@ const EditProject: React.FC = () => {
     useAutoTranslatePair(editingMaterial?.before?.label?.ar || "", editingMaterial?.before?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, before: { ...prev.before, url: prev.before?.url || "", label: { ...prev.before?.label, en: t } } } : prev)));
     useAutoTranslatePair(editingMaterial?.after?.label?.en || "", editingMaterial?.after?.label?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, ar: t } } } : prev)));
     useAutoTranslatePair(editingMaterial?.after?.label?.ar || "", editingMaterial?.after?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, en: t } } } : prev)));
+    useAutoTranslatePair(editingMaterial?.description?.en || "", editingMaterial?.description?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, ar: t } } : prev)));
+    useAutoTranslatePair(editingMaterial?.description?.ar || "", editingMaterial?.description?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, en: t } } : prev)));
 
     const tagItems = useMemo(() => toLocalizedItems(form.tags), [form.tags]);
     useAutoTranslateList(tagItems, (index, ar) =>
@@ -834,23 +837,32 @@ const EditProject: React.FC = () => {
             mimeType: "image/jpeg",
             items: [],
         };
+        setForm({
+            ...form,
+            materials: [...form.materials, newMaterial],
+        });
         setEditingMaterial(newMaterial);
+        setEditingMaterialIndex(form.materials.length);
     };
 
     const handleEditMaterial = (material: Material) => {
         const normalized = isPhotoMaterialType(material.type) ? normalizePhotoMaterial({ ...material }) : { ...material };
+        const materialIndex = form.materials.findIndex(
+            (m: Material) => m._id === material._id || (m.type === material.type && m.order === material.order)
+        );
         setEditingMaterial(normalized);
+        setEditingMaterialIndex(materialIndex !== -1 ? materialIndex : form.materials.length - 1);
     };
 
     const handleSaveMaterial = () => {
         if (editingMaterial) {
             const materialToSave = isPhotoMaterialType(editingMaterial.type) ? normalizePhotoMaterial(editingMaterial) : editingMaterial;
-            if (editingMaterial._id) {
-                // Update existing
+            if (editingMaterialIndex !== null) {
+                // Update material at specific index
                 setForm({
                     ...form,
-                    materials: form.materials.map((m: Material) =>
-                        m._id === editingMaterial._id ? materialToSave : m
+                    materials: form.materials.map((m: Material, idx: number) =>
+                        idx === editingMaterialIndex ? materialToSave : m
                     ),
                 });
             } else {
@@ -861,6 +873,7 @@ const EditProject: React.FC = () => {
                 });
             }
             setEditingMaterial(null);
+            setEditingMaterialIndex(null);
         }
     };
 
@@ -1548,7 +1561,7 @@ if (Array.isArray(clone.cast)) {
             <div className="min-h-screen bg-light-50 dark:bg-dark-950 flex items-center justify-center">
                 <div className="text-center">
                     
-                    <p className="text-light-600 dark:text-dark-400 font-light tracking-wide">Loading project data...</p>
+                    <p className="text-light-600 dark:text-dark-400 font-light tracking-wide">{tr("loading_project_data", "Loading project data...")}</p>
                 </div>
             </div>
         );
@@ -1561,13 +1574,13 @@ if (Array.isArray(clone.cast)) {
                     <div className="w-24 h-24 mx-auto mb-6 bg-danger-50 dark:bg-danger-950/30 rounded-full flex items-center justify-center">
                         <AlertCircle className="w-12 h-12 text-danger-500 dark:text-danger-400" />
                     </div>
-                    <h2 className="text-2xl font-light mb-2 text-light-900 dark:text-dark-50">Project Not Found</h2>
+                    <h2 className="text-2xl font-light mb-2 text-light-900 dark:text-dark-50">{tr("project_not_found", "Project Not Found")}</h2>
                     <p className="text-light-600 dark:text-dark-400 mb-6">
-                        {(error as any)?.message || "The project you're trying to edit doesn't exist."}
+                        {(error as any)?.message || tr("project_not_found", "Project Not Found")}
                     </p>
                     <Link to="/projects" className="btn-primary inline-flex items-center gap-2">
                         <ArrowLeft className="w-4 h-4" />
-                        Back to Projects
+                        {tr("back_to_projects", "Back to Projects")}
                     </Link>
                 </div>
             </div>
@@ -1587,21 +1600,21 @@ if (Array.isArray(clone.cast)) {
                                         <ArrowLeft className="w-5 h-5" />
                                     </Link>
                                     <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs uppercase tracking-wider text-light-400 dark:text-dark-300">
-                                        Edit Mode
+                                        {tr("edit_mode", "Edit Mode")}
                                     </span>
                                 </div>
                                 <h1 className="mt-2 text-3xl sm:text-4xl font-semibold text-light-900 dark:text-dark-50 leading-tight">
-                                    Edit Project
+                                    {tr("edit_project", "Edit Project")}
                                 </h1>
                                 <p className="mt-2 text-sm text-light-600 dark:text-dark-400 max-w-2xl">
-                                    Modify project details, materials, team, and content for "{project.name}"
+                                    {tr("modify_project_details", 'Modify project details, materials, team, and content for "{name}"').replace("{name}", getOptionLabel(project))}
                                 </p>
                             </div>
 
                             <div className="flex items-center gap-3">
                                 <Link to={`/projects/${id}`} className="btn-ghost inline-flex items-center gap-2">
                                     <Eye className="w-4 h-4" />
-                                    Preview
+                                    {tr("preview_button", "Preview")}
                                 </Link>
                             </div>
                         </div>
@@ -1609,23 +1622,23 @@ if (Array.isArray(clone.cast)) {
                         {/* Quick Stats */}
                         <div className="mt-6 grid grid-cols-2 sm:grid-cols-5 gap-4">
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Materials</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("materials_count", "Materials")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.materials.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Team Members</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("team_members_count", "Team Members")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.cast.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Categories</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Categories")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.categories.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Tags</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("tags_label", "Tags")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.tags.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">Types</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("types", "Types")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.types.length}</div>
                             </div>
                         </div>
@@ -1645,7 +1658,7 @@ if (Array.isArray(clone.cast)) {
                         }`}
                     >
                         <Info className="w-4 h-4 inline mr-2" />
-                        Basic Info
+                        {tr("basic_info", "Basic Info")}
                     </button>
                     <button
                         onClick={() => setActiveTab("materials")}
@@ -1656,7 +1669,7 @@ if (Array.isArray(clone.cast)) {
                         }`}
                     >
                         <Layers className="w-4 h-4 inline mr-2" />
-                        Materials ({form.materials.length})
+                        {tr("materials_tab", "Materials")} ({form.materials.length})
                     </button>
                     <button
                         onClick={() => setActiveTab("cast")}
@@ -1667,7 +1680,7 @@ if (Array.isArray(clone.cast)) {
                         }`}
                     >
                         <Users className="w-4 h-4 inline mr-2" />
-                        Cast & Crew ({form.cast.length})
+                        {tr("cast_and_crew", "Cast & Crew")} ({form.cast.length})
                     </button>
                     <button
                         onClick={() => setActiveTab("media")}
@@ -1678,7 +1691,7 @@ if (Array.isArray(clone.cast)) {
                         }`}
                     >
                         <Camera className="w-4 h-4 inline mr-2" />
-                        Main Cover
+                        {tr("main_cover", "Main Cover")}
                     </button>
                 </div>
             </div>
@@ -1690,11 +1703,11 @@ if (Array.isArray(clone.cast)) {
                     {activeTab === "basic" && (
                         <div className="space-y-6">
                             <div className="card p-6">
-                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">Basic Information</h2>
+                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("basic_information", "Basic Information")}</h2>
                                 <div className="space-y-4">
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Project Name (English) *
+                                            {tr("project_name_en", "Project Name (English) *")}
                                         </label>
                                         <input
                                             type="text"
@@ -1702,10 +1715,10 @@ if (Array.isArray(clone.cast)) {
                                             onChange={(e) => setForm({ ...form, name: { ...form.name, en: e.target.value } })}
                                             required
                                             className="input w-full"
-                                            placeholder="Enter project name (English)"
+                                            placeholder={tr("enter_project_name_en", "Enter project name (English)")}
                                         />
                                         <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Project Name (Arabic) *
+                                            {tr("project_name_ar", "Project Name (Arabic) *")}
                                         </label>
                                         <input
                                             type="text"
@@ -1720,17 +1733,17 @@ if (Array.isArray(clone.cast)) {
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Description (English)
+                                            {tr("description_en", "Description (English)")}
                                         </label>
                                         <textarea
                                             value={form.description?.en || ""}
                                             onChange={(e) => setForm({ ...form, description: { ...form.description, en: e.target.value } })}
                                             rows={4}
                                             className="input w-full resize-y min-h-[100px]"
-                                            placeholder="Describe the project... (English)"
+                                            placeholder={tr("describe_project_en", "Describe the project... (English)")}
                                         />
                                         <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Description (Arabic)
+                                            {tr("description_ar", "Description (Arabic)")}
                                         </label>
                                         <textarea
                                             dir="rtl"
@@ -1744,7 +1757,7 @@ if (Array.isArray(clone.cast)) {
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Location (English)
+                                            {tr("location_en", "Location (English)")}
                                         </label>
                                         <div className="relative">
                                             <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500" />
@@ -1753,11 +1766,11 @@ if (Array.isArray(clone.cast)) {
                                                 value={form.location?.en || ""}
                                                 onChange={(e) => setForm({ ...form, location: { ...form.location, en: e.target.value } })}
                                                 className="input w-full pl-9"
-                                                placeholder="e.g., Cairo, Egypt"
+                                                placeholder={tr("location_placeholder", "e.g., Cairo, Egypt")}
                                             />
                                         </div>
                                         <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Location (Arabic)
+                                            {tr("location_ar", "Location (Arabic)")}
                                         </label>
                                         <div className="relative">
                                             <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500" />
@@ -1774,7 +1787,7 @@ if (Array.isArray(clone.cast)) {
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Parent Project
+                                            {tr("parent_project", "Parent Project")}
                                         </label>
                                         <Autocomplete
                                             options={allProjects.filter((p: any) => ((p.id || p._id) !== id))}
@@ -1787,7 +1800,7 @@ if (Array.isArray(clone.cast)) {
                                                 if (oId && vId) return String(oId) === String(vId);
                                                 return getOptionLabel(o) === getOptionLabel(v);
                                             }}
-                                            renderInput={(params) => <TextField {...params} placeholder="Optional parent project" size="small" />}
+                                            renderInput={(params) => <TextField {...params} placeholder={tr("optional_parent_project", "Optional parent project")} size="small" />}
                                             sx={taxonomyAutocompleteSx}
                                             slotProps={taxonomyAutocompleteSlotProps}
                                         />
@@ -1812,11 +1825,11 @@ if (Array.isArray(clone.cast)) {
                             </div>
 
                             <div className="card p-6">
-                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">Categories & Tags</h2>
+                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("categories_and_tags", "Categories & Tags")}</h2>
                                 <div className="space-y-6">
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Project Company
+                                            {tr("project_company", "Project Company")}
                                         </label>
                                         <Autocomplete
                                             options={projectCompanies}
@@ -1829,14 +1842,14 @@ if (Array.isArray(clone.cast)) {
                                                 if (oId && vId) return String(oId) === String(vId);
                                                 return getCompanyLabel(o) === getCompanyLabel(v);
                                             }}
-                                            renderInput={(params) => <TextField {...params} placeholder="Select project company" size="small" />}
+                                            renderInput={(params) => <TextField {...params} placeholder={tr("select_company", "Select project company")} size="small" />}
                                             sx={taxonomyAutocompleteSx}
                                             slotProps={taxonomyAutocompleteSlotProps}
                                         />
 
                                         <div className="mt-4 border-t border-light-200 dark:border-dark-700 pt-4">
                                             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-light-500 dark:text-dark-400">
-                                                Or create a new company
+                                                {tr("or_create_company", "Or create a new company")}
                                             </p>
                                             <div className="grid gap-3 sm:grid-cols-2">
                                                 <input
@@ -1844,7 +1857,7 @@ if (Array.isArray(clone.cast)) {
                                                     value={newCompanyEn}
                                                     onChange={(e) => setNewCompanyEn(e.target.value)}
                                                     className="input w-full"
-                                                    placeholder="Company name (EN)..."
+                                                    placeholder={tr("company_name_en", "Company name (EN)...")}
                                                 />
                                                 <input
                                                     type="text"
@@ -1852,14 +1865,14 @@ if (Array.isArray(clone.cast)) {
                                                     value={newCompanyAr}
                                                     onChange={(e) => setNewCompanyAr(e.target.value)}
                                                     className="input w-full"
-                                                    placeholder="Company name (AR)..."
+                                                    placeholder={tr("company_name_ar", "Company name (AR)...")}
                                                 />
                                                 <input
                                                     type="text"
                                                     value={newCompanyField}
                                                     onChange={(e) => setNewCompanyField(e.target.value)}
                                                     className="input w-full"
-                                                    placeholder="Field (e.g. Production)..."
+                                                    placeholder={tr("company_field", "Field (e.g. Production)...")}
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <input
@@ -1898,7 +1911,7 @@ if (Array.isArray(clone.cast)) {
                                                     ) : (
                                                         <Plus size={14} />
                                                     )}
-                                                    Add Company
+                                                    {tr("add_company", "Add Company")}
                                                 </button>
                                             </div>
                                         </div>
@@ -1906,8 +1919,9 @@ if (Array.isArray(clone.cast)) {
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Categories
+                                            {tr("categories_label", "Categories")}
                                         </label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("categories_hint", "The field or industry that the project or client belongs to")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
                                             {form.categories.map((cat: any, idx: number) => (
                                                 <span key={getOptionValue(cat) || `${getOptionLabel(cat)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
@@ -1929,9 +1943,9 @@ if (Array.isArray(clone.cast)) {
                                             }}
                                             className="input w-full mb-2"
                                         >
-                                            <option value="">Select existing category...</option>
+                                            <option value="">{tr("select_existing_category", "Select existing category...")}</option>
                                             {projectCategoriesLoading ? (
-                                                <option value="" disabled>Loading categories...</option>
+                                                <option value="" disabled>{tr("loading_categories", "Loading categories...")}</option>
                                             ) : (
                                                 projectCategories.map((c: any, idx: number) => (
                                                     <option key={idx} value={idx}>{getOptionLabel(c)}</option>
@@ -1946,7 +1960,7 @@ if (Array.isArray(clone.cast)) {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the category (EN)..."
+                                                placeholder={tr("add_category_en", "Add the category (EN)...")}
                                             />
                                             <input
                                                 type="text"
@@ -1956,14 +1970,15 @@ if (Array.isArray(clone.cast)) {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the category (AR)..."
+                                                placeholder={tr("add_category_ar", "Add the category (AR)...")}
                                             />
-                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">Add</button>
+                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Tags</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("tags_label", "Tags")}</label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("tags_hint", "Keywords related to the project that make it easier to search")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
                                             {form.tags.map((tag: any, idx: number) => (
                                                 <span key={getOptionValue(tag) || `${getOptionLabel(tag)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
@@ -1985,7 +2000,7 @@ if (Array.isArray(clone.cast)) {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add a tag (EN)..."
+                                                placeholder={tr("add_tag_en", "Add a tag (EN)...")}
                                             />
                                             <input
                                                 type="text"
@@ -1995,14 +2010,15 @@ if (Array.isArray(clone.cast)) {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the tag (AR)..."
+                                                placeholder={tr("add_tag_ar", "Add the tag (AR)...")}
                                             />
-                                            <button type="button" onClick={handleAddTag} className="btn-secondary">Add</button>
+                                            <button type="button" onClick={handleAddTag} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Project Types</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("project_types", "Project Types")}</label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("types_hint", "The technical terms that describe the work done in the project")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
                                             {form.types.map((type: any, idx: number) => (
                                                 <span key={getOptionValue(type) || `${getOptionLabel(type)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
@@ -2024,9 +2040,9 @@ if (Array.isArray(clone.cast)) {
                                             }}
                                             className="input w-full mb-2"
                                         >
-                                            <option value="">Select existing type...</option>
+                                            <option value="">{tr("select_existing_type", "Select existing type...")}</option>
                                             {projectTypesLoading ? (
-                                                <option value="" disabled>Loading types...</option>
+                                                <option value="" disabled>{tr("loading_types", "Loading types...")}</option>
                                             ) : (
                                                 projectTypes.map((t: any, idx: number) => (
                                                     <option key={idx} value={idx}>{getOptionLabel(t)}</option>
@@ -2041,7 +2057,7 @@ if (Array.isArray(clone.cast)) {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the type (EN)..."
+                                                placeholder={tr("add_type_en", "Add the type (EN)...")}
                                             />
                                             <input
                                                 type="text"
@@ -2051,9 +2067,9 @@ if (Array.isArray(clone.cast)) {
                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                 data-enter-add
                                                 className="input flex-1"
-                                                placeholder="Add the type (AR)..."
+                                                placeholder={tr("add_type_ar", "Add the type (AR)...")}
                                             />
-                                            <button type="button" onClick={handleAddType} className="btn-secondary">Add</button>
+                                            <button type="button" onClick={handleAddType} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
                                 </div>
@@ -2066,10 +2082,10 @@ if (Array.isArray(clone.cast)) {
                         <div className="space-y-6">
                             <div className="card p-6">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">Materials & Media</h2>
+                                    <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("materials_and_media", "Materials & Media")}</h2>
                                     <button type="button" onClick={handleAddMaterial} className="btn-primary inline-flex items-center gap-2">
                                         <Plus className="w-4 h-4" />
-                                        Add Material
+                                        {tr("add_material", "Add Material")}
                                     </button>
                                 </div>
 
@@ -2089,8 +2105,8 @@ if (Array.isArray(clone.cast)) {
                                                             onDragStart={() => handleMaterialDragStart(idx)}
                                                             onDragEnd={handleMaterialDragEnd}
                                                             className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing"
-                                                            title="Drag to reorder"
-                                                            aria-label="Drag material to reorder"
+                                                            title={tr("drag_to_reorder", "Drag to reorder")}
+                                                            aria-label={tr("drag_material", "Drag material to reorder")}
                                                         >
                                                             <GripVertical className="w-4 h-4" />
                                                         </button>
@@ -2102,8 +2118,8 @@ if (Array.isArray(clone.cast)) {
                                                                 <BeforeAfterSlider
                                                                     beforeUrl={material.before?.url}
                                                                     afterUrl={material.after?.url}
-                                                                    beforeLabel={localizedToString(material.before?.label) || "Before"}
-                                                                    afterLabel={localizedToString(material.after?.label) || "After"}
+                                                                    beforeLabel={localizedToString(material.before?.label) || tr("before_label", "Before")}
+                                                                    afterLabel={localizedToString(material.after?.label) || tr("after_label", "After")}
                                                                     className="w-full h-full"
                                                                     mediaClassName="w-full h-full"
                                                                     showSlider={false}
@@ -2186,8 +2202,8 @@ if (Array.isArray(clone.cast)) {
                                                                 return (
                                                                     <div className="mt-2 text-xs text-light-500 dark:text-dark-400">
                                                                         {photoItems.length > 0
-                                                                            ? `${photoItems.length} ${photoItems.length === 1 ? "photo" : "photos"} grouped`
-                                                                            : (material.originalName ? `File: ${material.originalName}` : "Uploaded image")}
+                                                                            ? `${photoItems.length} ${photoItems.length === 1 ? tr("photo", "photo") : tr("photos", "photos")} ${tr("grouped", "grouped")}`
+                                                                            : (material.originalName ? `${tr("file_label", "File:")} ${material.originalName}` : tr("uploaded_image", "Uploaded image"))}
                                                                         {primarySize ? ` • ${((primarySize || 0) / 1024).toFixed(1)}KB` : ""}
                                                                     </div>
                                                                 );
@@ -2216,10 +2232,10 @@ if (Array.isArray(clone.cast)) {
                                                     </div>
 
                                                     <div className="col-span-12 sm:col-span-2 sm:ml-auto flex items-center justify-end gap-2">
-                                                        <button type="button" onClick={() => handleEditMaterial(material)} title="Edit" aria-label="Edit material" className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
+                                                        <button type="button" onClick={() => handleEditMaterial(material)} title={tr("edit", "Edit")} aria-label={tr("edit_material", "Edit material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
                                                             <Edit className="w-4 h-4" />
                                                         </button>
-                                                        <button type="button" onClick={() => handleDeleteMaterial(material._id!)} title="Delete" aria-label="Delete material" className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-danger-200 dark:border-danger-900/40 bg-white/70 dark:bg-dark-900/50 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
+                                                        <button type="button" onClick={() => handleDeleteMaterial(material._id!)} title={tr("delete", "Delete")} aria-label={tr("delete_material", "Delete material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-danger-200 dark:border-danger-900/40 bg-white/70 dark:bg-dark-900/50 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
                                                             <Trash2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
@@ -2228,7 +2244,7 @@ if (Array.isArray(clone.cast)) {
                                     ))}
                                     {form.materials.length === 0 && (
                                         <div className="text-center py-8 text-light-500 dark:text-dark-400">
-                                            No materials yet. Click "Add Material" to get started.
+                                            {tr("no_materials_yet", "No materials yet...")}
                                         </div>
                                     )}
                                 </div>
@@ -2241,10 +2257,10 @@ if (Array.isArray(clone.cast)) {
                         <div className="space-y-6">
                             <div className="card p-6">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">Cast & Crew</h2>
+                                    <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("cast_and_crew", "Cast & Crew")}</h2>
                                     <button type="button" onClick={handleAddCast} className="btn-primary inline-flex items-center gap-2">
                                         <Plus className="w-4 h-4" />
-                                        Add Member
+                                        {tr("add_member", "Add Member")}
                                     </button>
                                 </div>
 
@@ -2286,7 +2302,7 @@ if (Array.isArray(clone.cast)) {
                                                             </div>
                                                             <div className="mt-1.5">
                                                                 <SocialLinkIcons links={member.socialLinks} size={14} className="!gap-1.5" />
-                                                                <div className="text-xs text-light-400 dark:text-dark-500 mt-1">Order: {member.order}</div>
+                                                                <div className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("order_label", "Order:")} {member.order}</div>
                                                             </div>
                                                         </div>
                                                 </div>
@@ -2303,7 +2319,7 @@ if (Array.isArray(clone.cast)) {
                                     ))}
                                     {form.cast.length === 0 && (
                                         <div className="text-center py-8 text-light-500 dark:text-dark-400">
-                                            No team members yet. Click "Add Member" to add cast or crew.
+                                            {tr("no_team_members_yet", "No team members yet...")}
                                         </div>
                                     )}
                                 </div>
@@ -2315,21 +2331,21 @@ if (Array.isArray(clone.cast)) {
                     {activeTab === "media" && (
                         <div className="space-y-6">
                             <div className="card p-6">
-                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">Main Cover Image</h2>
+                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("main_cover_image", "Main Cover Image")}</h2>
                                 
                                 {form.mainCover ? (
                                     <div className="space-y-4">
                                         <div className="rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                            <img src={form.mainCover.url} alt="Main Cover" className="w-full h-auto max-h-[400px] object-contain" />
+                                            <img src={form.mainCover.url} alt={tr("main_cover", "Main Cover")} className="w-full h-auto max-h-[400px] object-contain" />
                                         </div>
                                         <div className="grid grid-cols-2 gap-4 text-sm">
                                             <div>
-                                                <span className="text-light-500 dark:text-dark-400">File Name:</span>
+                                                <span className="text-light-500 dark:text-dark-400">{tr("file_name", "File Name:")}</span>
                                                 <span className="ml-2 text-light-900 dark:text-dark-50">{form.mainCover.originalName}</span>
                                             </div>
                                          
                                             <div>
-                                                <span className="text-light-500 dark:text-dark-400">Size:</span>
+                                                <span className="text-light-500 dark:text-dark-400">{tr("size_label", "Size:")}</span>
                                                 <span className="ml-2 text-light-900 dark:text-dark-50">
                                                     {form.mainCover.size ? `${(form.mainCover.size / 1024).toFixed(2)} KB` : "N/A"}
                                                 </span>
@@ -2342,7 +2358,7 @@ if (Array.isArray(clone.cast)) {
                                                 className="btn-secondary"
                                             >
                                                 <Upload className="w-4 h-4 inline mr-2" />
-                                                Replace Image
+                                                {tr("replace_image", "Replace Image")}
                                             </button>
                                             <button
                                                 type="button"
@@ -2350,21 +2366,21 @@ if (Array.isArray(clone.cast)) {
                                                 className="btn-danger"
                                             >
                                                 <Trash2 className="w-4 h-4 inline mr-2" />
-                                                Remove
+                                                {tr("remove", "Remove")}
                                             </button>
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="text-center py-12 border-2 border-dashed border-light-200 dark:border-dark-700 rounded-lg">
                                         <Camera className="w-12 h-12 text-light-400 dark:text-dark-500 mx-auto mb-3" />
-                                        <p className="text-light-600 dark:text-dark-400 mb-4">No main cover image set</p>
+                                        <p className="text-light-600 dark:text-dark-400 mb-4">{tr("no_main_cover", "No main cover image set")}</p>
                                         <button
                                             type="button"
                                             onClick={() => fileInputRef.current?.click()}
                                             className="btn-primary"
                                         >
                                             <Upload className="w-4 h-4 inline mr-2" />
-                                            Upload Cover Image
+                                            {tr("upload_cover", "Upload Cover Image")}
                                         </button>
                                     </div>
                                 )}
@@ -2389,12 +2405,12 @@ if (Array.isArray(clone.cast)) {
                                     className="btn-danger inline-flex items-center gap-2"
                                 >
                                     <Trash2 className="w-4 h-4" />
-                                    Delete Project
+                                    {tr("delete_project", "Delete Project")}
                                 </button>
                             ) : (
                                 <div className="flex items-center gap-3">
                                     <span className="text-sm text-danger-600 dark:text-danger-400">
-                                        Are you sure?
+                                        {tr("are_you_sure", "Are you sure?")}
                                     </span>
                                     <button
                                         type="button"
@@ -2403,14 +2419,14 @@ if (Array.isArray(clone.cast)) {
                                         className="btn-danger inline-flex items-center gap-2"
                                     >
                                         {del.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                                        Yes, Delete
+                                        {tr("yes_delete", "Yes, Delete")}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setShowDeleteConfirm(false)}
                                         className="btn-ghost"
                                     >
-                                        Cancel
+                                        {tr("cancel", "Cancel")}
                                     </button>
                                 </div>
                             )}
@@ -2418,7 +2434,7 @@ if (Array.isArray(clone.cast)) {
 
                         <div className="flex items-center gap-3">
                             <Link to={`/projects/${id}`} className="btn-ghost">
-                                Cancel
+                                {tr("cancel", "Cancel")}
                             </Link>
                             <button
                                 type="submit"
@@ -2429,10 +2445,10 @@ if (Array.isArray(clone.cast)) {
                                 {saveStatus === "success" && <CheckCircle className="w-4 h-4" />}
                                 {saveStatus === "error" && <AlertCircle className="w-4 h-4" />}
                                 {saveStatus === "idle" && <Save className="w-4 h-4" />}
-                                {saveStatus === "saving" && "Saving..."}
-                                {saveStatus === "success" && "Saved!"}
-                                {saveStatus === "error" && "Failed!"}
-                                {saveStatus === "idle" && "Save Changes"}
+                                {saveStatus === "saving" && tr("saving", "Saving...")}
+                                {saveStatus === "success" && tr("saved", "Saved!")}
+                                {saveStatus === "error" && tr("failed", "Failed!")}
+                                {saveStatus === "idle" && tr("save_changes", "Save")}
                             </button>
                         </div>
                     </div>
@@ -2454,7 +2470,7 @@ if (Array.isArray(clone.cast)) {
                     <div className="bg-white dark:bg-dark-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <div className="sticky top-0 bg-white dark:bg-dark-800 border-b border-light-200 dark:border-dark-700 p-4 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">
-                                {editingMaterial._id ? "Edit Material" : "Add Material"}
+                                {editingMaterial._id ? tr("edit_material", "Edit Material") : tr("add_material", "Add Material")}
                             </h3>
                             <button onClick={() => setEditingMaterial(null)} className="p-1 hover:bg-light-100 dark:hover:bg-dark-700 rounded">
                                 <X className="w-5 h-5" />
@@ -2462,28 +2478,28 @@ if (Array.isArray(clone.cast)) {
                         </div>
                         <div className="p-4 space-y-4">
                             <div>
-                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Type</label>
+                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("type_label", "Type")}</label>
                                 <select
                                     value={editingMaterial.type}
                                     onChange={(e) => setEditingMaterial({ ...editingMaterial, type: e.target.value as any })}
                                     className="input w-full"
                                 >
-                                    <option value="photo">Photo</option>
-                                    <option value="video">Video</option>
-                                    <option value="before_after">Before/After</option>
-                                    <option value="text">Text</option>
+                                    <option value="photo">{tr("photo", "Photo")}</option>
+                                    <option value="video">{tr("video", "Video")}</option>
+                                    <option value="before_after">{tr("before_after", "Before/After")}</option>
+                                    <option value="text">{tr("text", "Text")}</option>
                                 </select>
                             </div>
                             
                             <div>
-                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title (English)</label>
+                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_en", "Title (English)")}</label>
                                 <input                                    type="text"
                                     value={editingMaterial.caption?.en || ""}
                                     onChange={(e) => setEditingMaterial({ ...editingMaterial, caption: { ...editingMaterial.caption, en: e.target.value } })}
                                     className="input w-full"
-                                    placeholder="Optional caption (English)"
+                                    placeholder={tr("optional_caption_en", "Optional caption (English)")}
                                 />
-                                <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title (Arabic)</label>
+                                <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_ar", "Title (Arabic)")}</label>
                                 <input                                    type="text"
                                     dir="rtl"
                                     value={editingMaterial.caption?.ar || ""}
@@ -2493,11 +2509,51 @@ if (Array.isArray(clone.cast)) {
                                 />
                             </div>
 
+                            <div>
+                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("description_en_label", "Description (English)")}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editingMaterial.description?.en || ""}
+                                        onChange={(e) =>
+                                            setEditingMaterial({
+                                                ...editingMaterial,
+                                                description: {
+                                                    ...editingMaterial.description,
+                                                    en: e.target.value,
+                                                },
+                                            })
+                                        }
+                                        className="input w-full"
+                                        placeholder={tr("optional_description_en", "Optional description (English)")}
+                                    />
+                                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                        {tr("description_ar_label", "Description (Arabic)")}
+                                    </label>
+                                    <input
+                                        dir="rtl"
+                                        type="text"
+                                        value={editingMaterial.description?.ar || ""}
+                                        onChange={(e) =>
+                                            setEditingMaterial({
+                                                ...editingMaterial,
+                                                description: {
+                                                    ...editingMaterial.description,
+                                                    ar: e.target.value,
+                                                },
+                                            })
+                                        }
+                                        className="input w-full"
+                                        placeholder="وصف اختياري (بالعربية)"
+                                    />
+                                </div>
+
                             {(editingMaterial.type === "photo" || editingMaterial.type === "video") && (
                                 <>
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            {editingMaterial.type === "photo" ? "Upload photos" : "Upload file"}
+                                            {editingMaterial.type === "photo" ? tr("upload_photos", "Upload photos") : tr("upload_file", "Upload file")}
                                         </label>
                                         <input
                                             type="file"
@@ -2525,8 +2581,8 @@ if (Array.isArray(clone.cast)) {
                                                                 type="button"
                                                                 onClick={() => handleRemovePhotoItem(itemIndex)}
                                                                 className="absolute top-1 right-1 p-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                title="Remove photo"
-                                                                aria-label="Remove photo"
+                                                                title={tr("remove_photo", "Remove photo")}
+                                                                aria-label={tr("remove_photo", "Remove photo")}
                                                             >
                                                                 <X className="w-3 h-3" />
                                                             </button>
@@ -2544,7 +2600,7 @@ if (Array.isArray(clone.cast)) {
                                     )}
                                     {editingMaterial.type === "video" && (
                                         <div className="mt-3">
-                                            <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Video Thumbnail (optional)</label>
+                                            <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("thumbnail_label", "Thumbnail")}</label>
                                             <input
                                                 type="file"
                                                 accept="image/*"
@@ -2560,9 +2616,9 @@ if (Array.isArray(clone.cast)) {
                                                 return (
                                                     <div className="mt-3">
                                                         <img src={thumbUrl} alt="Thumbnail preview" className="w-full h-40 object-cover rounded" />
-                                                        <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {thumbName || 'Uploaded image'}</div>
+                                                        <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {thumbName || tr("uploaded_image", "Uploaded image")}</div>
                                                         <div className="mt-2">
-                                                            <button type="button" onClick={() => setEditingMaterial(prev => prev ? { ...prev, thumbnail: undefined } : prev)} className="btn-ghost">Remove</button>
+                                                            <button type="button" onClick={() => setEditingMaterial(prev => prev ? { ...prev, thumbnail: undefined } : prev)} className="btn-ghost">{tr("remove", "Remove")}</button>
                                                         </div>
                                                     </div>
                                                 );
@@ -2574,7 +2630,7 @@ if (Array.isArray(clone.cast)) {
 
                             {editingMaterial.type === "text" && (
                                 <div>
-                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content (English)</label>
+                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("text_content_en", "Text Content (English)")}</label>
                                     <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
                                         <ReactQuill
                                             theme="snow"
@@ -2582,7 +2638,7 @@ if (Array.isArray(clone.cast)) {
                                             onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: { ...editingMaterial.textContent, en: value } })}
                                         />
                                     </div>
-                                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Text Content (Arabic)</label>
+                                    <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("text_content_ar", "Text Content (Arabic)")}</label>
                                     <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
                                         <ReactQuill
                                             theme="snow"
@@ -2597,7 +2653,7 @@ if (Array.isArray(clone.cast)) {
                             {editingMaterial.type === "before_after" && (
                                 <>
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Before Image</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("before_image", "Before Image")}</label>
                                         <input
                                             type="file"
                                             accept="image/*"
@@ -2608,7 +2664,7 @@ if (Array.isArray(clone.cast)) {
                                         {editingMaterial.before?.url && (
                                             <div className="mt-3">
                                                 <img src={editingMaterial.before.url} alt="Before preview" className="w-full h-40 object-cover rounded" />
-                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.before.originalName || 'Uploaded image'}</div>
+                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.before.originalName || tr("uploaded_image", "Uploaded image")}</div>
                                             </div>
                                         )}
                                         <div className="grid grid-cols-2 gap-2 mt-3">
@@ -2622,7 +2678,7 @@ if (Array.isArray(clone.cast)) {
                                                     } as any)
                                                 }
                                                 className="input w-full"
-                                                placeholder="Before label (EN)"
+                                                placeholder={tr("before_label_en", "Before label (EN)")}
                                             />
                                             <input
                                                 type="text"
@@ -2641,7 +2697,7 @@ if (Array.isArray(clone.cast)) {
                                     </div>
 
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">After Image</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("after_image", "After Image")}</label>
                                         <input
                                             type="file"
                                             accept="image/*"
@@ -2652,7 +2708,7 @@ if (Array.isArray(clone.cast)) {
                                         {editingMaterial.after?.url && (
                                             <div className="mt-3">
                                                 <img src={editingMaterial.after.url} alt="After preview" className="w-full h-40 object-cover rounded" />
-                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.after.originalName || 'Uploaded image'}</div>
+                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {editingMaterial.after.originalName || tr("uploaded_image", "Uploaded image")}</div>
                                             </div>
                                         )}
                                         <div className="grid grid-cols-2 gap-2 mt-3">
@@ -2666,7 +2722,7 @@ if (Array.isArray(clone.cast)) {
                                                     } as any)
                                                 }
                                                 className="input w-full"
-                                                placeholder="After label (EN)"
+                                                placeholder={tr("after_label_en", "After label (EN)")}
                                             />
                                             <input
                                                 type="text"
@@ -2688,8 +2744,8 @@ if (Array.isArray(clone.cast)) {
                             )}
 
                             <div className="flex justify-end gap-2 pt-4">
-                                <button onClick={() => setEditingMaterial(null)} className="btn-ghost">Cancel</button>
-                                <button onClick={handleSaveMaterial} className="btn-primary">Save Material</button>
+                                <button onClick={() => setEditingMaterial(null)} className="btn-ghost">{tr("cancel", "Cancel")}</button>
+                                <button onClick={handleSaveMaterial} className="btn-primary">{tr("save_material", "Save Material")}</button>
                             </div>
                         </div>
                     </div>
@@ -2702,7 +2758,7 @@ if (Array.isArray(clone.cast)) {
                     <div className="bg-white dark:bg-dark-800 rounded-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
                         <div className="border-b border-light-200 dark:border-dark-700 p-4 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">
-                                {castModalMode === "edit" ? "Edit Team Member" : "Add Team Member"}
+                                {castModalMode === "edit" ? tr("edit_team_member", "Edit Team Member") : tr("add_team_member", "Add Team Member")}
                             </h3>
                             <button onClick={() => setEditingCast(null)} className="p-1 hover:bg-light-100 dark:hover:bg-dark-700 rounded">
                                 <X className="w-5 h-5" />
@@ -2712,17 +2768,17 @@ if (Array.isArray(clone.cast)) {
                             {castModalMode === "edit" ? (
                                 <>
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Name</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("name_label", "Name")}</label>
                                         <input
                                             type="text"
                                             value={editingCast.name}
                                             onChange={(e) => setEditingCast({ ...editingCast, name: e.target.value })}
                                             className="input w-full"
-                                            placeholder="Full name"
+                                                    placeholder={tr("full_name", "Full name")}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Title/Role</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_role", "Title/Role")}</label>
                                         <input
                                             type="text"
                                             value={editingCast.title}
@@ -2736,14 +2792,14 @@ if (Array.isArray(clone.cast)) {
                                         onChange={(links) => setEditingCast({ ...editingCast, socialLinks: links })}
                                     />
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Photo</label>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("photo_label", "Photo")}</label>
                                         {(() => {
                                             const photoUrl = getCastPhotoUrl(editingCast.photo);
                                             if (photoUrl) {
                                                 return (
                                                     <div className="flex items-center gap-3 mb-2">
-                                                        <img src={photoUrl} alt={editingCast.name || "Member"} className="w-16 h-16 rounded-full object-cover border border-light-200 dark:border-dark-700" />
-                                                        <button type="button" onClick={() => setEditingCast({ ...editingCast, photo: null })} className="btn-ghost">Remove</button>
+                                                        <img src={photoUrl} alt={editingCast.name || tr("member_label", "Member")} className="w-16 h-16 rounded-full object-cover border border-light-200 dark:border-dark-700" />
+                                                        <button type="button" onClick={() => setEditingCast({ ...editingCast, photo: null })} className="btn-ghost">{tr("remove", "Remove")}</button>
                                                     </div>
                                                 );
                                             }
@@ -2754,7 +2810,7 @@ if (Array.isArray(clone.cast)) {
                                 </>
                             ) : (
                                 <div>
-                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">Members</label>
+                                    <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("members_label", "Members")}</label>
                                     <p className="text-xs text-light-500 dark:text-dark-400 mb-2">Select existing members or add new ones below. Use <span className="font-medium">Add Member</span> to append rows.</p>
 
                                     <Autocomplete
@@ -2813,7 +2869,7 @@ if (Array.isArray(clone.cast)) {
                                                 );
                                             })
                                         }
-                                        renderInput={(params) => <TextField {...params} placeholder="Search existing members" size="small" />}
+                                        renderInput={(params) => <TextField {...params} placeholder={tr("search_members", "Search existing members")} size="small" />}
                                     />
 
                                     {newMembersRows.map((row, rIdx) => (
@@ -2824,20 +2880,20 @@ if (Array.isArray(clone.cast)) {
                                                     value={row.name}
                                                     onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, name: e.target.value } : p)))}
                                                     className="input col-span-7"
-                                                    placeholder="Full name"
+                                            placeholder={tr("full_name", "Full name")}
                                                 />
                                                 <input
                                                     type="text"
                                                     value={row.title}
                                                     onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value } : p)))}
                                                     className="input col-span-4"
-                                                    placeholder="Title/Role (optional)"
+                                                    placeholder={tr("title_role_optional", "Title/Role (optional)")}
                                                 />
                                                 <button
                                                     type="button"
                                                     onClick={() => setNewMembersRows((prev) => prev.filter((_, i) => i !== rIdx))}
                                                     className="p-2 rounded hover:bg-light-100 dark:hover:bg-dark-800 text-danger-500"
-                                                    title="Remove"
+                                                    title={tr("remove", "Remove")}
                                                 >
                                                     <X className="w-4 h-4" />
                                                 </button>
@@ -2852,13 +2908,13 @@ if (Array.isArray(clone.cast)) {
                                                     if (rowPhotoUrl) {
                                                         return (
                                                             <div className="flex items-center gap-2 mb-2">
-                                                                <img src={rowPhotoUrl} alt={row.name || "Member"} className="w-10 h-10 rounded-full object-cover border border-light-200 dark:border-dark-700" />
+                                                                <img src={rowPhotoUrl} alt={row.name || tr("member_label", "Member")} className="w-10 h-10 rounded-full object-cover border border-light-200 dark:border-dark-700" />
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, photo: null } : p)))}
                                                                     className="btn-ghost text-xs"
                                                                 >
-                                                                    Remove
+                                                                    {tr("remove", "Remove")}
                                                                 </button>
                                                             </div>
                                                         );
@@ -2877,14 +2933,14 @@ if (Array.isArray(clone.cast)) {
                                             className="btn-secondary"
                                         >
                                             <Plus className="w-4 h-4 inline mr-2" />
-                                            Add Member
+                                            {tr("add_member", "Add Member")}
                                         </button>
                                     </div>
                                 </div>
                             )}
                             <div className="flex justify-end gap-2 pt-4">
-                                <button onClick={() => setEditingCast(null)} className="btn-ghost">Cancel</button>
-                                <button onClick={handleSaveCast} className="btn-primary">{castModalMode === "edit" ? "Save Member" : "Save Members"}</button>
+                                <button onClick={() => setEditingCast(null)} className="btn-ghost">{tr("cancel", "Cancel")}</button>
+                                <button onClick={handleSaveCast} className="btn-primary">{castModalMode === "edit" ? tr("save_member", "Save Member") : tr("save_member", "Save Member")}</button>
                             </div>
                         </div>
                     </div>
