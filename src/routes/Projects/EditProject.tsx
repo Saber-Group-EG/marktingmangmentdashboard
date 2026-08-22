@@ -17,6 +17,10 @@ import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
 import { useAutoTranslateList } from "@/hooks/useAutoTranslateList";
 import { stripHtml, toLocalizedItems, mergeLocalizedAr } from "@/utils/translateText";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
+import { Reorder, AnimatePresence } from "framer-motion";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { 
   Save, Trash2, X, ArrowLeft, Loader2, 
   FileText, Info, AlertCircle, CheckCircle, Plus,
@@ -63,6 +67,25 @@ interface Cast {
 
 const MAX_PHOTO_THUMBNAIL_BYTES = 50 * 1024;
 
+type PhotoItem = { url: string; mimeType?: string; size?: number; originalName?: string; type?: string };
+
+const SortablePhotoItem: React.FC<{ item: PhotoItem; index: number; onRemove: (i: number) => void; removeLabel: string }> = ({ item, index, onRemove, removeLabel }) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
+    const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
+    return (
+        <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex items-center gap-3 border border-light-200 dark:border-dark-700 rounded-lg p-2 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing touch-none">
+            <GripVertical className="w-4 h-4 shrink-0 text-light-400 dark:text-dark-500" />
+            <img src={item.url} alt={item.originalName || `Photo ${index + 1}`} className="shrink-0 w-12 h-12 object-cover rounded pointer-events-none" />
+            <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-light-900 dark:text-dark-50 truncate">{item.originalName || `Photo ${index + 1}`}</div>
+                <div className="text-xs text-light-500 dark:text-dark-400">#{index + 1}</div>
+            </div>
+            <button type="button" onClick={() => onRemove(index)} className="shrink-0 p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors pointer-events-auto" title={removeLabel} aria-label={removeLabel}>
+                <X className="w-4 h-4" />
+            </button>
+        </div>
+    );
+};
 
 const EditProject: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -135,7 +158,7 @@ const EditProject: React.FC = () => {
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
     const [editingMaterialIndex, setEditingMaterialIndex] = useState<number | null>(null);
-    const [draggedMaterialIndex, setDraggedMaterialIndex] = useState<number | null>(null);
+
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
     const [castModalMode, setCastModalMode] = useState<"add" | "edit">("add");
     const [editingCastIndex, setEditingCastIndex] = useState<number | null>(null);
@@ -228,6 +251,7 @@ const EditProject: React.FC = () => {
 
     // Photo selection upload progress overlay
     const photoUpload = useUploadProgress();
+    const photoSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
     const getOptionLabel = (value: any): string => {
         if (typeof value === "string") return value;
@@ -967,6 +991,28 @@ const EditProject: React.FC = () => {
         });
     };
 
+    const handlePhotoItemReorder = (newItems: PhotoMaterialItem[]) => {
+        setEditingMaterial((prev) => {
+            if (!prev || prev.type !== "photo") return prev;
+            const primary = newItems[0];
+            return {
+                ...prev,
+                items: newItems,
+                url: primary?.url || "",
+                mimeType: primary?.mimeType,
+                originalName: primary?.originalName,
+                size: primary?.size,
+            };
+        });
+    };
+
+    const handleMaterialsReorder = (newMaterials: Material[]) => {
+        setForm((prev: any) => ({
+            ...prev,
+            materials: newMaterials.map((m: Material, idx: number) => ({ ...m, order: idx + 1 })),
+        }));
+    };
+
     const handleBeforeAfterUpload = async (e: React.ChangeEvent<HTMLInputElement>, which: 'before' | 'after') => {
         const file = e.target.files?.[0];
         if (!file || !editingMaterial) return;
@@ -1006,35 +1052,7 @@ const EditProject: React.FC = () => {
         });
     };
 
-    const handleMaterialDragStart = (index: number) => {
-        setDraggedMaterialIndex(index);
-    };
 
-    const handleMaterialDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-    };
-
-    const handleMaterialDrop = (targetIndex: number) => {
-        if (draggedMaterialIndex === null || draggedMaterialIndex === targetIndex) {
-            setDraggedMaterialIndex(null);
-            return;
-        }
-
-        setForm((prev: any) => {
-            const nextMaterials = [...prev.materials];
-            const [moved] = nextMaterials.splice(draggedMaterialIndex, 1);
-            nextMaterials.splice(targetIndex, 0, moved);
-            return {
-                ...prev,
-                materials: nextMaterials.map((m: Material, idx: number) => ({ ...m, order: idx + 1 })),
-            };
-        });
-        setDraggedMaterialIndex(null);
-    };
-
-    const handleMaterialDragEnd = () => {
-        setDraggedMaterialIndex(null);
-    };
 
     // Cast Management
     const getCastPhotoUrl = (photo: any): string => {
@@ -2089,27 +2107,28 @@ if (Array.isArray(clone.cast)) {
                                     </button>
                                 </div>
 
-                                <div className="space-y-3">
-                                    {form.materials.map((material: Material, idx: number) => (
-                                        <div
-                                            key={material._id || idx}
-                                            onDragOver={handleMaterialDragOver}
-                                            onDrop={() => handleMaterialDrop(idx)}
-                                            className={`border border-light-200 dark:border-dark-700 rounded-lg p-3 transition-shadow hover:bg-light-50 dark:hover:bg-dark-800/30 ${draggedMaterialIndex === idx ? "opacity-60" : "hover:shadow-md"}`}
-                                        >
+                                <Reorder.Group axis="y" values={form.materials} onReorder={handleMaterialsReorder} className="space-y-3">
+                                    <AnimatePresence initial={false}>
+                                        {form.materials.map((material: Material, idx: number) => (
+                                            <Reorder.Item
+                                                key={material._id || `material-${idx}`}
+                                                value={material}
+                                                initial={{ opacity: 0, y: -10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, scale: 0.95 }}
+                                                transition={{ duration: 0.2, ease: "easeOut" }}
+                                                className="border border-light-200 dark:border-dark-700 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow hover:bg-light-50 dark:hover:bg-dark-800/30"
+                                                whileDrag={{ scale: 1.02, boxShadow: "0 8px 25px rgba(0,0,0,0.15)", zIndex: 50 }}
+                                            >
                                             <div className="w-full grid grid-cols-12 gap-4 items-start">
                                                     <div className="col-span-12 sm:col-span-1 flex sm:justify-center">
-                                                        <button
-                                                            type="button"
-                                                            draggable
-                                                            onDragStart={() => handleMaterialDragStart(idx)}
-                                                            onDragEnd={handleMaterialDragEnd}
+                                                        <span
                                                             className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing"
                                                             title={tr("drag_to_reorder", "Drag to reorder")}
                                                             aria-label={tr("drag_material", "Drag material to reorder")}
                                                         >
                                                             <GripVertical className="w-4 h-4" />
-                                                        </button>
+                                                        </span>
                                                     </div>
 
                                                     <div className="col-span-12 sm:col-span-2">
@@ -2240,14 +2259,15 @@ if (Array.isArray(clone.cast)) {
                                                         </button>
                                                     </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                            </Reorder.Item>
+                                        ))}
+                                    </AnimatePresence>
                                     {form.materials.length === 0 && (
                                         <div className="text-center py-8 text-light-500 dark:text-dark-400">
                                             {tr("no_materials_yet", "No materials yet...")}
                                         </div>
                                     )}
-                                </div>
+                                </Reorder.Group>
                             </div>
                         </div>
                     )}
@@ -2573,22 +2593,24 @@ if (Array.isArray(clone.cast)) {
                                                 <div className="text-xs text-light-500 dark:text-dark-400 mb-2">
                                                     {groupedPhotoItems.length} {groupedPhotoItems.length === 1 ? "photo" : "photos"} grouped under this title
                                                 </div>
-                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                    {groupedPhotoItems.map((item, itemIndex) => (
-                                                        <div key={`${item.originalName || "photo"}-${itemIndex}`} className="relative group overflow-hidden rounded border border-light-200 dark:border-dark-700">
-                                                            <img src={item.url} alt={item.originalName || `Photo ${itemIndex + 1}`} className="w-full h-28 object-cover" />
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemovePhotoItem(itemIndex)}
-                                                                className="absolute top-1 right-1 p-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                title={tr("remove_photo", "Remove photo")}
-                                                                aria-label={tr("remove_photo", "Remove photo")}
-                                                            >
-                                                                <X className="w-3 h-3" />
-                                                            </button>
+                                                <DndContext sensors={photoSensors} collisionDetection={closestCenter} onDragEnd={(event) => {
+                                                    const { active, over } = event;
+                                                    if (over && active.id !== over.id) {
+                                                        const oldIndex = groupedPhotoItems.findIndex((it, i) => `${it.originalName || it.url}-${i}` === active.id);
+                                                        const newIndex = groupedPhotoItems.findIndex((it, i) => `${it.originalName || it.url}-${i}` === over.id);
+                                                        if (oldIndex !== -1 && newIndex !== -1) {
+                                                            handlePhotoItemReorder(arrayMove(groupedPhotoItems, oldIndex, newIndex));
+                                                        }
+                                                    }
+                                                }}>
+                                                    <SortableContext items={groupedPhotoItems.map((it, i) => `${it.originalName || it.url}-${i}`)} strategy={verticalListSortingStrategy}>
+                                                        <div className="space-y-2">
+                                                            {groupedPhotoItems.map((item, itemIndex) => (
+                                                                <SortablePhotoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemovePhotoItem} removeLabel={tr("remove_photo", "Remove photo")} />
+                                                            ))}
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                    </SortableContext>
+                                                </DndContext>
                                             </div>
                                         );
                                     })()}
