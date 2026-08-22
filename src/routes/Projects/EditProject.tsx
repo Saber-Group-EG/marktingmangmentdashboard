@@ -107,7 +107,6 @@ const EditProject: React.FC = () => {
         name: "",
         description: "",
         location: "",
-        order: 0,
         published: false,
         categories: [] as string[],
         tags: [] as string[],
@@ -1794,23 +1793,7 @@ if (Array.isArray(clone.cast)) {
                                         />
                                     </div>
 
-                                    <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            Order
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            step={1}
-                                            value={form.order}
-                                            onChange={(e) => setForm({ ...form, order: Number(e.target.value) })}
-                                            className="input w-full"
-                                            placeholder="Project order (1, 2, 3...)"
-                                        />
-                                        <p className="mt-1 text-xs text-light-500 dark:text-dark-400">
-                                            Determines the display order of this project.
-                                        </p>
-                                    </div>
+                                  
 
                                     <div className="flex items-center gap-3 pt-2">
                                         <input
