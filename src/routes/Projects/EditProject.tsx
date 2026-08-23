@@ -1045,11 +1045,11 @@ const EditProject: React.FC = () => {
         }
     };
 
-    const handleDeleteMaterial = (materialId: string) => {
-        setForm({
-            ...form,
-            materials: form.materials.filter((m: Material) => m._id !== materialId),
-        });
+    const handleDeleteMaterial = (materialIndex: number) => {
+        setForm((prev: any) => ({
+            ...prev,
+            materials: prev.materials.filter((_: Material, idx: number) => idx !== materialIndex),
+        }));
     };
 
 
@@ -1319,7 +1319,7 @@ const EditProject: React.FC = () => {
                 clone.materials = await Promise.all(
                     clone.materials.map(async (m: any, materialIndex: number) => {
                         const copy: any = { ...m };
-                        delete copy._id;
+                        // keep existing material ids so the backend matches and updates them instead of re-creating
                         delete copy.id;
 
                         if (isPhotoMaterialType(copy.type)) {
@@ -1412,7 +1412,6 @@ const EditProject: React.FC = () => {
                         if (Array.isArray(copy.items)) {
                             copy.items = copy.items.map((item: any) => {
                                 const cleanItem: any = { ...item };
-                                delete cleanItem._id;
                                 cleanItem.caption = cleanItem.caption ? toLocalizedString(cleanItem.caption) : undefined;
                                 cleanItem.before = cleanItem.before ? localizeSideLabel(cleanItem.before) : cleanItem.before;
                                 cleanItem.after = cleanItem.after ? localizeSideLabel(cleanItem.after) : cleanItem.after;
@@ -2254,7 +2253,7 @@ if (Array.isArray(clone.cast)) {
                                                         <button type="button" onClick={() => handleEditMaterial(material)} title={tr("edit", "Edit")} aria-label={tr("edit_material", "Edit material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
                                                             <Edit className="w-4 h-4" />
                                                         </button>
-                                                        <button type="button" onClick={() => handleDeleteMaterial(material._id!)} title={tr("delete", "Delete")} aria-label={tr("delete_material", "Delete material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-danger-200 dark:border-danger-900/40 bg-white/70 dark:bg-dark-900/50 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
+                                                        <button type="button" onClick={() => handleDeleteMaterial(idx)} title={tr("delete", "Delete")} aria-label={tr("delete_material", "Delete material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-danger-200 dark:border-danger-900/40 bg-white/70 dark:bg-dark-900/50 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
                                                             <Trash2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
