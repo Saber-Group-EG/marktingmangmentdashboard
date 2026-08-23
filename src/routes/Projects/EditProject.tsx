@@ -1355,6 +1355,7 @@ const EditProject: React.FC = () => {
                         const copy: any = { ...m };
                         // keep existing material ids so the backend matches and updates them instead of re-creating
                         delete copy.id;
+                        delete copy._id;
 
                         if (isPhotoMaterialType(copy.type)) {
                             let normalizedItems = buildPhotoItems(copy).map((item) => ({
@@ -1446,6 +1447,8 @@ const EditProject: React.FC = () => {
                         if (Array.isArray(copy.items)) {
                             copy.items = copy.items.map((item: any) => {
                                 const cleanItem: any = { ...item };
+                                delete cleanItem._id;
+                                delete cleanItem.id;
                                 cleanItem.caption = cleanItem.caption ? toLocalizedString(cleanItem.caption) : undefined;
                                 cleanItem.before = cleanItem.before ? localizeSideLabel(cleanItem.before) : cleanItem.before;
                                 cleanItem.after = cleanItem.after ? localizeSideLabel(cleanItem.after) : cleanItem.after;
