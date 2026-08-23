@@ -89,6 +89,8 @@ const SortablePhotoItem: React.FC<{ item: PhotoItem; index: number; onRemove: (i
     );
 };
 
+const STORAGE_KEY = "addproject_draft";
+
 const AddProject: React.FC = () => {
     const { t, lang } = useLang();
     const navigate = useNavigate();
@@ -126,20 +128,34 @@ const AddProject: React.FC = () => {
     const { data: allProjects = [] as any[]} = useProjects();
     const [cloneProjectId, setCloneProjectId] = useState("");
     const { data: cloneSourceProject } = useProject(cloneProjectId || undefined, { enabled: !!cloneProjectId });
-    const [form, setForm] = useState<any>({
-        name: { ar: "", en: "" },
-        description: { ar: "", en: "" },
-        location: { ar: "", en: "" },
-        published: false,
-        categories: [] as string[],
-        tags: [] as string[],
-        types: [] as string[],    
-        publishAt: null as Date | null,
-        parentProject: null as any,
-        company: null as any,
-        materials: [] as Material[],
-        cast: [] as Cast[],
-        mainCover: null as any,
+    const [form, setForm] = useState<any>(() => {
+        try {
+            const draft = localStorage.getItem(STORAGE_KEY);
+            if (draft) {
+                const parsed = JSON.parse(draft);
+                if (parsed.publishAt) {
+                    parsed.publishAt = new Date(parsed.publishAt);
+                }
+                return parsed;
+            }
+        } catch {
+            // ignore
+        }
+        return {
+            name: { ar: "", en: "" },
+            description: { ar: "", en: "" },
+            location: { ar: "", en: "" },
+            published: false,
+            categories: [] as string[],
+            tags: [] as string[],
+            types: [] as string[],    
+            publishAt: null as Date | null,
+            parentProject: null as any,
+            company: null as any,
+            materials: [] as Material[],
+            cast: [] as Cast[],
+            mainCover: null as any,
+        };
     });
     
     const [newTag, setNewTag] = useState("");
@@ -155,6 +171,20 @@ const AddProject: React.FC = () => {
     const [newCompanyField, setNewCompanyField] = useState("");
     const [newCompanyLogo, setNewCompanyLogo] = useState("");
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
+
+    // Persist form draft to localStorage
+    useEffect(() => {
+        try {
+            const toSave = { ...form };
+            if (toSave.publishAt instanceof Date) {
+                toSave.publishAt = toSave.publishAt.toISOString();
+            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+        } catch {
+            // ignore storage errors (e.g. quota exceeded)
+        }
+    }, [form]);
+
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
     const [editingMaterialIndex, setEditingMaterialIndex] = useState<number | null>(null);
 
@@ -802,12 +832,12 @@ const AddProject: React.FC = () => {
                     title: "Uploading photo...",
                     label: file.name,
                     task: async () => {
-const dataUrl = await readFileAsDataUrl(file);
-                    uploadDataUrlToR2Cached(dataUrl, {
-                        resourceType: "image",
-                        fileName: file.name,
-                    }).catch(() => {});
-                    setEditingMaterial((prev) => (prev ? { ...prev, thumbnail: { url: dataUrl, mimeType: file.type, originalName: file.name, size: file.size } } : prev));
+                        const dataUrl = await readFileAsDataUrl(file);
+                        const uploaded = await uploadDataUrlToR2Cached(dataUrl, {
+                            resourceType: "image",
+                            fileName: file.name,
+                        });
+                        setEditingMaterial((prev) => (prev ? { ...prev, thumbnail: { url: uploaded.url, mimeType: file.type, originalName: file.name, size: file.size } } : prev));
                     },
                 });
             } catch {
@@ -1751,6 +1781,7 @@ const handleDateChange = (date: Date | null) => {
         updateProgress();
 
         setSaveStatus("success");
+        localStorage.removeItem(STORAGE_KEY);
         setTimeout(() => {
             // close modal and navigate to created project if available
             setUploadModalOpen(false);

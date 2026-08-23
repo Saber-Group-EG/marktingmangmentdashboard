@@ -66,6 +66,7 @@ interface Cast {
 }
 
 const MAX_PHOTO_THUMBNAIL_BYTES = 50 * 1024;
+const EDIT_STORAGE_KEY_PREFIX = "editproject_draft_";
 
 type PhotoItem = { url: string; mimeType?: string; size?: number; originalName?: string; type?: string };
 
@@ -126,19 +127,44 @@ const EditProject: React.FC = () => {
     const { data: projectTypes = [], isLoading: projectTypesLoading } = useProjectTypes();
     const { data: projectCompanies = [] } = useProjectCompanies();
 
-    const [form, setForm] = useState<any>({
-        name: "",
-        description: "",
-        location: "",
-        published: false,
-        categories: [] as string[],
-        tags: [] as string[],
-        types: [] as string[],
-        materials: [] as Material[],
-        cast: [] as Cast[],
-        mainCover: null as any,
-        parentProject: null as any,
-        company: null as any,
+    const [form, setForm] = useState<any>(() => {
+        if (!id) return {
+            name: "",
+            description: "",
+            location: "",
+            published: false,
+            categories: [] as string[],
+            tags: [] as string[],
+            types: [] as string[],
+            materials: [] as Material[],
+            cast: [] as Cast[],
+            mainCover: null as any,
+            parentProject: null as any,
+            company: null as any,
+        };
+        try {
+            const draft = localStorage.getItem(`${EDIT_STORAGE_KEY_PREFIX}${id}`);
+            if (draft) {
+                const parsed = JSON.parse(draft);
+                return parsed;
+            }
+        } catch {
+            // ignore
+        }
+        return {
+            name: "",
+            description: "",
+            location: "",
+            published: false,
+            categories: [] as string[],
+            tags: [] as string[],
+            types: [] as string[],
+            materials: [] as Material[],
+            cast: [] as Cast[],
+            mainCover: null as any,
+            parentProject: null as any,
+            company: null as any,
+        };
     });
     
     const [newTag, setNewTag] = useState("");
@@ -157,6 +183,17 @@ const EditProject: React.FC = () => {
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+
+    // Persist form draft to localStorage
+    useEffect(() => {
+        if (!id) return;
+        try {
+            const toSave = { ...form };
+            localStorage.setItem(`${EDIT_STORAGE_KEY_PREFIX}${id}`, JSON.stringify(toSave));
+        } catch {
+            // ignore storage errors (e.g. quota exceeded)
+        }
+    }, [form, id]);
     const [editingMaterialIndex, setEditingMaterialIndex] = useState<number | null>(null);
 
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
@@ -509,11 +546,11 @@ const EditProject: React.FC = () => {
                 label: file.name,
                 task: async () => {
                     const dataUrl = await readFileAsDataUrl(file);
-                    uploadDataUrlToR2Cached(dataUrl, {
+                    const uploaded = await uploadDataUrlToR2Cached(dataUrl, {
                         resourceType: "image",
                         fileName: file.name,
-                    }).catch(() => {});
-                    setEditingMaterial((prev) => (prev ? { ...prev, thumbnail: { url: dataUrl, mimeType: file.type, originalName: file.name, size: file.size } } : prev));
+                    });
+                    setEditingMaterial((prev) => (prev ? { ...prev, thumbnail: { url: uploaded.url, mimeType: file.type, originalName: file.name, size: file.size } } : prev));
                 },
             });
         } catch {
@@ -1517,6 +1554,7 @@ if (Array.isArray(clone.cast)) {
                 {
                     onSuccess: () => {
                         setSaveStatus("success");
+                        localStorage.removeItem(`${EDIT_STORAGE_KEY_PREFIX}${id}`);
                         setTimeout(() => {
                             navigate(`/projects/${id}`);
                         }, 1500);
