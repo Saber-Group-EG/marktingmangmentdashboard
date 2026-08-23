@@ -921,28 +921,16 @@ const AddProject: React.FC = () => {
         setEditingMaterialIndex(form.materials.length);
     };
 
-    const handleEditMaterial = (material: Material) => {
+    const handleEditMaterial = (material: Material, index: number) => {
         const normalized = isPhotoMaterialType(material.type) ? normalizePhotoMaterial({ ...material }) : { ...material };
-        const materialIndex = form.materials.findIndex(
-            (m: Material) => m._id === material._id || (m.type === material.type && m.order === material.order)
-        );
         setEditingMaterial(normalized);
-        setEditingMaterialIndex(materialIndex !== -1 ? materialIndex : form.materials.length - 1);
+        setEditingMaterialIndex(index);
     };
 
     const handleSaveMaterial = () => {
         if (editingMaterial) {
             const materialToSave = isPhotoMaterialType(editingMaterial.type) ? normalizePhotoMaterial(editingMaterial) : editingMaterial;
-            if (editingMaterial._id && editingMaterialIndex !== null) {
-                // Update existing material at specific index
-                setForm({
-                    ...form,
-                    materials: form.materials.map((m: Material, idx: number) =>
-                        idx === editingMaterialIndex ? materialToSave : m
-                    ),
-                });
-            } else if (editingMaterialIndex !== null) {
-                // Update material at index (no _id case - replace existing at that position)
+            if (editingMaterialIndex !== null) {
                 setForm({
                     ...form,
                     materials: form.materials.map((m: Material, idx: number) =>
@@ -950,7 +938,6 @@ const AddProject: React.FC = () => {
                     ),
                 });
             } else {
-                // Add new
                 setForm({
                     ...form,
                     materials: [...form.materials, { ...materialToSave, order: form.materials.length + 1 }],
@@ -2560,7 +2547,7 @@ const handleDateChange = (date: Date | null) => {
                                                 </div>
 
                                                 <div className="col-span-12 sm:col-span-2 sm:ml-auto flex items-center justify-end gap-2">
-                                                    <button type="button" onClick={() => handleEditMaterial(material)} title={tr("edit", "Edit")} aria-label={tr("edit_material", "Edit material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
+                                                    <button type="button" onClick={() => handleEditMaterial(material, idx)} title={tr("edit", "Edit")} aria-label={tr("edit_material", "Edit material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
                                                         <Edit className="w-4 h-4" />
                                                     </button>
                                                     <button type="button" onClick={() => handleDeleteMaterial(material._id, idx)} title={tr("delete", "Delete")} aria-label={tr("delete_material", "Delete material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-danger-200 dark:border-danger-900/40 bg-white/70 dark:bg-dark-900/50 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
