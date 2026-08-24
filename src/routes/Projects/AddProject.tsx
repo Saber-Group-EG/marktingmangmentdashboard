@@ -3467,9 +3467,10 @@ const handleDateChange = (date: Date | null) => {
                                     <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
                                         {tr("description_en", "Description (English)")}
                                     </label>
-                                    <input
-                                        type="text"
+                                    <textarea
+                                        rows={4}
                                         value={editingMaterial.description?.en || ""}
+                                        onInput={(e) => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
                                         onChange={(e) =>
                                             setEditingMaterial({
                                                 ...editingMaterial,
@@ -3479,7 +3480,7 @@ const handleDateChange = (date: Date | null) => {
                                                 },
                                             })
                                         }
-                                        className="input w-full"
+                                        className="input w-full resize-none overflow-hidden min-h-[100px]"
                                         placeholder={t("material_description_en") || "Optional description (English)"}
                                     />
                                     <div className="mt-1.5">
@@ -3488,10 +3489,11 @@ const handleDateChange = (date: Date | null) => {
                                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
                                         {tr("description_ar", "Description (Arabic)")}
                                     </label>
-                                    <input
+                                    <textarea
                                         dir="rtl"
-                                        type="text"
+                                        rows={4}
                                         value={editingMaterial.description?.ar || ""}
+                                        onInput={(e) => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
                                         onChange={(e) =>
                                             setEditingMaterial({
                                                 ...editingMaterial,
@@ -3501,7 +3503,7 @@ const handleDateChange = (date: Date | null) => {
                                                 },
                                             })
                                         }
-                                        className="input w-full"
+                                        className="input w-full resize-none overflow-hidden min-h-[100px]"
                                         placeholder={t("material_description_ar") || "وصف اختياري (بالعربية)"}
                                     />
                                     <div className="mt-1.5">
