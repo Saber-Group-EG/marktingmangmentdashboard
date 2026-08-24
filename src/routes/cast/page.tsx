@@ -1,5 +1,5 @@
-import { useState, KeyboardEvent, ChangeEvent } from "react";
-import { Plus, Edit2, Trash2, Check, X, Loader2, User } from "lucide-react";
+import { useState, useMemo, KeyboardEvent, ChangeEvent } from "react";
+import { Plus, Edit2, Trash2, Check, X, Loader2, User, Search } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
 import { useCast, useCreateCast, useUpdateCast, useDeleteCast } from "@/hooks/queries";
@@ -50,10 +50,21 @@ const CastPage = () => {
     const [editSocialLinks, setEditSocialLinks] = useState<SocialLink[]>([]);
 
     const [error, setError] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
 
     const { data: castResponse, isLoading } = useCast();
     const members = castResponse?.cast || [];
     const totalMembers = castResponse?.meta?.total ?? members.length;
+
+    const filteredMembers = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return members;
+        return members.filter(
+            (m) =>
+                (m.name || "").toLowerCase().includes(q) ||
+                (m.title || "").toLowerCase().includes(q),
+        );
+    }, [members, searchQuery]);
 
     const createCastMutation = useCreateCast();
     const updateCastMutation = useUpdateCast();
@@ -315,15 +326,25 @@ const CastPage = () => {
 
             {/* Members List Section */}
             <div className="rounded-3xl border border-light-200/70 bg-white/90 p-5 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/65 sm:p-6">
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
                     <h2 className="text-light-900 dark:text-dark-50 text-lg font-semibold">{tr("cast_members", "Cast Members")}</h2>
+                    <div className="relative">
+                        <Search className="text-light-600 dark:text-dark-400 absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={tr("search_cast", "Search cast members...")}
+                            className="input w-64 rounded-xl pr-3 pl-10"
+                        />
+                    </div>
                 </div>
 
                 {isLoading ? (
                     <div className="flex items-center justify-center py-12">
                         <Loader2 className="text-light-500 h-8 w-8 animate-spin" />
                     </div>
-                ) : members.length > 0 ? (
+                ) : filteredMembers.length > 0 ? (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
                             <thead>
@@ -336,7 +357,7 @@ const CastPage = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-light-100 dark:divide-dark-700/50">
-                                {members.map((member) => {
+                                {filteredMembers.map((member) => {
                                     const photoUrl = getCastPhotoUrl(member.photo);
                                     const initial = member.name ? member.name.charAt(0).toUpperCase() : "?";
                                     return (

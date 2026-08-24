@@ -149,18 +149,18 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white dark:bg-dark-800 rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-4 border-b border-light-200 dark:border-dark-700">
-                    <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">Select Thumbnail Frame</h3>
-                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-light-100 dark:hover:bg-dark-700 text-light-500 dark:text-dark-400"><X className="w-5 h-5" /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-2 sm:p-4" onClick={onClose}>
+            <div className="bg-dark-900 rounded-xl sm:rounded-2xl shadow-2xl w-full h-full max-w-[95vw] sm:max-w-[85vw] md:max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-dark-700 shrink-0">
+                    <h3 className="text-sm sm:text-base font-semibold text-dark-50">Select Thumbnail Frame</h3>
+                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-dark-700 text-dark-400 transition-colors"><X className="w-5 h-5" /></button>
                 </div>
-                <div className="p-4 space-y-4">
-                    <div className="relative rounded-lg overflow-hidden bg-black">
-                            <video
+                <div className="flex-1 flex flex-col p-3 sm:p-5 gap-3 sm:gap-4 overflow-hidden min-h-0">
+                    <div className="flex-1 min-h-0 rounded-lg sm:rounded-xl overflow-hidden bg-black flex items-center justify-center">
+                        <video
                             ref={videoRef}
                             src={localUrl || videoUrl}
-                            className="w-full rounded-lg"
+                            className="max-w-full max-h-full rounded-lg"
                             controls
                             muted
                             preload="auto"
@@ -171,7 +171,7 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                         />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="shrink-0 space-y-2">
                         <input
                             type="range"
                             min={0}
@@ -183,15 +183,21 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                                 setCurrentTime(time);
                                 if (videoRef.current) videoRef.current.currentTime = time;
                             }}
-                            className="w-full h-2 bg-light-200 dark:bg-dark-600 rounded-lg appearance-none cursor-pointer accent-primary-500"
+                            className="w-full h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer accent-primary-500"
                         />
-                        <div className="flex justify-between text-xs text-light-500 dark:text-dark-400">
+                        <div className="flex justify-between text-xs text-dark-400">
                             <span>{formatTime(currentTime)}</span>
                             <span>{formatTime(duration)}</span>
                         </div>
                     </div>
 
-                    <div className="flex justify-center">
+                    <div className="shrink-0 flex justify-end gap-2 sm:gap-3">
+                        <button
+                            onClick={onClose}
+                            className="px-4 sm:px-5 py-2 sm:py-2.5 bg-dark-700 hover:bg-dark-600 text-dark-200 rounded-lg text-xs sm:text-sm font-medium transition-colors"
+                        >
+                            Cancel
+                        </button>
                         <button
                             onClick={async () => {
                                 const video = videoRef.current;
@@ -223,10 +229,11 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                                 ctx.drawImage(video, 0, 0, w, h);
                                 onSelect(canvas.toDataURL("image/jpeg", 0.85));
                             }}
-                            className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                            className="px-4 sm:px-5 py-2 sm:py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center gap-2"
                         >
                             <Camera className="w-4 h-4" />
-                            Capture This Frame
+                            <span className="hidden sm:inline">Capture This Frame</span>
+                            <span className="sm:hidden">Capture</span>
                         </button>
                     </div>
                 </div>
@@ -3553,41 +3560,35 @@ const handleDateChange = (date: Date | null) => {
                                         const isVideoType = matType === "video" || matType === "bulk";
                                         if (!isVideoType) return null;
                                         const videoItems = buildVideoItems(editingMaterial);
-                                        const isBulkVideo = videoItems.length > 1;
+                                        if (videoItems.length === 0) return null;
 
-                                        if (isBulkVideo) {
-                                            return (
-                                                <div className="mt-3">
-                                                    <div className="text-xs text-light-500 dark:text-dark-400 mb-2">
-                                                        {videoItems.length} {videoItems.length === 1 ? tr("video", "video") : tr("videos", "videos")} {tr("grouped_under_title", "grouped under this title")}
-                                                    </div>
-                                                    <DndContext sensors={photoSensors} collisionDetection={closestCenter} onDragEnd={(event) => {
-                                                        const { active, over } = event;
-                                                        if (over && active.id !== over.id) {
-                                                            const oldIndex = videoItems.findIndex((it, i) => `${it.originalName || it.url}-${i}` === active.id);
-                                                            const newIndex = videoItems.findIndex((it, i) => `${it.originalName || it.url}-${i}` === over.id);
-                                                            if (oldIndex !== -1 && newIndex !== -1) {
-                                                                handleVideoItemReorder(arrayMove(videoItems, oldIndex, newIndex));
-                                                            }
-                                                        }
-                                                    }}>
-                                                        <SortableContext items={videoItems.map((it, i) => `${it.originalName || it.url}-${i}`)} strategy={verticalListSortingStrategy}>
-                                                            <div className="space-y-2">
-                                                                {videoItems.map((item, itemIndex) => (
-                                                                    <SortableVideoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemoveVideoItem} onThumbnailUpload={handleVideoItemThumbnailUpload} onRemoveThumbnail={handleRemoveVideoItemThumbnail} onFrameSelect={handleVideoItemFrameSelect} removeLabel={tr("remove_video", "Remove video")} materialCaption={localizedToString(editingMaterial?.caption)} materialDescription={localizedToString(editingMaterial?.description)} />
-                                                                ))}
-                                                            </div>
-                                                        </SortableContext>
-                                                    </DndContext>
-                                                </div>
-                                            );
-                                        }
-
-                                        return editingMaterial.url ? (
+                                        return (
                                             <div className="mt-3">
-                                                <video src={editingMaterial.url} controls className="w-full h-40 object-cover rounded" />
+                                                {videoItems.length > 1 && (
+                                                    <div className="text-xs text-light-500 dark:text-dark-400 mb-2">
+                                                        {videoItems.length} {tr("videos", "videos")} {tr("grouped_under_title", "grouped under this title")}
+                                                    </div>
+                                                )}
+                                                <DndContext sensors={photoSensors} collisionDetection={closestCenter} onDragEnd={(event) => {
+                                                    const { active, over } = event;
+                                                    if (over && active.id !== over.id) {
+                                                        const oldIndex = videoItems.findIndex((it, i) => `${it.originalName || it.url}-${i}` === active.id);
+                                                        const newIndex = videoItems.findIndex((it, i) => `${it.originalName || it.url}-${i}` === over.id);
+                                                        if (oldIndex !== -1 && newIndex !== -1) {
+                                                            handleVideoItemReorder(arrayMove(videoItems, oldIndex, newIndex));
+                                                        }
+                                                    }
+                                                }}>
+                                                    <SortableContext items={videoItems.map((it, i) => `${it.originalName || it.url}-${i}`)} strategy={verticalListSortingStrategy}>
+                                                        <div className="space-y-2">
+                                                            {videoItems.map((item, itemIndex) => (
+                                                                <SortableVideoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemoveVideoItem} onThumbnailUpload={handleVideoItemThumbnailUpload} onRemoveThumbnail={handleRemoveVideoItemThumbnail} onFrameSelect={handleVideoItemFrameSelect} removeLabel={tr("remove_video", "Remove video")} materialCaption={localizedToString(editingMaterial?.caption)} materialDescription={localizedToString(editingMaterial?.description)} />
+                                                            ))}
+                                                        </div>
+                                                    </SortableContext>
+                                                </DndContext>
                                             </div>
-                                        ) : null;
+                                        );
                                     })()}
 
                                     {(() => {
