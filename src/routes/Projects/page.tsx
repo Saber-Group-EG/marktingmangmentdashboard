@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2 } from "lucide-react";
+import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useProjects, useProjectCast, useReorderProjects, useDeleteProject } from "@/hooks/queries";
-import { showConfirm } from "@/utils/swal";
+import { useProjects, useProjectCast, useReorderProjects, useDeleteProject, useProjectCompanies, useTogglePublishProject } from "@/hooks/queries";
+import { showConfirm, showAlert } from "@/utils/swal";
 
 const PROJECT_CARD_TYPE = "PROJECT_CARD";
 
@@ -91,11 +91,51 @@ const ProjectsPage: React.FC = () => {
     };
 
     const [searchTerm, setSearchTerm] = useState<string>("");
+    const [companyFilter, setCompanyFilter] = useState<string[]>([]);
     const { data: projects = [], isLoading, error, refetch } = useProjects();
     const { data: projectCast = [] } = useProjectCast();
+    const { data: allProjectCompanies = [] } = useProjectCompanies();
     const { mutate: reorderProjects } = useReorderProjects();
     const deleteProject = useDeleteProject();
+    const togglePublish = useTogglePublishProject();
     const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    // Only show companies that are actually used in projects
+    const usedCompanyIds = useMemo(() => {
+        const ids = new Set<string>();
+        projects.forEach((p: any) => {
+            const c = p.company;
+            if (!c) return;
+            if (typeof c === "string") ids.add(c);
+            else if (c?._id) ids.add(c._id);
+            else if (c?.id) ids.add(c.id);
+        });
+        return ids;
+    }, [projects]);
+
+    const usedProjectCompanies = useMemo(
+        () => allProjectCompanies.filter((pc: any) => usedCompanyIds.has(pc._id || pc.id)),
+        [allProjectCompanies, usedCompanyIds]
+    );
+
+    const handleTogglePublish = (project: any) => {
+        const id = getProjectId(project);
+        if (!id) return;
+        const newPublished = !project.published;
+        // Optimistic update
+        setOrderedProjects((prev) =>
+            prev.map((p: any) => (getProjectId(p) === id ? { ...p, published: newPublished } : p))
+        );
+        togglePublish.mutate(id, {
+            onError: () => {
+                // Revert on error
+                setOrderedProjects((prev) =>
+                    prev.map((p: any) => (getProjectId(p) === id ? { ...p, published: !newPublished } : p))
+                );
+                showAlert(tr("failed_to_toggle", "Failed to update publish status"), "error");
+            },
+        });
+    };
 
     const handleDelete = async (project: any) => {
         const id = getProjectId(project);
@@ -139,9 +179,22 @@ const ProjectsPage: React.FC = () => {
         return orderedProjects.filter((p: any) => {
             const name = localizedText(p?.localizedName || p?.name).toLowerCase();
             const category = localizedText(p?.category).toLowerCase();
-            return !q || name.includes(q) || category.includes(q);
+            const matchesSearch = !q || name.includes(q) || category.includes(q);
+            let matchesCompany = true;
+            if (companyFilter.length > 0) {
+                const c = p.company;
+                const cid = typeof c === "string" ? c : c?._id || c?.id || "";
+                matchesCompany = companyFilter.includes(cid);
+            }
+            return matchesSearch && matchesCompany;
         });
-    }, [orderedProjects, searchTerm]);
+    }, [orderedProjects, searchTerm, companyFilter]);
+
+    const toggleCompanyFilter = (companyId: string) => {
+        setCompanyFilter((prev) =>
+            prev.includes(companyId) ? prev.filter((id) => id !== companyId) : [...prev, companyId]
+        );
+    };
 
     const lastSwapRef = useRef<{ dragId: string; hoverId: string } | null>(null);
     const orderChangedRef = useRef(false);
@@ -289,8 +342,8 @@ const ProjectsPage: React.FC = () => {
             </section>
 
             <section className="card rounded-2xl p-6">
-                <form onSubmit={(e) => e.preventDefault()} className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                    <div className="relative flex-1 max-w-md">
+                <div className="flex flex-col gap-3">
+                    <div className="relative max-w-md">
                         <Search className="text-light-600 dark:text-dark-400 absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                         <input
                             type="text"
@@ -300,10 +353,55 @@ const ProjectsPage: React.FC = () => {
                             className="input w-full rounded-xl pr-3 pl-10"
                         />
                     </div>
-                    <button type="submit" className="btn-primary min-w-[170px]">
-                        {tr("apply_filters", "Apply Filters")}
-                    </button>
-                </form>
+                    {usedProjectCompanies.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setCompanyFilter([])}
+                                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                                    companyFilter.length === 0
+                                        ? "border-primary-500 bg-primary-500 text-white shadow-md shadow-primary-500/30"
+                                        : "border-light-300 bg-white text-light-700 hover:border-light-400 hover:bg-light-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:border-dark-500 dark:hover:bg-dark-700"
+                                }`}
+                            >
+                                {tr("all", "All")}
+                                <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-semibold bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                                    {projects.length}
+                                </span>
+                            </button>
+                            {usedProjectCompanies.map((pc: any) => {
+                                const cid = pc._id || pc.id;
+                                const selected = companyFilter.includes(cid);
+                                const count = projects.filter((p: any) => {
+                                    const c = (p as any).company;
+                                    const pid = typeof c === "string" ? c : c?._id || c?.id || "";
+                                    return pid === cid;
+                                }).length;
+                                return (
+                                    <button
+                                        key={cid}
+                                        type="button"
+                                        onClick={() => toggleCompanyFilter(cid)}
+                                        className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                                            selected
+                                                ? "border-primary-500 bg-primary-500 text-white shadow-md shadow-primary-500/30"
+                                                : "border-light-300 bg-white text-light-700 hover:border-light-400 hover:bg-light-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:border-dark-500 dark:hover:bg-dark-700"
+                                        }`}
+                                    >
+                                        {localizedText(pc.name) || cid}
+                                        <span className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-semibold ${
+                                            selected
+                                                ? "bg-white/20 text-white"
+                                                : "bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                        }`}>
+                                            {count}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
             </section>
 
             {isLoading ? (
@@ -337,28 +435,79 @@ const ProjectsPage: React.FC = () => {
                             <div className="group relative flex h-full flex-col overflow-hidden rounded-3xl card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                                 <div className="absolute top-0 right-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-gradient-to-br blur-3xl from-secdark-300/20 to-secdark-700/10" />
 
+                                {(project.mainCover?.croppedUrl || project.mainCover?.url) ? (
+                                    <div className="relative z-10 mb-4 -mx-6 -mt-6 overflow-hidden aspect-video">
+                                        <img
+                                            src={project.mainCover.croppedUrl || project.mainCover.url}
+                                            alt={localizedText(project.localizedName || project.name)}
+                                            className="w-full h-full object-cover object-center"
+                                        />
+                                        <div className="absolute top-3 right-3">
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={!!project.published}
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleTogglePublish(project); }}
+                                                title={project.published ? tr("unpublish", "Unpublish") : tr("publish", "Publish")}
+                                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full shadow-lg transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-danger-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-dark-900 ${
+                                                    project.published
+                                                        ? "bg-danger-500"
+                                                        : "bg-black/40 hover:bg-black/60"
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                                        project.published ? "translate-x-5.5" : "translate-x-0.5"
+                                                    } mt-0.5`}
+                                                />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="relative z-10 mb-4 -mx-6 -mt-6 flex items-center justify-center h-24 bg-light-100 dark:bg-dark-800">
+                                        <div className="absolute top-3 right-3">
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={!!project.published}
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleTogglePublish(project); }}
+                                                title={project.published ? tr("unpublish", "Unpublish") : tr("publish", "Publish")}
+                                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full shadow-lg transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-danger-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-dark-900 ${
+                                                    project.published
+                                                        ? "bg-danger-500"
+                                                        : "bg-light-300 dark:bg-dark-600"
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                                        project.published ? "translate-x-5.5" : "translate-x-0.5"
+                                                    } mt-0.5`}
+                                                />
+                                            </button>
+                                        </div>
+                                        <ImageIcon size={32} className="text-light-300 dark:text-dark-600" />
+                                    </div>
+                                )}
+
                                 <div className="relative z-10 mb-4 flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
                                         <GripVertical size={16} className="text-light-400 dark:text-dark-500 shrink-0" />
-                                        <h3 className="text-lg font-extrabold text-light-900 dark:text-dark-50">{localizedText(project.localizedName || project.name) || tr("untitled", "Untitled")}</h3>
+                                        <h3 className="text-lg font-extrabold text-light-900 dark:text-dark-50 truncate">{localizedText(project.localizedName || project.name) || tr("untitled", "Untitled")}</h3>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="text-sm text-light-500 dark:text-dark-400">{project.published ? tr("published", "Published") : tr("draft", "Draft")}</div>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDelete(project)}
-                                            disabled={deletingId === getProjectId(project)}
-                                            title={tr("delete", "Delete")}
-                                            aria-label={`${tr("delete_confirm", "Delete")} ${localizedText(project.localizedName || project.name) || tr("project", "project")}`}
-                                            className="p-1.5 rounded-lg text-light-400 dark:text-dark-500 hover:text-danger-500 dark:hover:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors disabled:opacity-50"
-                                        >
-                                            {deletingId === getProjectId(project) ? (
-                                                <Loader2 size={15} className="animate-spin" />
-                                            ) : (
-                                                <Trash2 size={15} />
-                                            )}
-                                        </button>
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDelete(project)}
+                                        disabled={deletingId === getProjectId(project)}
+                                        title={tr("delete", "Delete")}
+                                        aria-label={`${tr("delete_confirm", "Delete")} ${localizedText(project.localizedName || project.name) || tr("project", "project")}`}
+                                        className="p-1.5 rounded-lg text-light-400 dark:text-dark-500 hover:text-danger-500 dark:hover:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors disabled:opacity-50 shrink-0"
+                                    >
+                                        {deletingId === getProjectId(project) ? (
+                                            <Loader2 size={15} className="animate-spin" />
+                                        ) : (
+                                            <Trash2 size={15} />
+                                        )}
+                                    </button>
                                 </div>
 
                                 <div className="relative z-10 mb-4 flex-1">

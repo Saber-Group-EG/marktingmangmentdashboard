@@ -409,6 +409,20 @@ const AddProject: React.FC = () => {
     const [isDragging, setIsDragging] = useState(false);
     const isDraggingRef = useRef(false);
     const dragStartRef = useRef<{ x: number; y: number; center: { x: number; y: number } }>({ x: 0, y: 0, center: { x: 0.5, y: 0.5 } });
+    const [coverPickerMaterialIdx, setCoverPickerMaterialIdx] = useState<number | null>(null);
+    const coverPickerRef = useRef<HTMLDivElement>(null);
+
+    // Close picker on outside click
+    useEffect(() => {
+        if (coverPickerMaterialIdx === null) return;
+        const handler = (e: MouseEvent) => {
+            if (coverPickerRef.current && !coverPickerRef.current.contains(e.target as Node)) {
+                setCoverPickerMaterialIdx(null);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [coverPickerMaterialIdx]);
 
     // Submission progress UI state
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -1659,10 +1673,25 @@ const AddProject: React.FC = () => {
     };
 
     const updateOverlayStyle = () => {
-        if (!form.mainCover || !loadedImgRef.current || !displayImgRef.current || !mainCoverMeta) return;
+        if (!form.mainCover || !displayImgRef.current || !mainCoverMeta) return;
         const imgEl = displayImgRef.current;
         const rect = imgEl.getBoundingClientRect();
-        const displayedW = rect.width;
+        const containerW = rect.width;
+        const containerH = rect.height;
+        const imgAspect = mainCoverMeta.width / mainCoverMeta.height;
+        const containerAspect = containerW / containerH;
+        let displayedW: number, displayedH: number, offsetX: number, offsetY: number;
+        if (imgAspect > containerAspect) {
+            displayedW = containerW;
+            displayedH = containerW / imgAspect;
+            offsetX = 0;
+            offsetY = (containerH - displayedH) / 2;
+        } else {
+            displayedH = containerH;
+            displayedW = containerH * imgAspect;
+            offsetX = (containerW - displayedW) / 2;
+            offsetY = 0;
+        }
         const scale = displayedW / mainCoverMeta.width;
         const sideNat = Math.min(mainCoverMeta.width, mainCoverMeta.height) / zoom;
         const cx = clamp(cropCenter.x, 0, 1) * mainCoverMeta.width;
@@ -1671,8 +1700,8 @@ const AddProject: React.FC = () => {
         let sy = cy - sideNat / 2;
         sx = clamp(sx, 0, mainCoverMeta.width - sideNat);
         sy = clamp(sy, 0, mainCoverMeta.height - sideNat);
-        const left = sx * scale;
-        const top = sy * scale;
+        const left = offsetX + sx * scale;
+        const top = offsetY + sy * scale;
         const sidePx = sideNat * scale;
         setOverlayStyle({ left: `${left}px`, top: `${top}px`, width: `${sidePx}px`, height: `${sidePx}px` });
     };
@@ -1698,11 +1727,15 @@ const AddProject: React.FC = () => {
         canvas.height = outSize;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, outSize, outSize);
-        const dataUrl = canvas.toDataURL(form.mainCover.mimeType || 'image/jpeg', 0.9);
-        setCroppedPreview(dataUrl);
-        // store crop metadata
-        setForm((prev: any) => ({ ...prev, mainCover: { ...prev.mainCover, croppedUrl: dataUrl, crop: { center: cropCenter, zoom } } }));
+        try {
+            ctx.drawImage(img, sx, sy, side, side, 0, 0, outSize, outSize);
+            const dataUrl = canvas.toDataURL(form.mainCover.mimeType || 'image/jpeg', 0.9);
+            setCroppedPreview(dataUrl);
+            setForm((prev: any) => ({ ...prev, mainCover: { ...prev.mainCover, croppedUrl: dataUrl, crop: { center: cropCenter, zoom } } }));
+        } catch {
+            setCroppedPreview(null);
+            setForm((prev: any) => ({ ...prev, mainCover: { ...prev.mainCover, croppedUrl: undefined, crop: { center: cropCenter, zoom } } }));
+        }
     };
 
     const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -1712,7 +1745,15 @@ const AddProject: React.FC = () => {
         const dx = ev.clientX - dragStartRef.current.x;
         const dy = ev.clientY - dragStartRef.current.y;
         const rect = displayImgRef.current.getBoundingClientRect();
-        const scale = rect.width / mainCoverMeta.width;
+        const imgAspect = mainCoverMeta.width / mainCoverMeta.height;
+        const containerAspect = rect.width / rect.height;
+        let displayedW: number;
+        if (imgAspect > containerAspect) {
+            displayedW = rect.width;
+        } else {
+            displayedW = rect.height * imgAspect;
+        }
+        const scale = displayedW / mainCoverMeta.width;
         const deltaNaturalX = dx / scale;
         const deltaNaturalY = dy / scale;
         const newCenterX = clamp((dragStartRef.current.center.x * mainCoverMeta.width + deltaNaturalX) / mainCoverMeta.width, 0, 1);
@@ -3131,6 +3172,70 @@ const handleDateChange = (date: Date | null) => {
                                                 </div>
 
                                                 <div className="col-span-12 sm:col-span-2 sm:ml-auto flex items-center justify-end gap-2">
+                                                    {(material.type === "photo" || (material.type === "bulk" && !isVideoBulkType(material))) && (() => {
+                                                        const photoItems = buildPhotoItems(material);
+                                                        const hasMultiple = photoItems.length > 1;
+                                                        return (
+                                                            <div className="relative" ref={coverPickerMaterialIdx === idx ? coverPickerRef : undefined}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if (hasMultiple) {
+                                                                            setCoverPickerMaterialIdx(coverPickerMaterialIdx === idx ? null : idx);
+                                                                        } else if (photoItems[0]?.url) {
+                                                                            setForm((prev: any) => ({
+                                                                                ...prev,
+                                                                                mainCover: {
+                                                                                    url: photoItems[0].url,
+                                                                                    mimeType: photoItems[0].mimeType || "image/jpeg",
+                                                                                    originalName: photoItems[0].originalName || "cover-from-material",
+                                                                                    size: photoItems[0].size || 0,
+                                                                                },
+                                                                            }));
+                                                                            showAlert(tr("imported_to_cover", "Photo imported as main cover"), "success");
+                                                                        }
+                                                                    }}
+                                                                    title={tr("import_to_cover", "Import to Main Cover")}
+                                                                    aria-label={tr("import_to_cover", "Import to Main Cover")}
+                                                                    className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors"
+                                                                >
+                                                                    <ImageIcon className="w-4 h-4" />
+                                                                </button>
+                                                                {coverPickerMaterialIdx === idx && hasMultiple && (
+                                                                    <div className="absolute right-0 top-full mt-1 z-50 w-72 max-h-80 overflow-auto rounded-xl border border-light-200 dark:border-dark-700 bg-white dark:bg-dark-900 shadow-xl p-2">
+                                                                        <div className="text-xs font-semibold text-light-500 dark:text-dark-400 px-2 mb-2">{tr("choose_photo", "Choose a photo")}</div>
+                                                                        <div className="grid grid-cols-3 gap-2">
+                                                                            {photoItems.map((item, pIdx) => (
+                                                                                <button
+                                                                                    key={pIdx}
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        setForm((prev: any) => ({
+                                                                                            ...prev,
+                                                                                            mainCover: {
+                                                                                                url: item.url,
+                                                                                                mimeType: item.mimeType || "image/jpeg",
+                                                                                                originalName: item.originalName || "cover-from-material",
+                                                                                                size: item.size || 0,
+                                                                                            },
+                                                                                        }));
+                                                                                        setCoverPickerMaterialIdx(null);
+                                                                                        showAlert(tr("imported_to_cover", "Photo imported as main cover"), "success");
+                                                                                    }}
+                                                                                    className="relative aspect-square rounded-lg overflow-hidden border border-light-200 dark:border-dark-700 hover:border-primary-500 transition-colors group"
+                                                                                >
+                                                                                    <img src={item.url} alt={item.originalName || `Photo ${pIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                                                        <ImageIcon className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                                                                                    </div>
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                     <button type="button" onClick={() => handleEditMaterial(material, idx)} title={tr("edit", "Edit")} aria-label={tr("edit_material", "Edit material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
                                                         <Edit className="w-4 h-4" />
                                                     </button>
@@ -3257,6 +3362,7 @@ const handleDateChange = (date: Date | null) => {
                                                         <img
                                                             ref={(el) => { displayImgRef.current = el; }}
                                                             src={form.mainCover.url}
+                                                            crossOrigin="anonymous"
                                                             alt={tr("main_cover_alt", "Main Cover")}
                                                             className="w-full h-auto max-h-[420px] object-contain block"
                                                             onLoad={() => setTimeout(updateOverlayStyle, 20)}
@@ -3293,7 +3399,7 @@ const handleDateChange = (date: Date | null) => {
                                         ) : (
                                             <div className="space-y-4">
                                                 <div className="rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                                    <img src={form.mainCover.url} alt={tr("main_cover_alt", "Main Cover")} className="w-full h-auto max-h-[400px] object-contain" />
+                                                    <img src={form.mainCover.croppedUrl || form.mainCover.url} alt={tr("main_cover_alt", "Main Cover")} className="w-full h-auto max-h-[400px] object-contain" />
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                                     <div>
