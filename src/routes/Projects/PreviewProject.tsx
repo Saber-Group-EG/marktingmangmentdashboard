@@ -804,11 +804,11 @@ const ProjectDetails: React.FC = () => {
                             <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
                                 <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("photos_count", "Photos")}</div>
                                 <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">
-                                    {groupedMaterials.reduce((count: number, m: any) => {
-                                        if (m.type === "photo") return count + 1;
-                                        if (m.type === "bulk" && !isVideoBulkType(m)) return count + buildPhotoItems(m).length;
-                                        return count;
-                                    }, 0)}
+            {groupedMaterials.reduce((count: number, m: any) => {
+                if (m.type === "video") return count + 1;
+                if (m.type === "bulk" && isVideoBulkType(m)) return count + buildVideoItems(m).length;
+                return count + buildPhotoItems(m).length;
+            }, 0)}
                                 </div>
                             </div>
                             <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">

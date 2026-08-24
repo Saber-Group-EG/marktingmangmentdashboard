@@ -127,14 +127,24 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                 setLocalUrl(videoUrl);
                 return;
             }
-            try {
-                const res = await fetch(videoUrl);
-                const blob = await res.blob();
+            const loadFromBlob = (blob: Blob) => {
                 const url = URL.createObjectURL(blob);
                 revokeUrl = url;
                 setLocalUrl(url);
+            };
+            try {
+                const proxyUrl = videoUrl.replace(/^https?:\/\/upload\.ats\.sabergroup-eg\.com/, '/r2-proxy');
+                const res = await fetch(proxyUrl);
+                if (!res.ok) throw new Error();
+                loadFromBlob(await res.blob());
             } catch {
-                setLocalUrl(videoUrl);
+                try {
+                    const res = await fetch(videoUrl);
+                    if (!res.ok) throw new Error();
+                    loadFromBlob(await res.blob());
+                } catch {
+                    setLocalUrl(videoUrl);
+                }
             }
         };
         load();
@@ -423,6 +433,19 @@ const AddProject: React.FC = () => {
         document.addEventListener("mousedown", handler);
         return () => document.removeEventListener("mousedown", handler);
     }, [coverPickerMaterialIdx]);
+
+    const [showCoverPicker, setShowCoverPicker] = useState(false);
+    const coverPickerAllRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!showCoverPicker) return;
+        const handler = (e: MouseEvent) => {
+            if (coverPickerAllRef.current && !coverPickerAllRef.current.contains(e.target as Node)) {
+                setShowCoverPicker(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [showCoverPicker]);
 
     // Submission progress UI state
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -2328,11 +2351,11 @@ const handleDateChange = (date: Date | null) => {
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
                                 <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("photos_count", "Photos")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">
-                                    {form.materials.reduce((count: number, m: Material) => {
-                                        if (m.type === "photo") return count + 1;
-                                        if (m.type === "bulk" && !isVideoBulkType(m)) return count + buildPhotoItems(m).length;
-                                        return count;
-                                    }, 0)}
+            {form.materials.reduce((count: number, m: Material) => {
+                if (m.type === "video") return count + 1;
+                if (m.type === "bulk" && isVideoBulkType(m)) return count + buildVideoItems(m).length;
+                return count + buildPhotoItems(m).length;
+            }, 0)}
                                 </div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
@@ -3346,6 +3369,55 @@ const handleDateChange = (date: Date | null) => {
                                             <div className="flex items-center gap-3">
                                                 <label className="inline-flex items-center gap-2 text-sm">
                                                 </label>
+                                                <div className="relative" ref={coverPickerAllRef}>
+                                                    <button type="button" onClick={() => setShowCoverPicker(!showCoverPicker)} className="btn-secondary">
+                                                        <ImageIcon className="w-4 h-4 inline mr-2" />{tr("import_from_materials", "Import from Materials")}
+                                                    </button>
+                                                    {showCoverPicker && (
+                                                        <div className="absolute right-0 top-full mt-1 z-50 w-80 max-h-96 overflow-auto rounded-xl border border-light-200 dark:border-dark-700 bg-white dark:bg-dark-900 shadow-xl p-3">
+                                                            <div className="text-xs font-semibold text-light-500 dark:text-dark-400 mb-2">{tr("select_photo_from_materials", "Select a photo from your materials")}</div>
+                                                            {(() => {
+                                                                const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
+                                                                form.materials.forEach((m: any) => {
+                                                                    if (m.type === "video") return;
+                                                                    buildPhotoItems(m).forEach((item) => {
+                                                                        if (item.url) allPhotos.push(item);
+                                                                    });
+                                                                });
+                                                                if (allPhotos.length === 0) return <div className="text-sm text-light-500 dark:text-dark-400 py-2">{tr("no_photos_available", "No photos in materials yet")}</div>;
+                                                                return (
+                                                                    <div className="grid grid-cols-3 gap-2">
+                                                                        {allPhotos.map((item, pIdx) => (
+                                                                            <button
+                                                                                key={pIdx}
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setForm((prev: any) => ({
+                                                                                        ...prev,
+                                                                                        mainCover: {
+                                                                                            url: item.url,
+                                                                                            mimeType: item.mimeType || "image/jpeg",
+                                                                                            originalName: item.originalName || "cover-from-material",
+                                                                                            size: item.size || 0,
+                                                                                        },
+                                                                                    }));
+                                                                                    setMainCoverMeta(null);
+                                                                                    setShowCoverPicker(false);
+                                                                                }}
+                                                                                className="relative aspect-square rounded-lg overflow-hidden border border-light-200 dark:border-dark-700 hover:border-primary-500 transition-colors group"
+                                                                            >
+                                                                                <img src={item.url} alt={item.originalName || `Photo ${pIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                                                    <ImageIcon className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                                                                                </div>
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 <button type="button" onClick={() => fileInputRef.current?.click()} className="btn-secondary">
                                                     <Upload className="w-4 h-4 inline mr-2" />{tr("replace", "Replace")}
                                                 </button>
@@ -3419,14 +3491,70 @@ const handleDateChange = (date: Date | null) => {
                                     <div className="text-center py-12 border-2 border-dashed border-light-200 dark:border-dark-700 rounded-lg">
                                         <Camera className="w-12 h-12 text-light-400 dark:text-dark-500 mx-auto mb-3" />
                                         <p className="text-light-600 dark:text-dark-400 mb-4 mr-2">{tr("no_main_cover_set", "No main cover image set")}</p>
-                                        <button
-                                            type="button"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="btn-primary inline-flex items-center gap-2"
-                                        >
-                                            <Upload className="w-4 h-4 inline mr-2" />
-                                            {tr("upload_cover_image", "Upload Cover Image")}
-                                        </button>
+                                        <div className="flex items-center justify-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="btn-primary inline-flex items-center gap-2"
+                                            >
+                                                <Upload className="w-4 h-4 inline mr-2" />
+                                                {tr("upload_cover_image", "Upload Cover Image")}
+                                            </button>
+                                            <div className="relative" ref={coverPickerAllRef}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowCoverPicker(!showCoverPicker)}
+                                                    className="btn-secondary inline-flex items-center gap-2"
+                                                >
+                                                    <ImageIcon className="w-4 h-4" />
+                                                    {tr("import_from_materials", "Import from Materials")}
+                                                </button>
+                                                {showCoverPicker && (
+                                                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 w-80 max-h-96 overflow-auto rounded-xl border border-light-200 dark:border-dark-700 bg-white dark:bg-dark-900 shadow-xl p-3">
+                                                        <div className="text-xs font-semibold text-light-500 dark:text-dark-400 mb-2">{tr("select_photo_from_materials", "Select a photo from your materials")}</div>
+                                                        {(() => {
+                                                            const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
+                                                            form.materials.forEach((m: any) => {
+                                                                if (m.type === "video") return;
+                                                                buildPhotoItems(m).forEach((item) => {
+                                                                    if (item.url) allPhotos.push(item);
+                                                                });
+                                                            });
+                                                            if (allPhotos.length === 0) return <div className="text-sm text-light-500 dark:text-dark-400 py-2">{tr("no_photos_available", "No photos in materials yet")}</div>;
+                                                            return (
+                                                                <div className="grid grid-cols-3 gap-2">
+                                                                    {allPhotos.map((item, pIdx) => (
+                                                                        <button
+                                                                            key={pIdx}
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setForm((prev: any) => ({
+                                                                                    ...prev,
+                                                                                    mainCover: {
+                                                                                        url: item.url,
+                                                                                        mimeType: item.mimeType || "image/jpeg",
+                                                                                        originalName: item.originalName || "cover-from-material",
+                                                                                        size: item.size || 0,
+                                                                                    },
+                                                                                }));
+                                                                                setMainCoverMeta(null);
+                                                                                setShowCoverPicker(false);
+                                                                            }}
+                                                                            className="relative aspect-square rounded-lg overflow-hidden border border-light-200 dark:border-dark-700 hover:border-primary-500 transition-colors group"
+                                                                        >
+                                                                            <img src={item.url} alt={item.originalName || `Photo ${pIdx + 1}`} className="w-full h-full object-cover" />
+                                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                                                <ImageIcon className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                                                                            </div>
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                                 <input
