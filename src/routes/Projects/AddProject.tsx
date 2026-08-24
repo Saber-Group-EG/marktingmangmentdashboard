@@ -127,24 +127,15 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                 setLocalUrl(videoUrl);
                 return;
             }
-            const loadFromBlob = (blob: Blob) => {
+            try {
+                const res = await fetch(videoUrl);
+                if (!res.ok) throw new Error();
+                const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
                 revokeUrl = url;
                 setLocalUrl(url);
-            };
-            try {
-                const proxyUrl = videoUrl.replace(/^https?:\/\/upload\.ats\.sabergroup-eg\.com/, '/r2-proxy');
-                const res = await fetch(proxyUrl);
-                if (!res.ok) throw new Error();
-                loadFromBlob(await res.blob());
             } catch {
-                try {
-                    const res = await fetch(videoUrl);
-                    if (!res.ok) throw new Error();
-                    loadFromBlob(await res.blob());
-                } catch {
-                    setLocalUrl(videoUrl);
-                }
+                setLocalUrl(videoUrl);
             }
         };
         load();

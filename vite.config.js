@@ -10,14 +10,6 @@ export default defineConfig(() => {
         server: {
             port: 5173,
             strictPort: true,
-            proxy: {
-                '/r2-proxy': {
-                    target: 'https://upload.ats.sabergroup-eg.com',
-                    changeOrigin: true,
-                    rewrite: (path) => path.replace(/^\/r2-proxy/, ''),
-                    secure: false,
-                },
-            },
         },
         resolve: {
             alias: {

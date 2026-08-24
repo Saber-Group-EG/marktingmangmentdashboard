@@ -126,24 +126,15 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                 setLocalUrl(videoUrl);
                 return;
             }
-            const loadFromBlob = (blob: Blob) => {
+            try {
+                const res = await fetch(videoUrl);
+                if (!res.ok) throw new Error();
+                const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
                 revokeUrl = url;
                 setLocalUrl(url);
-            };
-            try {
-                const proxyUrl = videoUrl.replace(/^https?:\/\/upload\.ats\.sabergroup-eg\.com/, '/r2-proxy');
-                const res = await fetch(proxyUrl);
-                if (!res.ok) throw new Error();
-                loadFromBlob(await res.blob());
             } catch {
-                try {
-                    const res = await fetch(videoUrl);
-                    if (!res.ok) throw new Error();
-                    loadFromBlob(await res.blob());
-                } catch {
-                    setLocalUrl(videoUrl);
-                }
+                setLocalUrl(videoUrl);
             }
         };
         load();
@@ -1740,9 +1731,11 @@ const EditProject: React.FC = () => {
         try {
             ctx.drawImage(img, sx, sy, side, side, 0, 0, outSize, outSize);
             const dataUrl = canvas.toDataURL(form.mainCover.mimeType || 'image/jpeg', 0.9);
+            console.log("[Crop] Canvas export SUCCESS, croppedUrl length:", dataUrl.length);
             setCroppedPreview(dataUrl);
             setForm((prev: any) => ({ ...prev, mainCover: { ...prev.mainCover, croppedUrl: dataUrl, crop: { center: cropCenter, zoom } } }));
-        } catch {
+        } catch (err) {
+            console.error("[Crop] Canvas export FAILED:", err);
             setCroppedPreview(null);
             setForm((prev: any) => ({ ...prev, mainCover: { ...prev.mainCover, croppedUrl: undefined, crop: { center: cropCenter, zoom } } }));
         }
@@ -1867,42 +1860,15 @@ const EditProject: React.FC = () => {
         return () => window.removeEventListener('resize', onResize);
     }, [mainCoverMeta, form.mainCover?.url, cropCenter, zoom]);
 
-    // Load cover image metadata when project loads (for existing covers)
-    useEffect(() => {
-        if (form.mainCover?.url && !mainCoverMeta) {
-            const url = form.mainCover.url;
-            if (url.startsWith("data:")) {
-                const img = new Image();
-                img.onload = () => {
-                    setMainCoverMeta({ width: img.naturalWidth, height: img.naturalHeight });
-                    loadedImgRef.current = img;
-                };
-                img.src = url;
-                return;
-            }
-            const loadFromBlob = (blob: Blob) => {
-                const objectUrl = URL.createObjectURL(blob);
-                const img = new Image();
-                img.onload = () => {
-                    setMainCoverMeta({ width: img.naturalWidth, height: img.naturalHeight });
-                    loadedImgRef.current = img;
-                    URL.revokeObjectURL(objectUrl);
-                };
-                img.src = objectUrl;
-            };
-            // Try Vite dev proxy first, then direct fetch, then give up on canvas crop
-            const proxyUrl = url.replace(/^https?:\/\/upload\.ats\.sabergroup-eg\.com/, '/r2-proxy');
-            fetch(proxyUrl)
-                .then((res) => { if (!res.ok) throw new Error(); return res.blob(); })
-                .then(loadFromBlob)
-                .catch(() => fetch(url))
-                .then((res) => { if (!res || !res.ok) throw new Error(); return res.blob(); })
-                .then(loadFromBlob)
-                .catch(() => {
-                    // CORS blocked both attempts — CSS preview still works, canvas crop disabled
-                });
+    // Read cover image dimensions from the rendered <img> element (no fetch needed)
+    const handleCoverImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+        const imgEl = e.currentTarget;
+        console.log("[CoverImg] onLoad fired, natural:", imgEl.naturalWidth, "x", imgEl.naturalHeight, "src:", imgEl.src?.substring(0, 60));
+        if (imgEl.naturalWidth && imgEl.naturalHeight) {
+            setMainCoverMeta({ width: imgEl.naturalWidth, height: imgEl.naturalHeight });
+            loadedImgRef.current = imgEl;
         }
-    }, [form.mainCover?.url]);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -1954,22 +1920,32 @@ const EditProject: React.FC = () => {
             const clone = JSON.parse(JSON.stringify(cloneSource));
 
             if (clone.mainCover) {
-                const coverUploadSource = clone.mainCover.croppedUrl || clone.mainCover.url;
-                const uploadedMainCover = await uploadAssetIfNeeded(
-                    { ...clone.mainCover, url: coverUploadSource },
-                    "image",
-                    clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
-                );
-
-                clone.mainCover = {
-                    ...clone.mainCover,
-                    ...uploadedMainCover,
-                    url: uploadedMainCover.url,
-                };
-
-                // remove cropping preview data that backend validation may reject
-                delete clone.mainCover.croppedUrl;
-                delete clone.mainCover.crop;
+                console.log("[Submit] clone.mainCover keys:", Object.keys(clone.mainCover), "crop:", clone.mainCover.crop, "croppedUrl:", clone.mainCover.croppedUrl ? "present" : "absent");
+                if (clone.mainCover.croppedUrl) {
+                    // Canvas crop succeeded (data URL) — upload the cropped image
+                    const coverUploadSource = clone.mainCover.croppedUrl;
+                    const uploadedMainCover = await uploadAssetIfNeeded(
+                        { ...clone.mainCover, url: coverUploadSource },
+                        "image",
+                        clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
+                    );
+                    clone.mainCover = {
+                        ...clone.mainCover,
+                        ...uploadedMainCover,
+                        url: uploadedMainCover.url,
+                    };
+                    delete clone.mainCover.croppedUrl;
+                    delete clone.mainCover.crop;
+                } else if (clone.mainCover.crop) {
+                    // Canvas crop failed (CORS) — send crop params for server-side cropping
+                    // Keep the original URL and crop metadata, backend will crop
+                    delete clone.mainCover.croppedUrl;
+                    console.log("[Submit] Canvas crop failed, sending crop params:", clone.mainCover.crop);
+                } else {
+                    // No crop at all
+                    delete clone.mainCover.croppedUrl;
+                    delete clone.mainCover.crop;
+                }
             }
 
             // strip nested metadata from before/after sub-objects (server expects simple {url,label,type})
@@ -2254,6 +2230,7 @@ if (Array.isArray(clone.cast)) {
                 parentProject: getOptionValue(clone.parentProject) || undefined,
                 company: getOptionValue(clone.company) || undefined,
             };
+            console.log("[Submit] Final mainCover sent to backend:", JSON.stringify(submitData.mainCover));
 
             update.mutate(
                 { id, data: submitData as any },
@@ -3426,6 +3403,7 @@ if (Array.isArray(clone.cast)) {
                                                             src={form.mainCover.url}
                                                             alt={tr("main_cover_alt", "Main Cover")}
                                                             className="w-full h-auto max-h-[420px] object-contain block"
+                                                            onLoad={handleCoverImageLoad}
                                                             onClick={(e) => handleImageClickToCenter(e)}
                                                         />
                                                         <div
@@ -3493,7 +3471,7 @@ if (Array.isArray(clone.cast)) {
                                         ) : (
                                             <div className="space-y-4">
                                                 <div className="rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                                    <img src={form.mainCover.croppedUrl || form.mainCover.url} alt={tr("main_cover", "Main Cover")} className="w-full h-auto max-h-[400px] object-contain" />
+                                                    <img src={form.mainCover.croppedUrl || form.mainCover.url} alt={tr("main_cover", "Main Cover")} className="w-full h-auto max-h-[400px] object-contain" onLoad={handleCoverImageLoad} />
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                                     <div>
