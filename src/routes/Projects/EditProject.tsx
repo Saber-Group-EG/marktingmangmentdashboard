@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useProject, useUpdateProject, useDeleteProject, useProjectTypes, useProjectCast, useProjects, useCategories, useProjectCompanies, useCreateProjectCompany } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
@@ -14,8 +14,7 @@ import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
 import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
-import { useAutoTranslateList } from "@/hooks/useAutoTranslateList";
-import { stripHtml, toLocalizedItems, mergeLocalizedAr } from "@/utils/translateText";
+import { stripHtml } from "@/utils/translateText";
 import TranslateButton from "@/components/TranslateButton";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
 import { Reorder, AnimatePresence } from "framer-motion";
@@ -431,63 +430,6 @@ const EditProject: React.FC = () => {
     const matAfterArToEn = useAutoTranslatePair(editingMaterial?.after?.label?.ar || "", editingMaterial?.after?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, en: t } } } : prev)));
     const matDescEnToAr = useAutoTranslatePair(editingMaterial?.description?.en || "", editingMaterial?.description?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, ar: t } } : prev)));
     const matDescArToEn = useAutoTranslatePair(editingMaterial?.description?.ar || "", editingMaterial?.description?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, en: t } } : prev)));
-
-    const tagItems = useMemo(() => toLocalizedItems(form.tags), [form.tags]);
-    const tagListTranslate = useAutoTranslateList(tagItems, (index, ar) =>
-        setForm((prev: any) => ({ ...prev, tags: prev.tags.map((t: any, i: number) => (i === index ? mergeLocalizedAr(t, ar) : t)) })),
-    );
-    const categoryItems = useMemo(() => toLocalizedItems(form.categories), [form.categories]);
-    const categoryListTranslate = useAutoTranslateList(categoryItems, (index, ar) =>
-        setForm((prev: any) => ({ ...prev, categories: prev.categories.map((c: any, i: number) => (i === index ? mergeLocalizedAr(c, ar) : c)) })),
-    );
-    const typeItems = useMemo(() => toLocalizedItems(form.types), [form.types]);
-    const typeListTranslate = useAutoTranslateList(typeItems, (index, ar) =>
-        setForm((prev: any) => ({ ...prev, types: prev.types.map((t: any, i: number) => (i === index ? mergeLocalizedAr(t, ar) : t)) })),
-    );
-    const materialCaptionItems = useMemo(
-        () => form.materials.map((m: Material) => ({ en: m.caption?.en || "", ar: m.caption?.ar || "" })),
-        [form.materials],
-    );
-    const matCaptionListTranslate = useAutoTranslateList(materialCaptionItems, (index, ar) =>
-        setForm((prev: any) => ({
-            ...prev,
-            materials: prev.materials.map((m: Material, i: number) => (i === index ? { ...m, caption: { ...m.caption, ar } } : m)),
-        })),
-    );
-    const materialTextItems = useMemo(
-        () => form.materials.map((m: Material) => ({ en: stripHtml(m.textContent?.en || ""), ar: stripHtml(m.textContent?.ar || "") })),
-        [form.materials],
-    );
-    const matTextListTranslate = useAutoTranslateList(materialTextItems, (index, ar) =>
-        setForm((prev: any) => ({
-            ...prev,
-            materials: prev.materials.map((m: Material, i: number) => (i === index ? { ...m, textContent: { ...m.textContent, ar } } : m)),
-        })),
-    );
-    const materialBeforeLabelItems = useMemo(
-        () => form.materials.map((m: Material) => ({ en: m.before?.label?.en || "", ar: m.before?.label?.ar || "" })),
-        [form.materials],
-    );
-    const matBeforeListTranslate = useAutoTranslateList(materialBeforeLabelItems, (index, ar) =>
-        setForm((prev: any) => ({
-            ...prev,
-            materials: prev.materials.map((m: Material, i: number) =>
-                i === index ? { ...m, before: { ...m.before, url: m.before?.url || "", label: { ...m.before?.label, ar } } } : m,
-            ),
-        })),
-    );
-    const materialAfterLabelItems = useMemo(
-        () => form.materials.map((m: Material) => ({ en: m.after?.label?.en || "", ar: m.after?.label?.ar || "" })),
-        [form.materials],
-    );
-    const matAfterListTranslate = useAutoTranslateList(materialAfterLabelItems, (index, ar) =>
-        setForm((prev: any) => ({
-            ...prev,
-            materials: prev.materials.map((m: Material, i: number) =>
-                i === index ? { ...m, after: { ...m.after, url: m.after?.url || "", label: { ...m.after?.label, ar } } } : m,
-            ),
-        })),
-    );
 
     // Photo selection upload progress overlay
     const photoUpload = useUploadProgress();
