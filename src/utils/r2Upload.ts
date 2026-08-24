@@ -22,6 +22,19 @@ export interface R2UploadOptions {
 }
 
 export const isDataUrl = (value?: string): value is string => typeof value === "string" && value.startsWith("data:");
+export const isBlobUrl = (value?: string): value is string => typeof value === "string" && value.startsWith("blob:");
+export const needsUpload = (value?: string): boolean => isDataUrl(value) || isBlobUrl(value);
+
+export const blobUrlToDataUrl = async (blobUrl: string): Promise<string> => {
+    const response = await fetch(blobUrl);
+    const blob = await response.blob();
+    return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
 
 const dataUrlToFile = (dataUrl: string, fileName: string): File => {
     const [header, base64] = dataUrl.split(",");
@@ -153,6 +166,17 @@ export const uploadDataUrlToR2Cached = (dataUrl: string, options: R2UploadOption
     });
     inFlightUploads.set(dataUrl, promise);
     return promise;
+};
+
+export const uploadThumbnailToR2 = async (thumbnailUrl: string, options: R2UploadOptions): Promise<R2UploadResult> => {
+    let dataUrl = thumbnailUrl;
+    if (isBlobUrl(thumbnailUrl)) {
+        dataUrl = await blobUrlToDataUrl(thumbnailUrl);
+    }
+    if (!isDataUrl(dataUrl)) {
+        return { url: thumbnailUrl };
+    }
+    return uploadDataUrlToR2Cached(dataUrl, options);
 };
 
 export const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png"];

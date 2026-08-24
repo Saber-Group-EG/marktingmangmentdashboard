@@ -117,9 +117,68 @@ const ProjectDetails: React.FC = () => {
         });
     };
 
+    const buildVideoItems = (material: any): any[] => {
+        const merged: any[] = [];
+
+        if (material?.url && material?.type === "video") {
+            merged.push({
+                url: material.url,
+                mimeType: material.mimeType,
+                originalName: material.originalName,
+                size: material.size,
+                thumbnail: typeof material.thumbnail === "string" ? material.thumbnail : material.thumbnail?.url,
+                type: "video",
+            });
+        }
+
+        if (Array.isArray(material?.items)) {
+            material.items
+                .filter((item: any) => !!item?.url)
+                .forEach((item: any) => {
+                    merged.push({
+                        url: item.url,
+                        mimeType: item.mimeType || material?.mimeType,
+                        originalName: item.originalName,
+                        size: item.size,
+                        thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : item.thumbnail?.url,
+                        type: "video",
+                    });
+                });
+        }
+
+        const seen = new Set<string>();
+        return merged.filter((item: any) => {
+            const key = String(item?.url || "").trim();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    };
+
+    const isVideoBulkType = (material: any): boolean => {
+        if (material?.type !== "bulk") return false;
+        const items = buildVideoItems(material);
+        return items.length > 0 && (items[0]?.mimeType || "").startsWith("video/");
+    };
+
     const normalizeProjectMaterials = (materials: any[] = []): any[] => {
         const sorted = [...materials].sort((a, b) => (a?.order || 0) - (b?.order || 0));
         return sorted.map((material, index) => {
+            if (material?.type === "bulk" && isVideoBulkType(material)) {
+                const videoItems = buildVideoItems(material);
+                const primary = videoItems[0];
+                return {
+                    ...material,
+                    type: "bulk",
+                    items: videoItems,
+                    url: primary?.url || material?.url,
+                    mimeType: primary?.mimeType || material?.mimeType,
+                    originalName: primary?.originalName || material?.originalName,
+                    size: primary?.size || material?.size,
+                    order: index + 1,
+                };
+            }
+
             if (!isPhotoMaterialType(material?.type)) {
                 return { ...material, order: index + 1 };
             }
@@ -444,6 +503,9 @@ const ProjectDetails: React.FC = () => {
                         </div>
                         <div className="p-3 space-y-2">
                             {caption && <p className="text-sm text-light-600 dark:text-dark-400 line-clamp-2">{caption}</p>}
+                            {localizedToString(m.description) && (
+                                <p className="text-xs text-light-400 dark:text-dark-500">{localizedToString(m.description)}</p>
+                            )}
                             <div className="text-xs text-light-400 dark:text-dark-500 space-y-1">
                                 <div className="flex items-center justify-between">
                                     <span>{photoItems.length > 1 ? `${photoItems.length} grouped photos` : (primaryPhoto?.mimeType || m.mimeType || "image")}</span>
@@ -480,6 +542,9 @@ const ProjectDetails: React.FC = () => {
                         </div>
                         <div className="p-3 space-y-2">
                             {caption && <p className="text-sm text-light-600 dark:text-dark-400">{caption}</p>}
+                            {localizedToString(m.description) && (
+                                <p className="text-xs text-light-400 dark:text-dark-500">{localizedToString(m.description)}</p>
+                            )}
                             <div className="text-xs text-light-400 dark:text-dark-500 space-y-1">
                                 <div className="flex items-center justify-between">
                                     <span>{m.mimeType || "video"}</span>
@@ -489,6 +554,91 @@ const ProjectDetails: React.FC = () => {
                         </div>
                     </MediaCard>
                 );
+
+            case "bulk": {
+                const isVidBulk = isVideoBulkType(m);
+                const bulkItems = isVidBulk ? buildVideoItems(m) : buildPhotoItems(m);
+                const isGrouped = bulkItems.length > 1;
+
+                return (
+                    <MediaCard
+                        key={key}
+                        onClick={() =>
+                            setSelectedMedia({
+                                ...m,
+                                selectedPhoto: bulkItems[0] || null,
+                                selectedPhotoIndex: 0,
+                            })
+                        }
+                        className={isGrouped ? "sm:col-span-2 lg:col-span-3" : ""}
+                    >
+                        <div className={`relative overflow-hidden ${isGrouped ? "" : "aspect-square"}`}>
+                            {isGrouped ? (
+                                <div className="w-full bg-black/5 dark:bg-black/20 p-2">
+                                    <div className="flex flex-wrap gap-1.5 justify-start">
+                                        {bulkItems.map((item: any, itemIdx: number) => (
+                                            <div
+                                                key={`bulk-item-${item.originalName || itemIdx}`}
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    setSelectedMedia({
+                                                        ...m,
+                                                        selectedPhoto: item,
+                                                        selectedPhotoIndex: itemIdx,
+                                                    });
+                                                }}
+                                                className="relative w-[90px] sm:w-[110px] md:w-[130px] lg:w-[150px] max-w-[150px] max-h-[150px] aspect-square overflow-hidden rounded-sm cursor-zoom-in flex-none"
+                                            >
+                                                {isVidBulk ? (
+                                                    item.thumbnail ? (
+                                                        <img src={item.thumbnail} alt={item.originalName || `Video ${itemIdx + 1}`} className="w-full h-full object-contain bg-black/30 group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                                                    ) : (
+                                                        <video src={item.url} className="w-full h-full object-contain bg-black/30" muted preload="metadata" />
+                                                    )
+                                                ) : (
+                                                    <img src={item.url} alt={caption || `Photo ${itemIdx + 1}`} className="w-full h-full object-contain bg-black/30 group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                                                )}
+                                                <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">
+                                                    {itemIdx + 1}
+                                                </div>
+                                                {isVidBulk && (
+                                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                                                        <Play className="w-8 h-8 text-white" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : bulkItems[0]?.url ? (
+                                isVidBulk ? (
+                                    <video src={bulkItems[0].url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" muted preload="metadata" />
+                                ) : (
+                                    <img src={bulkItems[0].url} alt={caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                                )
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-light-100 dark:bg-dark-800 text-light-400 dark:text-dark-500">
+                                    <Camera className="w-10 h-10 opacity-40" />
+                                </div>
+                            )}
+                            <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm rounded-lg p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Maximize2 className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="absolute bottom-2 left-2 bg-black/50 backdrop-blur-sm rounded px-2 py-1 text-xs text-white">
+                                {bulkItems.length > 1 ? `${bulkItems.length} ${isVidBulk ? "Videos" : "Photos"}` : `${isVidBulk ? "Video" : "Photo"} #${m.order}`}
+                            </div>
+                        </div>
+                        <div className="p-3 space-y-2">
+                            {caption && <p className="text-sm text-light-600 dark:text-dark-400 line-clamp-2">{caption}</p>}
+                            <div className="text-xs text-light-400 dark:text-dark-500 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span>{bulkItems.length > 1 ? `${bulkItems.length} grouped ${isVidBulk ? "videos" : "photos"}` : (bulkItems[0]?.mimeType || m.mimeType || (isVidBulk ? "video" : "image"))}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </MediaCard>
+                );
+            }
 
             case "before_after":
                 return (
@@ -503,6 +653,9 @@ const ProjectDetails: React.FC = () => {
                         />
                         <div className="p-3">
                             {caption && <p className="text-sm text-light-600 dark:text-dark-400 mb-2">{caption}</p>}
+                            {localizedToString(m.description) && (
+                                <p className="text-xs text-light-400 dark:text-dark-500 mb-2">{localizedToString(m.description)}</p>
+                            )}
                             <div className="text-xs text-light-400 dark:text-dark-500">
                                 <div>{tr("order_label", "Order:")} {m.order}</div>
                                 <div className="mt-1">{tr("before_label", "Before")}: {m.before?.type} • {tr("after_label", "After")}: {m.after?.type}</div>
@@ -524,6 +677,9 @@ const ProjectDetails: React.FC = () => {
                                     {caption && <p className="text-xs text-light-500 dark:text-secdark-400 font-medium">{caption}</p>}
                                     <span className="text-xs text-light-400 dark:text-dark-500">Text #{m.order}</span>
                                 </div>
+                                {localizedToString(m.description) && (
+                                    <p className="text-xs text-light-400 dark:text-dark-500 mb-2">{localizedToString(m.description)}</p>
+                                )}
                                 <div className="text-light-700 dark:text-dark-300" dangerouslySetInnerHTML={{ __html: formatRichText(localizedToString(m.textContent)) }} />
                                 <div className="mt-2 pt-2 border-t border-light-200 dark:border-dark-700 text-xs text-light-400 dark:text-dark-500">
                                     {/* ID removed for privacy */}
@@ -546,6 +702,9 @@ const ProjectDetails: React.FC = () => {
                                     {caption && <p className="text-xs text-light-500 dark:text-secdark-400 font-medium">{caption}</p>}
                                     <span className="text-xs text-light-400 dark:text-dark-500">HTML #{m.order}</span>
                                 </div>
+                                {localizedToString(m.description) && (
+                                    <p className="text-xs text-light-400 dark:text-dark-500 mb-2">{localizedToString(m.description)}</p>
+                                )}
                                 <div className="prose prose-sm max-w-none text-light-700 dark:text-dark-300" dangerouslySetInnerHTML={{ __html: localizedToString(m.htmlContent) }} />
                                 <div className="mt-2 pt-2 border-t border-light-200 dark:border-dark-700 text-xs text-light-400 dark:text-dark-500">
                                     {/* ID removed for privacy */}
@@ -605,18 +764,39 @@ const ProjectDetails: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
                             <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("materials_count", "Materials")}</div>
-                                <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">{groupedMaterials.length || 0}</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("videos_count", "Videos")}</div>
+                                <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">
+                                    {groupedMaterials.reduce((count: number, m: any) => {
+                                        if (m.type === "video") return count + 1;
+                                        if (m.type === "bulk" && isVideoBulkType(m)) return count + buildVideoItems(m).length;
+                                        return count;
+                                    }, 0)}
+                                </div>
+                            </div>
+                            <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("photos_count", "Photos")}</div>
+                                <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">
+                                    {groupedMaterials.reduce((count: number, m: any) => {
+                                        if (m.type === "photo") return count + 1;
+                                        if (m.type === "bulk" && !isVideoBulkType(m)) return count + buildPhotoItems(m).length;
+                                        return count;
+                                    }, 0)}
+                                </div>
+                            </div>
+                            <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">BTS</div>
+                                <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">
+                                    {groupedMaterials.filter((m: any) => {
+                                        const caption = localizedToString(m.caption) || "";
+                                        return caption.toLowerCase().includes("bts");
+                                    }).length || 0}
+                                </div>
                             </div>
                             <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
                                 <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("team_members_count", "Team Members")}</div>
                                 <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">{p.cast?.length || 0}</div>
-                            </div>
-                            <div className="p-4 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Categories")}</div>
-                                <div className="mt-2 text-2xl font-bold text-light-700 dark:text-secdark-500">{p.categories?.length || 0}</div>
                             </div>
                         </div>
                     </div>
@@ -809,9 +989,9 @@ const ProjectDetails: React.FC = () => {
                         className="relative w-full max-w-6xl max-h-[90vh] bg-black rounded-xl overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                         onWheel={(event) => {
-                            if (!isPhotoMaterialType(selectedMedia?.type)) return;
-                            const photoItems = buildPhotoItems(selectedMedia);
-                            if (photoItems.length <= 1) return;
+                            if (!isPhotoMaterialType(selectedMedia?.type) && !(selectedMedia?.type === "bulk" && isVideoBulkType(selectedMedia))) return;
+                            const items = selectedMedia?.type === "bulk" && isVideoBulkType(selectedMedia) ? buildVideoItems(selectedMedia) : buildPhotoItems(selectedMedia);
+                            if (items.length <= 1) return;
                             event.preventDefault();
                             shiftSelectedPhoto(event.deltaY > 0 ? "next" : "prev");
                         }}
@@ -823,8 +1003,11 @@ const ProjectDetails: React.FC = () => {
                             <X className="w-5 h-5" />
                         </button>
                         
-                            {isPhotoMaterialType(selectedMedia.type) && (() => {
-                                const selectedItems = buildPhotoItems(selectedMedia);
+                            {(() => {
+                                const isPhotoType = isPhotoMaterialType(selectedMedia.type);
+                                const isVidBulk = selectedMedia.type === "bulk" && isVideoBulkType(selectedMedia);
+                                if (!isPhotoType && !isVidBulk) return null;
+                                const selectedItems = isVidBulk ? buildVideoItems(selectedMedia) : buildPhotoItems(selectedMedia);
                                 const totalPhotos = selectedItems.length;
                                 const currentIndex = totalPhotos > 0
                                     ? Math.min(
@@ -845,13 +1028,24 @@ const ProjectDetails: React.FC = () => {
                                     return null;
                                 }
 
+                                const isVideoItem = selectedPhoto.type === "video";
+
                                 return (
                                     <div className="relative w-full">
-                                        <img
-                                            src={selectedPhoto.url}
-                                            alt={selectedMedia.caption || selectedPhoto.originalName || "Project photo"}
-                                            className="w-full h-auto max-h-[90vh] object-contain"
-                                        />
+                                        {isVideoItem ? (
+                                            <video
+                                                src={selectedPhoto.url}
+                                                controls
+                                                autoPlay
+                                                className="w-full h-auto max-h-[90vh] object-contain"
+                                            />
+                                        ) : (
+                                            <img
+                                                src={selectedPhoto.url}
+                                                alt={selectedMedia.caption || selectedPhoto.originalName || "Project photo"}
+                                                className="w-full h-auto max-h-[90vh] object-contain"
+                                            />
+                                        )}
 
                                         {totalPhotos > 1 && (
                                             <>
@@ -887,10 +1081,6 @@ const ProjectDetails: React.FC = () => {
                                     </div>
                                 );
                             })()}
-                        
-                            {selectedMedia.type === "video" && (
-                                <video controls autoPlay src={selectedMedia.url} className="w-full h-auto max-h-[90vh]" />
-                            )}
                         
                         {localizedToString(selectedMedia.caption) && (
                             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">

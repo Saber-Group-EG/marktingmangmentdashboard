@@ -9,7 +9,7 @@ import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
-import { isDataUrl, uploadDataUrlToR2Cached, uploadDataUrlToR2 } from "@/utils/r2Upload";
+import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2 } from "@/utils/r2Upload";
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
 import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
 import { useAutoTranslateList } from "@/hooks/useAutoTranslateList";
@@ -30,6 +30,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { Calendar } from "lucide-react";
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
+import { showAlert } from "@/utils/swal";
 
 interface Material {
   _id?: string;
@@ -42,7 +43,7 @@ interface Material {
   size?: number;
   originalName?: string;
     thumbnail?: string | { url: string; mimeType?: string; size?: number; originalName?: string };
-    items?: PhotoMaterialItem[];
+    items?: (PhotoMaterialItem | VideoMaterialItem)[];
   textContent?: any;
   htmlContent?: any;
     before?: { url: string; label?: any; type?: string; mimeType?: string; originalName?: string; size?: number };
@@ -55,6 +56,16 @@ interface PhotoMaterialItem {
     size?: number;
     originalName?: string;
     type?: "photo";
+}
+
+interface VideoMaterialItem {
+    url: string;
+    mimeType?: string;
+    size?: number;
+    originalName?: string;
+    thumbnail?: string;
+    caption?: any;
+    type?: "video";
 }
 
 interface Cast {
@@ -82,6 +93,58 @@ const SortablePhotoItem: React.FC<{ item: PhotoItem; index: number; onRemove: (i
                 <div className="text-sm font-medium text-light-900 dark:text-dark-50 truncate">{item.originalName || `Photo ${index + 1}`}</div>
                 <div className="text-xs text-light-500 dark:text-dark-400">#{index + 1}</div>
             </div>
+            <button type="button" onClick={() => onRemove(index)} className="shrink-0 p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors pointer-events-auto" title={removeLabel} aria-label={removeLabel}>
+                <X className="w-4 h-4" />
+            </button>
+        </div>
+    );
+};
+
+type SortableVideoItemProps = {
+    item: VideoMaterialItem;
+    index: number;
+    onRemove: (i: number) => void;
+    onThumbnailUpload: (index: number, file: File) => void;
+    onRemoveThumbnail: (index: number) => void;
+    removeLabel: string;
+    materialCaption?: any;
+    materialDescription?: any;
+};
+
+const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRemove, onThumbnailUpload, onRemoveThumbnail, removeLabel, materialCaption, materialDescription }) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
+    const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
+    const thumbUrl = item.thumbnail || undefined;
+    const caption = materialCaption || "";
+    const description = materialDescription || "";
+    return (
+        <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex items-center gap-3 border border-light-200 dark:border-dark-700 rounded-lg p-2 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing touch-none">
+            <GripVertical className="w-4 h-4 shrink-0 text-light-400 dark:text-dark-500" />
+            {thumbUrl ? (
+                <img src={thumbUrl} alt={item.originalName || `Video ${index + 1}`} className="shrink-0 w-12 h-12 object-cover rounded pointer-events-none" />
+            ) : (
+                <video src={item.url} className="shrink-0 w-12 h-12 object-cover rounded pointer-events-none" muted preload="metadata" />
+            )}
+            <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-light-900 dark:text-dark-50 truncate">{item.originalName || `Video ${index + 1}`}</div>
+                <div className="text-xs text-light-500 dark:text-dark-400">
+                    #{index + 1}
+                    {caption && <span className="ml-1 text-light-600 dark:text-dark-300">— {caption}</span>}
+                </div>
+                {description && (
+                    <div className="text-xs text-light-400 dark:text-dark-500 truncate mt-0.5">{description}</div>
+                )}
+            </div>
+            {thumbUrl ? (
+                <button type="button" onClick={() => onRemoveThumbnail(index)} className="shrink-0 p-1.5 rounded-lg hover:bg-warning-50 dark:hover:bg-warning-950/30 text-warning-500 transition-colors pointer-events-auto" title="Remove thumbnail" aria-label="Remove thumbnail">
+                    <ImageIcon className="w-4 h-4" />
+                </button>
+            ) : (
+                <label className="shrink-0 p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950/30 text-primary-500 transition-colors pointer-events-auto cursor-pointer" title="Upload thumbnail" aria-label="Upload thumbnail">
+                    <Upload className="w-4 h-4" />
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onThumbnailUpload(index, f); e.target.value = ""; }} />
+                </label>
+            )}
             <button type="button" onClick={() => onRemove(index)} className="shrink-0 p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors pointer-events-auto" title={removeLabel} aria-label={removeLabel}>
                 <X className="w-4 h-4" />
             </button>
@@ -363,16 +426,17 @@ const AddProject: React.FC = () => {
         const options = kind === "category" ? projectCategories : projectTypes;
         const resolved: string[] = [];
         for (const item of items || []) {
+            // If the item already has a valid _id (e.g. selected from dropdown), use it directly
+            const existingId = getOptionValue(item);
+            if (existingId && /^[0-9a-fA-F]{24}$/.test(String(existingId))) {
+                resolved.push(String(existingId));
+                continue;
+            }
             const label = getOptionLabel(item).trim();
             if (!label) continue;
             const existing = options.find((o: any) => getOptionLabel(o).toLowerCase() === label.toLowerCase());
             if (existing && getOptionValue(existing)) {
                 resolved.push(getOptionValue(existing));
-                continue;
-            }
-            const rawId = typeof item === "string" ? item.trim() : getOptionValue(item);
-            if (rawId && /^[0-9a-fA-F]{24}$/.test(rawId)) {
-                resolved.push(rawId);
                 continue;
             }
             const ar = item && typeof item === "object" ? String(item.ar || "").trim() : "";
@@ -824,6 +888,11 @@ const AddProject: React.FC = () => {
         });
 
     const isPhotoMaterialType = (type?: string): boolean => type === "photo" || type === "bulk";
+    const isVideoBulkType = (material: any): boolean => {
+        if (material?.type !== "bulk") return false;
+        const items = buildVideoItems(material);
+        return items.length > 0 && (items[0]?.mimeType || "").startsWith("video/");
+    };
         const handleVideoThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
             const file = e.target.files?.[0];
             if (!file || !editingMaterial) return;
@@ -837,7 +906,13 @@ const AddProject: React.FC = () => {
                             resourceType: "image",
                             fileName: file.name,
                         });
-                        setEditingMaterial((prev) => (prev ? { ...prev, thumbnail: { url: uploaded.url, mimeType: file.type, originalName: file.name, size: file.size } } : prev));
+                        const thumbUrl = uploaded.url;
+                        setEditingMaterial((prev) => {
+                            if (!prev) return prev;
+                            const thumbObj = { url: thumbUrl, mimeType: file.type, originalName: file.name, size: file.size };
+                            const items = buildVideoItems(prev).map((item) => ({ ...item, thumbnail: thumbUrl }));
+                            return { ...prev, thumbnail: thumbObj, items };
+                        });
                     },
                 });
             } catch {
@@ -884,6 +959,67 @@ const AddProject: React.FC = () => {
         });
     };
 
+    const buildVideoItems = (material: Partial<Material>): VideoMaterialItem[] => {
+        const merged: VideoMaterialItem[] = [];
+
+        if (material.url && material.type === "video") {
+            const primaryItem: any = Array.isArray(material.items) ? material.items[0] : undefined;
+            const primaryThumb = primaryItem?.thumbnail
+                ? (typeof primaryItem.thumbnail === "string" ? primaryItem.thumbnail : primaryItem.thumbnail?.url)
+                : (typeof material.thumbnail === "string" ? material.thumbnail : material.thumbnail?.url);
+            merged.push({
+                url: material.url,
+                mimeType: material.mimeType,
+                originalName: material.originalName,
+                size: material.size,
+                thumbnail: primaryThumb,
+                type: "video",
+            });
+        }
+
+        if (Array.isArray(material.items)) {
+            material.items
+                .filter((item): item is VideoMaterialItem => !!item?.url)
+                .forEach((item: any, idx: number) => {
+                    if (material.url && material.type === "video" && idx === 0) return;
+                    merged.push({
+                        url: item.url,
+                        mimeType: item.mimeType || material.mimeType,
+                        originalName: item.originalName,
+                        size: item.size,
+                        thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : item.thumbnail?.url,
+                        type: "video",
+                    });
+                });
+        }
+
+        const seen = new Set<string>();
+        return merged.filter((item) => {
+            const key = item.url.trim();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    };
+
+    const normalizeVideoMaterial = (material: Material): Material => {
+        if (material.type !== "video" && material.type !== "bulk") {
+            return material;
+        }
+
+        const items = buildVideoItems(material);
+        const primary = items[0];
+
+        return {
+            ...material,
+            items,
+            url: primary?.url || "",
+            mimeType: primary?.mimeType || material.mimeType,
+            originalName: primary?.originalName || material.originalName,
+            size: primary?.size || material.size,
+        };
+    };
+
     const normalizePhotoMaterial = (material: Material): Material => {
         if (!isPhotoMaterialType(material.type)) {
             return material;
@@ -922,14 +1058,24 @@ const AddProject: React.FC = () => {
     };
 
     const handleEditMaterial = (material: Material, index: number) => {
-        const normalized = isPhotoMaterialType(material.type) ? normalizePhotoMaterial({ ...material }) : { ...material };
+        let normalized = { ...material };
+        if (material.type === "video" || (material.type === "bulk" && isVideoBulkType(material))) {
+            normalized = normalizeVideoMaterial(normalized);
+        } else if (isPhotoMaterialType(material.type)) {
+            normalized = normalizePhotoMaterial(normalized);
+        }
         setEditingMaterial(normalized);
         setEditingMaterialIndex(index);
     };
 
     const handleSaveMaterial = () => {
         if (editingMaterial) {
-            const materialToSave = isPhotoMaterialType(editingMaterial.type) ? normalizePhotoMaterial(editingMaterial) : editingMaterial;
+            let materialToSave = editingMaterial;
+            if (editingMaterial.type === "video" || (editingMaterial.type === "bulk" && isVideoBulkType(editingMaterial))) {
+                materialToSave = normalizeVideoMaterial(editingMaterial);
+            } else if (isPhotoMaterialType(editingMaterial.type)) {
+                materialToSave = normalizePhotoMaterial(editingMaterial);
+            }
             if (editingMaterialIndex !== null) {
                 setForm({
                     ...form,
@@ -954,8 +1100,8 @@ const AddProject: React.FC = () => {
 
         try {
             await photoUpload.run({
-                title: editingMaterial.type === "photo" ? "Uploading photo..." : "Uploading file...",
-                label: files.length > 1 ? `${files.length} photos` : files[0].name,
+                title: editingMaterial.type === "photo" ? "Uploading photo..." : "Uploading video...",
+                label: files.length > 1 ? `${files.length} files` : files[0].name,
                 task: async () => {
                     if (editingMaterial.type === "photo") {
                         const uploadedItems: PhotoMaterialItem[] = await Promise.all(
@@ -984,6 +1130,41 @@ const AddProject: React.FC = () => {
                         setEditingMaterial((prev) => {
                             if (!prev || prev.type !== "photo") return prev;
                             const items = [...buildPhotoItems(prev), ...uploadedItems];
+                            const primary = items[0];
+                            return {
+                                ...prev,
+                                items,
+                                url: primary?.url || "",
+                                mimeType: primary?.mimeType || prev.mimeType,
+                                size: primary?.size || prev.size,
+                                originalName: primary?.originalName || prev.originalName,
+                            };
+                        });
+                    } else if (editingMaterial.type === "video" || editingMaterial.type === "bulk") {
+                        const uploadedItems: VideoMaterialItem[] = await Promise.all(
+                            files.map(async (file) => {
+                                const dataUrl = await readFileAsDataUrl(file);
+                                return {
+                                    url: dataUrl,
+                                    mimeType: file.type,
+                                    size: file.size,
+                                    originalName: file.name,
+                                    type: "video" as const,
+                                };
+                            })
+                        );
+
+                        uploadedItems.forEach((item) => {
+                            uploadDataUrlToR2Cached(item.url, {
+                                resourceType: "video",
+                                fileName: item.originalName || "project-video.mp4",
+                            }).catch(() => {});
+                        });
+
+                        setEditingMaterial((prev) => {
+                            if (!prev || (prev.type !== "video" && prev.type !== "bulk")) return prev;
+                            const existingItems = prev.type === "bulk" ? buildVideoItems(prev) : [];
+                            const items = [...existingItems, ...uploadedItems];
                             const primary = items[0];
                             return {
                                 ...prev,
@@ -1030,6 +1211,77 @@ const AddProject: React.FC = () => {
             return {
                 ...prev,
                 items,
+                url: primary?.url || "",
+                mimeType: primary?.mimeType,
+                originalName: primary?.originalName,
+                size: primary?.size,
+            };
+        });
+    };
+
+    const handleRemoveVideoItem = (itemIndex: number) => {
+        setEditingMaterial((prev) => {
+            if (!prev || (prev.type !== "video" && prev.type !== "bulk")) return prev;
+            const items = buildVideoItems(prev).filter((_, idx) => idx !== itemIndex);
+            const primary = items[0];
+            return {
+                ...prev,
+                items,
+                thumbnail: primary?.thumbnail ? { url: primary.thumbnail } : undefined,
+                url: primary?.url || "",
+                mimeType: primary?.mimeType,
+                originalName: primary?.originalName,
+                size: primary?.size,
+            };
+        });
+    };
+
+    const handleVideoItemThumbnailUpload = (itemIndex: number, file: File) => {
+        setEditingMaterial((prev) => {
+            if (!prev || (prev.type !== "video" && prev.type !== "bulk")) return prev;
+            const thumbUrl = URL.createObjectURL(file);
+            const items = buildVideoItems(prev).map((item, idx) => {
+                if (idx !== itemIndex) return item;
+                return { ...item, thumbnail: thumbUrl };
+            });
+            const primary = items[0];
+            return {
+                ...prev,
+                items,
+                url: primary?.url || "",
+                mimeType: primary?.mimeType,
+                originalName: primary?.originalName,
+                size: primary?.size,
+            };
+        });
+    };
+
+    const handleRemoveVideoItemThumbnail = (itemIndex: number) => {
+        setEditingMaterial((prev) => {
+            if (!prev || (prev.type !== "video" && prev.type !== "bulk")) return prev;
+            const items = buildVideoItems(prev).map((item, idx) => {
+                if (idx !== itemIndex) return item;
+                return { ...item, thumbnail: undefined };
+            });
+            const primary = items[0];
+            return {
+                ...prev,
+                items,
+                url: primary?.url || "",
+                mimeType: primary?.mimeType,
+                originalName: primary?.originalName,
+                size: primary?.size,
+            };
+        });
+    };
+
+    const handleVideoItemReorder = (newItems: VideoMaterialItem[]) => {
+        setEditingMaterial((prev) => {
+            if (!prev || (prev.type !== "video" && prev.type !== "bulk")) return prev;
+            const primary = newItems[0];
+            return {
+                ...prev,
+                items: newItems,
                 url: primary?.url || "",
                 mimeType: primary?.mimeType,
                 originalName: primary?.originalName,
@@ -1521,11 +1773,11 @@ const handleDateChange = (date: Date | null) => {
             resourceType: "image" | "video",
             fallbackFileName: string,
         ) => {
-            if (!asset?.url || !isDataUrl(asset.url)) {
+            if (!asset?.url || !needsUpload(asset.url)) {
                 return asset;
             }
 
-            const uploaded = await uploadDataUrlToR2Cached(asset.url, {
+            const uploaded = await uploadThumbnailToR2(asset.url, {
                 resourceType,
                 fileName: asset.originalName || fallbackFileName,
             });
@@ -1568,7 +1820,112 @@ const handleDateChange = (date: Date | null) => {
                 clone.materials.map(async (m: any, materialIndex: number) => {
                     const copy: any = { ...m };
 
-                    if (isPhotoMaterialType(copy.type)) {
+                        if (copy.type === "bulk" && isVideoBulkType(copy)) {
+                            let normalizedVideoItems = buildVideoItems(copy).map((item) => ({
+                                url: item.url,
+                                mimeType: item.mimeType,
+                                originalName: item.originalName,
+                                size: item.size,
+                                thumbnail: item.thumbnail,
+                                type: "video" as const,
+                            }));
+
+                            normalizedVideoItems = await Promise.all(
+                                normalizedVideoItems.map(async (item, itemIndex) => {
+                                    const uploadedItem = await uploadAssetIfNeeded(
+                                        item,
+                                        "video",
+                                        item.originalName || `project-video-${materialIndex + 1}-${itemIndex + 1}.mp4`,
+                                    );
+                                    let uploadedThumb = item.thumbnail;
+                                    if (item.thumbnail && needsUpload(item.thumbnail)) {
+                                        const thumbResult = await uploadThumbnailToR2(item.thumbnail, {
+                                            resourceType: "image",
+                                            fileName: `video-thumb-${materialIndex + 1}-${itemIndex + 1}.jpg`,
+                                        });
+                                        uploadedThumb = thumbResult.url;
+                                    }
+                                    return {
+                                        ...item,
+                                        ...uploadedItem,
+                                        thumbnail: uploadedThumb,
+                                        type: "video",
+                                    };
+                                }),
+                            );
+
+                            copy.items = normalizedVideoItems;
+                            copy.url = normalizedVideoItems[0]?.url || copy.url;
+                            copy.mimeType = normalizedVideoItems[0]?.mimeType || copy.mimeType;
+                            copy.originalName = normalizedVideoItems[0]?.originalName || copy.originalName;
+                            copy.size = normalizedVideoItems[0]?.size || copy.size;
+                            copy.type = normalizedVideoItems.length > 1 ? "bulk" : "video";
+                        } else if (copy.type === "video" && copy.url) {
+                            // Check if material has multiple video items (type was "video" but had bulk items)
+                            const videoItems = buildVideoItems(copy);
+                            if (videoItems.length > 1) {
+                                let normalizedVideoItems = videoItems.map((item) => ({
+                                    url: item.url,
+                                    mimeType: item.mimeType,
+                                    originalName: item.originalName,
+                                    size: item.size,
+                                    thumbnail: item.thumbnail,
+                                    type: "video" as const,
+                                }));
+
+                                normalizedVideoItems = await Promise.all(
+                                    normalizedVideoItems.map(async (item, itemIndex) => {
+                                        const uploadedItem = await uploadAssetIfNeeded(
+                                            item,
+                                            "video",
+                                            item.originalName || `project-video-${materialIndex + 1}-${itemIndex + 1}.mp4`,
+                                        );
+                                        let uploadedThumb = item.thumbnail;
+                                        if (item.thumbnail && isDataUrl(item.thumbnail)) {
+                                            const thumbResult = await uploadDataUrlToR2Cached(item.thumbnail, {
+                                                resourceType: "image",
+                                                fileName: `video-thumb-${materialIndex + 1}-${itemIndex + 1}.jpg`,
+                                            });
+                                            uploadedThumb = thumbResult.url;
+                                        }
+                                        return {
+                                            ...item,
+                                            ...uploadedItem,
+                                            thumbnail: uploadedThumb,
+                                            type: "video",
+                                        };
+                                    }),
+                                );
+
+                                copy.items = normalizedVideoItems;
+                                copy.url = normalizedVideoItems[0]?.url || copy.url;
+                                copy.mimeType = normalizedVideoItems[0]?.mimeType || copy.mimeType;
+                                copy.originalName = normalizedVideoItems[0]?.originalName || copy.originalName;
+                                copy.size = normalizedVideoItems[0]?.size || copy.size;
+                                copy.type = "bulk";
+                            } else {
+                                const uploadedVideo = await uploadAssetIfNeeded(
+                                    copy,
+                                    "video",
+                                    copy.originalName || `project-video-${materialIndex + 1}.mp4`,
+                                );
+
+                                copy.url = uploadedVideo.url;
+                                copy.mimeType = uploadedVideo.mimeType || copy.mimeType;
+                                copy.originalName = uploadedVideo.originalName || copy.originalName;
+                                copy.size = uploadedVideo.size || copy.size;
+
+                                const thumbAsset = typeof copy.thumbnail === 'string' ? { url: copy.thumbnail } : copy.thumbnail;
+                                if (thumbAsset?.url) {
+                                    const uploadedThumb = await uploadAssetIfNeeded(
+                                        thumbAsset,
+                                        "image",
+                                        thumbAsset.originalName || `project-video-thumb-${materialIndex + 1}.jpg`,
+                                    );
+                                    copy.thumbnail = uploadedThumb.url;
+                                }
+                            }
+                    } else if (isPhotoMaterialType(copy.type)) {
                         let normalizedItems = buildPhotoItems(copy).map((item) => ({
                             url: item.url,
                             mimeType: item.mimeType,
@@ -1600,32 +1957,6 @@ const handleDateChange = (date: Date | null) => {
                         copy.size = primary?.size || copy.size;
                         copy.items = restItems;
                         copy.type = normalizedItems.length > 1 ? "bulk" : "photo";
-                    }
-
-                    if (copy.type === "video" && copy.url) {
-                        const uploadedVideo = await uploadAssetIfNeeded(
-                            copy,
-                            "video",
-                            copy.originalName || `project-video-${materialIndex + 1}.mp4`,
-                        );
-
-                        copy.url = uploadedVideo.url;
-                        copy.mimeType = uploadedVideo.mimeType || copy.mimeType;
-                        copy.originalName = uploadedVideo.originalName || copy.originalName;
-                        copy.size = uploadedVideo.size || copy.size;
-
-                        // upload thumbnail if present (thumbnail may be string or object)
-                        const thumbAsset = typeof copy.thumbnail === 'string' ? { url: copy.thumbnail } : copy.thumbnail;
-                        if (thumbAsset?.url) {
-                            const uploadedThumb = await uploadAssetIfNeeded(
-                                thumbAsset,
-                                "image",
-                                thumbAsset.originalName || `project-video-thumb-${materialIndex + 1}.jpg`,
-                            );
-
-                            // store only the cloudinary URL string for backend
-                            copy.thumbnail = uploadedThumb.url;
-                        }
                     }
 
                     if (copy.before?.url) {
@@ -1775,12 +2106,11 @@ const handleDateChange = (date: Date | null) => {
             const projectId = created?.id;
             navigate(projectId ? `/projects/${projectId}` : "/projects");
         }, 900);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Project submission failed:", error);
-        setSaveStatus("error");
-        setUploadLabel("Failed to create project");
-        setTimeout(() => setSaveStatus("idle"), 3000);
-        setTimeout(() => setUploadModalOpen(false), 2000);
+        setUploadModalOpen(false);
+        const msg = error?.response?.data?.message || error?.message || "Failed to create project";
+        showAlert(msg, "error");
     }
 };
 
@@ -1865,10 +2195,35 @@ const handleDateChange = (date: Date | null) => {
                         </div>
 
                         {/* Quick Stats */}
-                        <div className="mt-6 grid grid-cols-2 sm:grid-cols-5 gap-4">
+                        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("materials_count", "Materials")}</div>
-                                <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.materials.length}</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("videos_count", "Videos")}</div>
+                                <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">
+                                    {form.materials.reduce((count: number, m: Material) => {
+                                        if (m.type === "video") return count + 1;
+                                        if (m.type === "bulk" && isVideoBulkType(m)) return count + buildVideoItems(m).length;
+                                        return count;
+                                    }, 0)}
+                                </div>
+                            </div>
+                            <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("photos_count", "Photos")}</div>
+                                <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">
+                                    {form.materials.reduce((count: number, m: Material) => {
+                                        if (m.type === "photo") return count + 1;
+                                        if (m.type === "bulk" && !isVideoBulkType(m)) return count + buildPhotoItems(m).length;
+                                        return count;
+                                    }, 0)}
+                                </div>
+                            </div>
+                            <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">BTS</div>
+                                <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">
+                                    {form.materials.filter((m: Material) => {
+                                        const caption = localizedToString(m.caption) || "";
+                                        return caption.toLowerCase().includes("bts");
+                                    }).length}
+                                </div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
                                 <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("team_members_count", "Team Members")}</div>
@@ -1877,14 +2232,6 @@ const handleDateChange = (date: Date | null) => {
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
                                 <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Categories")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.categories.length}</div>
-                            </div>
-                            <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("tags_label", "Tags")}</div>
-                                <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.tags.length}</div>
-                            </div>
-                            <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("types", "Types")}</div>
-                                <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.types.length}</div>
                             </div>
                         </div>
                     </div>
@@ -2465,8 +2812,93 @@ const handleDateChange = (date: Date | null) => {
                                                                     </div>
                                                                 );
                                                             })()
+                                                        ) : material.type === "bulk" && isVideoBulkType(material) ? (
+                                                            (() => {
+                                                                const videoItems = buildVideoItems(material);
+                                                                if (!videoItems.length) {
+                                                                    return (
+                                                                        <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
+                                                                            <Video className="w-6 h-6 opacity-40" />
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                if (videoItems.length === 1) {
+                                                                    return videoItems[0].thumbnail
+                                                                        ? <img src={videoItems[0].thumbnail} alt={localizedToString(material.caption) || ''} className="w-full h-full object-cover" />
+                                                                        : <video src={videoItems[0].url} className="w-full h-full object-cover" muted preload="metadata" />;
+                                                                }
+                                                                return (
+                                                                    <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
+                                                                        {videoItems.slice(0, 4).map((item, itemIdx) => (
+                                                                            <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
+                                                                                {item.thumbnail ? (
+                                                                                    <img src={item.thumbnail} alt={item.originalName || `Video ${itemIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                ) : (
+                                                                                    <video src={item.url} className="w-full h-full object-cover" muted preload="metadata" />
+                                                                                )}
+                                                                                {itemIdx === 3 && videoItems.length > 4 && (
+                                                                                    <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
+                                                                                        +{videoItems.length - 4}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                );
+                                                            })()
+                                                        ) : material.type === "bulk" ? (
+                                                            (() => {
+                                                                const photoItems = buildPhotoItems(material);
+                                                                if (!photoItems.length) {
+                                                                    return (
+                                                                        <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
+                                                                            <ImageIcon className="w-6 h-6 opacity-40" />
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                if (photoItems.length === 1) {
+                                                                    return <img src={photoItems[0].url} alt={localizedToString(material.caption) || ''} className="w-full h-full object-cover" />;
+                                                                }
+                                                                return (
+                                                                    <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
+                                                                        {photoItems.slice(0, 4).map((item, itemIdx) => (
+                                                                            <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
+                                                                                <img src={item.url} alt={localizedToString(material.caption) || `Photo ${itemIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                {itemIdx === 3 && photoItems.length > 4 && (
+                                                                                    <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
+                                                                                        +{photoItems.length - 4}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                );
+                                                            })()
                                                         ) : material.type === "video" && material.url ? (
-                                                            <video src={material.url} controls className="w-full h-full object-cover" />
+                                                                (() => {
+                                                                    const allVideoItems = buildVideoItems(material);
+                                                                    if (allVideoItems.length > 1) {
+                                                                    return (
+                                                                        <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
+                                                                            {allVideoItems.slice(0, 4).map((item, itemIdx) => (
+                                                                                <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
+                                                                                    {item.thumbnail ? (
+                                                                                        <img src={item.thumbnail} alt={item.originalName || `Video ${itemIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                    ) : (
+                                                                                        <video src={item.url} className="w-full h-full object-cover" muted preload="metadata" />
+                                                                                    )}
+                                                                                    {itemIdx === 3 && allVideoItems.length > 4 && (
+                                                                                        <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
+                                                                                            +{allVideoItems.length - 4}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    );
+                                                                    }
+                                                                    return <video src={material.url} controls className="w-full h-full object-cover" />;
+                                                                })()
                                                         ) : material.type === "text" ? (
                                                             <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
                                                                 <FileText className="w-6 h-6 opacity-40" />
@@ -2487,47 +2919,63 @@ const handleDateChange = (date: Date | null) => {
                                                     <div className="flex items-center gap-2 mb-2">
                                                         {material.type === "photo" && <ImageIcon className="w-4 h-4 text-light-500" />}
                                                         {material.type === "video" && <Video className="w-4 h-4 text-light-500" />}
+                                                        {material.type === "bulk" && isVideoBulkType(material) && <Video className="w-4 h-4 text-light-500" />}
+                                                        {material.type === "bulk" && !isVideoBulkType(material) && <ImageIcon className="w-4 h-4 text-light-500" />}
                                                         {material.type === "before_after" && <Camera className="w-4 h-4 text-light-500" />}
                                                         {material.type === "text" && <FileText className="w-4 h-4 text-light-500" />}
                                                         {material.type === "html" && <Code className="w-4 h-4 text-light-500" />}
                                                         <span className="text-sm font-medium text-light-900 dark:text-dark-50">
-                                                            {material.type.toUpperCase()} #{material.order}
+                                                            {(() => {
+                                                                if (material.type === "video") {
+                                                                    const videoCount = buildVideoItems(material).length;
+                                                                    return videoCount > 1
+                                                                        ? `${videoCount} ${tr("videos", "videos")} #${material.order}`
+                                                                        : `VIDEO #${material.order}`;
+                                                                }
+                                                                if (material.type === "bulk" && isVideoBulkType(material)) {
+                                                                    const videoCount = buildVideoItems(material).length;
+                                                                    return `${videoCount} ${tr("videos", "videos")} #${material.order}`;
+                                                                }
+                                                                return `${material.type.toUpperCase()} #${material.order}`;
+                                                            })()}
                                                         </span>
                                                         {localizedToString(material.caption) && (
                                                             <span className="text-xs text-light-500 dark:text-secdark-500">{localizedToString(material.caption)}</span>
                                                         )}
                                                     </div>
 
-                                                    {material.type === "photo" && (
-                                                        <div>
-                                                            {(() => {
-                                                                const photoItems = buildPhotoItems(material);
-                                                                const primarySize = photoItems[0]?.size || material.size;
-
-                                                                return (
+                                                    {(material.type === "photo" || isPhotoMaterialType(material.type)) && (() => {
+                                                        const photoItems = buildPhotoItems(material);
+                                                        const primarySize = photoItems[0]?.size || material.size;
+                                                        return (
                                                             <div className="mt-2 text-xs text-light-500 dark:text-dark-400">
                                                                 {photoItems.length > 0
                                                                     ? `${photoItems.length} ${photoItems.length === 1 ? tr("photo", "photo") : tr("photos", "photos")} ${tr("grouped", "grouped")}`
                                                                     : (material.originalName ? `${tr("file_label", "File:")} ${material.originalName}` : tr("uploaded_image", "Uploaded image"))}
                                                                 {primarySize ? ` • ${formatBytes(primarySize || 0)}` : ""}
                                                             </div>
-                                                                );
-                                                            })()}
-                                                        </div>
-                                                    )}
+                                                        );
+                                                    })()}
 
-                                                    {material.type === "video" && material.url && (
-                                                        <div>
+                                                    {((material.type === "video") || (material.type === "bulk" && isVideoBulkType(material))) && (() => {
+                                                        const videoItems = buildVideoItems(material);
+                                                        return (
                                                             <div className="mt-2 text-xs text-light-500 dark:text-dark-400">
-                                                                {material.originalName ? `${tr("file_label", "File:")} ${material.originalName}` : tr("uploaded_video", "Uploaded video")}
+                                                                {videoItems.length > 1
+                                                                    ? `${videoItems.length} ${tr("videos", "videos")} ${tr("grouped", "grouped")}`
+                                                                    : (material.originalName ? `${tr("file_label", "File:")} ${material.originalName}` : tr("uploaded_video", "Uploaded video"))}
                                                                 {material.size ? ` • ${formatBytes(material.size)}` : ""}
                                                             </div>
+                                                        );
+                                                    })()}
+
+                                                    {localizedToString(material.description) && (
+                                                        <div className="mt-2 text-xs text-light-600 dark:text-dark-300 max-h-16 overflow-auto break-words">
+                                                            {localizedToString(material.description)}
                                                         </div>
                                                     )}
 
-                                                    
-
-                                                    {material.textContent && (
+                                                    {localizedToString(material.textContent) && (
                                                         <div className="mt-2">
                                                             <div
                                                                 className="p-3 bg-light-100 dark:bg-dark-800 rounded-md text-sm text-light-700 dark:text-dark-300 max-h-28 overflow-auto break-words"
@@ -2537,7 +2985,7 @@ const handleDateChange = (date: Date | null) => {
                                                         </div>
                                                     )}
 
-                                                    {material.htmlContent && (
+                                                    {localizedToString(material.htmlContent) && (
                                                         <div className="mt-2">
                                                             <div className="p-3 bg-light-100 dark:bg-dark-800 rounded-md text-sm text-light-700 dark:text-dark-300 max-h-28 overflow-auto">
                                                                 <pre className="whitespace-pre-wrap text-xs break-words">{localizedToString(material.htmlContent)}</pre>
@@ -2913,7 +3361,7 @@ const handleDateChange = (date: Date | null) => {
                                     />
                                 </div>
 
-                            {(editingMaterial.type === "photo" || editingMaterial.type === "video") && (
+                            {(editingMaterial.type === "photo" || editingMaterial.type === "video" || editingMaterial.type === "bulk") && (
                                 <>
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
@@ -2922,7 +3370,7 @@ const handleDateChange = (date: Date | null) => {
                                         <input
                                             type="file"
                                             accept={editingMaterial.type === "photo" ? "image/*" : "video/*"}
-                                            multiple={editingMaterial.type === "photo"}
+                                            multiple={editingMaterial.type === "photo" || editingMaterial.type === "video" || editingMaterial.type === "bulk"}
                                             onChange={handleMaterialFileUpload}
                                             className="input w-full"
                                         />
@@ -2959,13 +3407,52 @@ const handleDateChange = (date: Date | null) => {
                                         );
                                     })()}
 
-                                    {editingMaterial.type === "video" && editingMaterial.url && (
-                                        <div className="mt-3">
-                                            <video src={editingMaterial.url} controls className="w-full h-40 object-cover rounded" />
-                                        </div>
-                                    )}
+                                    {(() => {
+                                        const matType = editingMaterial.type;
+                                        const isVideoType = matType === "video" || matType === "bulk";
+                                        if (!isVideoType) return null;
+                                        const videoItems = buildVideoItems(editingMaterial);
+                                        const isBulkVideo = videoItems.length > 1;
 
-                                    {editingMaterial.type === "video" && (
+                                        if (isBulkVideo) {
+                                            return (
+                                                <div className="mt-3">
+                                                    <div className="text-xs text-light-500 dark:text-dark-400 mb-2">
+                                                        {videoItems.length} {videoItems.length === 1 ? tr("video", "video") : tr("videos", "videos")} {tr("grouped_under_title", "grouped under this title")}
+                                                    </div>
+                                                    <DndContext sensors={photoSensors} collisionDetection={closestCenter} onDragEnd={(event) => {
+                                                        const { active, over } = event;
+                                                        if (over && active.id !== over.id) {
+                                                            const oldIndex = videoItems.findIndex((it, i) => `${it.originalName || it.url}-${i}` === active.id);
+                                                            const newIndex = videoItems.findIndex((it, i) => `${it.originalName || it.url}-${i}` === over.id);
+                                                            if (oldIndex !== -1 && newIndex !== -1) {
+                                                                handleVideoItemReorder(arrayMove(videoItems, oldIndex, newIndex));
+                                                            }
+                                                        }
+                                                    }}>
+                                                        <SortableContext items={videoItems.map((it, i) => `${it.originalName || it.url}-${i}`)} strategy={verticalListSortingStrategy}>
+                                                            <div className="space-y-2">
+                                                                {videoItems.map((item, itemIndex) => (
+                                                                    <SortableVideoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemoveVideoItem} onThumbnailUpload={handleVideoItemThumbnailUpload} onRemoveThumbnail={handleRemoveVideoItemThumbnail} removeLabel={tr("remove_video", "Remove video")} materialCaption={localizedToString(editingMaterial?.caption)} materialDescription={localizedToString(editingMaterial?.description)} />
+                                                                ))}
+                                                            </div>
+                                                        </SortableContext>
+                                                    </DndContext>
+                                                </div>
+                                            );
+                                        }
+
+                                        return editingMaterial.url ? (
+                                            <div className="mt-3">
+                                                <video src={editingMaterial.url} controls className="w-full h-40 object-cover rounded" />
+                                            </div>
+                                        ) : null;
+                                    })()}
+
+                                    {(() => {
+                                        const isVidType = editingMaterial.type === "video" || (editingMaterial.type === "bulk" && isVideoBulkType(editingMaterial));
+                                        if (!isVidType) return null;
+                                        return (
                                         <div className="mt-3">
                                             <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("thumbnail_label", "Thumbnail")}</label>
                                             {(() => {
@@ -2976,7 +3463,11 @@ const handleDateChange = (date: Date | null) => {
                                                         <div className="flex items-center gap-3">
                                                             <img src={thumbUrl} alt={thumbName || tr("thumbnail_fallback", "Thumbnail")} className="w-32 h-20 object-cover rounded border" />
                                                             <div className="flex flex-col">
-                                                                <button type="button" onClick={() => setEditingMaterial(prev => prev ? { ...prev, thumbnail: undefined } : prev)} className="btn-ghost">{tr("remove", "Remove")}</button>
+                                                                <button type="button" onClick={() => setEditingMaterial(prev => {
+                                                                    if (!prev) return prev;
+                                                                    const items = buildVideoItems(prev).map((item) => ({ ...item, thumbnail: undefined }));
+                                                                    return { ...prev, thumbnail: undefined, items };
+                                                                })} className="btn-ghost">{tr("remove", "Remove")}</button>
                                                             </div>
                                                         </div>
                                                     );
@@ -2989,7 +3480,8 @@ const handleDateChange = (date: Date | null) => {
                                                 );
                                             })()}
                                         </div>
-                                    )}
+                                        );
+                                    })()}
                                   
                                 </>
                             )}
