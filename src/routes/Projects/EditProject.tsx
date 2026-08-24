@@ -23,7 +23,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import { 
   Save, Trash2, X, ArrowLeft, Loader2, 
-  FileText, Info, AlertCircle, CheckCircle, Check, Plus,
+  FileText, Info, AlertCircle, CheckCircle, Plus,
   Edit, Eye, MapPin,  Users, Layers,
         Image as ImageIcon, Video, Code, Upload, GripVertical,
   Camera
@@ -115,96 +115,36 @@ type SortableVideoItemProps = {
 const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: string) => void; onClose: () => void }> = ({ videoUrl, onSelect, onClose }) => {
     const videoRef = React.useRef<HTMLVideoElement>(null);
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
-    const [frames, setFrames] = React.useState<{ dataUrl: string; time: number }[]>([]);
-    const [selectedIdx, setSelectedIdx] = React.useState<number | null>(null);
-    const [generating, setGenerating] = React.useState(false);
-    const [error, setError] = React.useState<string | null>(null);
-
-    const generateFrames = React.useCallback(async () => {
-        const video = videoRef.current;
-        if (!video || !video.duration || !isFinite(video.duration)) return;
-        video.pause();
-        setGenerating(true);
-        setError(null);
-
-        const canvas = canvasRef.current || document.createElement("canvas");
-        canvasRef.current = canvas;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { setGenerating(false); setError("Canvas not available."); return; }
-        canvas.width = 320;
-        canvas.height = 180;
-
-        const frameCount = 8;
-        const interval = video.duration / (frameCount + 1);
-        const captured: { dataUrl: string; time: number }[] = [];
-
-        const captureAt = (time: number): Promise<{ dataUrl: string; time: number } | null> => {
-            return new Promise((resolve) => {
-                video.currentTime = time;
-                let settled = false;
-                const cleanup = () => {
-                    settled = true;
-                    clearTimeout(fallbackTimer);
-                    video.removeEventListener("playing", onPlaying);
-                };
-                const fallbackTimer = setTimeout(() => {
-                    if (settled) return;
-                    try {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const url = canvas.toDataURL("image/jpeg", 0.6);
-                        cleanup();
-                        resolve({ dataUrl: url, time });
-                    } catch {
-                        cleanup();
-                        resolve(null);
-                    }
-                }, 300);
-                const onPlaying = () => {
-                    if (settled) return;
-                    video.pause();
-                    try {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const url = canvas.toDataURL("image/jpeg", 0.6);
-                        cleanup();
-                        resolve({ dataUrl: url, time });
-                    } catch {
-                        cleanup();
-                        resolve(null);
-                    }
-                };
-                video.addEventListener("playing", onPlaying);
-            });
-        };
-
-        for (let i = 1; i <= frameCount; i++) {
-            const result = await captureAt(interval * i);
-            if (result) captured.push(result);
-        }
-
-        if (captured.length > 0) {
-            setFrames(captured);
-            const mid = Math.floor(captured.length / 2);
-            setSelectedIdx(mid);
-            video.currentTime = captured[mid].time;
-        } else {
-            setError("Could not generate frames from this video.");
-        }
-        setGenerating(false);
-    }, []);
+    const [localUrl, setLocalUrl] = React.useState<string>("");
+    const [currentTime, setCurrentTime] = React.useState(0);
+    const [duration, setDuration] = React.useState(0);
 
     React.useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
-        const handleReady = () => generateFrames();
-        video.addEventListener("loadeddata", handleReady);
-        return () => video.removeEventListener("loadeddata", handleReady);
-    }, [generateFrames]);
+        let revokeUrl: string | null = null;
+        const load = async () => {
+            if (videoUrl.startsWith("blob:") || videoUrl.startsWith("data:")) {
+                setLocalUrl(videoUrl);
+                return;
+            }
+            try {
+                const res = await fetch(videoUrl);
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                revokeUrl = url;
+                setLocalUrl(url);
+            } catch {
+                setLocalUrl(videoUrl);
+            }
+        };
+        load();
+        return () => { if (revokeUrl) URL.revokeObjectURL(revokeUrl); };
+    }, [videoUrl]);
 
-    const selectFrame = (idx: number) => {
-        setSelectedIdx(idx);
-        if (videoRef.current) videoRef.current.currentTime = frames[idx].time;
+    const formatTime = (s: number) => {
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        const ms = Math.floor((s % 1) * 10);
+        return `${m}:${String(sec).padStart(2, "0")}.${ms}`;
     };
 
     return (
@@ -215,25 +155,79 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                     <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-light-100 dark:hover:bg-dark-700 text-light-500 dark:text-dark-400"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="p-4 space-y-4">
-                    <video ref={videoRef} src={videoUrl} className="w-full rounded-lg" controls muted preload="metadata" autoPlay={false} playsInline={false} />
-                    {generating && <p className="text-sm text-light-500 dark:text-dark-400 text-center">Generating frames...</p>}
-                    {error && <p className="text-sm text-red-500 dark:text-red-400 text-center">{error}</p>}
-                    {frames.length > 0 && !generating && (
-                        <div className="grid grid-cols-4 gap-2">
-                            {frames.map((frame, idx) => (
-                                <div key={idx} onClick={() => selectFrame(idx)} className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${selectedIdx === idx ? "border-primary-500 ring-2 ring-primary-200 dark:ring-primary-800" : "border-transparent hover:border-light-300 dark:hover:border-dark-600"}`}>
-                                    <img src={frame.dataUrl} alt={`${frame.time.toFixed(1)}s`} className="w-full h-20 object-cover" />
-                                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] text-center py-0.5">{frame.time.toFixed(1)}s</div>
-                                    {selectedIdx === idx && <div className="absolute top-1 right-1 bg-primary-500 rounded-full p-0.5"><Check className="w-3 h-3 text-white" /></div>}
-                                </div>
-                            ))}
+                    <div className="relative rounded-lg overflow-hidden bg-black">
+                            <video
+                            ref={videoRef}
+                            src={localUrl || videoUrl}
+                            className="w-full rounded-lg"
+                            controls
+                            muted
+                            preload="auto"
+                            autoPlay={false}
+                            playsInline={false}
+                            onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime || 0)}
+                            onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <input
+                            type="range"
+                            min={0}
+                            max={duration || 0}
+                            step={0.1}
+                            value={currentTime}
+                            onChange={(e) => {
+                                const time = parseFloat(e.target.value);
+                                setCurrentTime(time);
+                                if (videoRef.current) videoRef.current.currentTime = time;
+                            }}
+                            className="w-full h-2 bg-light-200 dark:bg-dark-600 rounded-lg appearance-none cursor-pointer accent-primary-500"
+                        />
+                        <div className="flex justify-between text-xs text-light-500 dark:text-dark-400">
+                            <span>{formatTime(currentTime)}</span>
+                            <span>{formatTime(duration)}</span>
                         </div>
-                    )}
-                    {frames.length > 0 && !generating && selectedIdx !== null && (
-                        <div className="flex justify-end">
-                            <button onClick={() => onSelect(frames[selectedIdx].dataUrl)} className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors">Use This Frame</button>
-                        </div>
-                    )}
+                    </div>
+
+                    <div className="flex justify-center">
+                        <button
+                            onClick={async () => {
+                                const video = videoRef.current;
+                                if (!video) return;
+                                const time = video.currentTime;
+                                if (!video.videoWidth || !video.videoHeight) {
+                                    try {
+                                        await video.play();
+                                        await new Promise((r) => setTimeout(r, 200));
+                                        video.pause();
+                                        video.currentTime = time;
+                                        await new Promise((r) => {
+                                            const handler = () => { video.removeEventListener("seeked", handler); r(null); };
+                                            video.addEventListener("seeked", handler);
+                                            setTimeout(r, 1000);
+                                        });
+                                        await new Promise((r) => setTimeout(r, 100));
+                                    } catch { /* ignore */ }
+                                }
+                                const w = video.videoWidth;
+                                const h = video.videoHeight;
+                                if (!w || !h) return;
+                                const canvas = canvasRef.current || document.createElement("canvas");
+                                canvasRef.current = canvas;
+                                canvas.width = w;
+                                canvas.height = h;
+                                const ctx = canvas.getContext("2d");
+                                if (!ctx) return;
+                                ctx.drawImage(video, 0, 0, w, h);
+                                onSelect(canvas.toDataURL("image/jpeg", 0.85));
+                            }}
+                            className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                        >
+                            <Camera className="w-4 h-4" />
+                            Capture This Frame
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -683,34 +677,6 @@ const EditProject: React.FC = () => {
             reader.readAsDataURL(file);
         });
 
-    const handleVideoThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !editingMaterial) return;
-        try {
-            await photoUpload.run({
-                title: "Uploading photo...",
-                label: file.name,
-                task: async () => {
-                    const dataUrl = await readFileAsDataUrl(file);
-                    const uploaded = await uploadDataUrlToR2Cached(dataUrl, {
-                        resourceType: "image",
-                        fileName: file.name,
-                    });
-                    const thumbUrl = uploaded.url;
-                    setEditingMaterial((prev) => {
-                        if (!prev) return prev;
-                        const thumbObj = { url: thumbUrl, mimeType: file.type, originalName: file.name, size: file.size };
-                        const items = buildVideoItems(prev).map((item) => ({ ...item, thumbnail: thumbUrl }));
-                        return { ...prev, thumbnail: thumbObj, items };
-                    });
-                },
-            });
-        } catch {
-            // ignore
-        } finally {
-            if (e.target) e.target.value = "";
-        }
-    };
 
     const isPhotoMaterialType = (type?: string): boolean => type === "photo" || type === "bulk";
     const isVideoBulkType = (material: any): boolean => {
@@ -3340,37 +3306,7 @@ if (Array.isArray(clone.cast)) {
                                     {(() => {
                                         const isVidType = editingMaterial.type === "video" || (editingMaterial.type === "bulk" && isVideoBulkType(editingMaterial));
                                         if (!isVidType) return null;
-                                        return (
-                                        <div className="mt-3">
-                                            <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("thumbnail_label", "Thumbnail")}</label>
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={handleVideoThumbnailUpload}
-                                                className="input w-full"
-                                            />
-
-                                            {(() => {
-                                                const thumbUrl = typeof editingMaterial.thumbnail === 'string' ? editingMaterial.thumbnail : editingMaterial.thumbnail?.url;
-                                                const thumbName = typeof editingMaterial.thumbnail === 'object' ? editingMaterial.thumbnail?.originalName : undefined;
-                                                if (!thumbUrl) return null;
-
-                                                return (
-                                                    <div className="mt-3">
-                                                        <img src={thumbUrl} alt="Thumbnail preview" className="w-full h-40 object-cover rounded" />
-                                                        <div className="mt-2 text-xs text-light-500 dark:text-dark-400">File: {thumbName || tr("uploaded_image", "Uploaded image")}</div>
-                                                        <div className="mt-2">
-                                                            <button type="button" onClick={() => setEditingMaterial(prev => {
-                                                                if (!prev) return prev;
-                                                                const items = buildVideoItems(prev).map((item) => ({ ...item, thumbnail: undefined }));
-                                                                return { ...prev, thumbnail: undefined, items };
-                                                            })} className="btn-ghost">{tr("remove", "Remove")}</button>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })()}
-                                        </div>
-                                        );
+                                        return null;
                                     })()}
                                 </>
                             )}
