@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
 import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useProjectCompanies, useCreateProjectCompany } from "@/hooks/queries";
@@ -9,18 +9,18 @@ import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
-import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2 } from "@/utils/r2Upload";
+import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2 } from "@/utils/r2Upload";
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
 import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
-import { useAutoTranslateList } from "@/hooks/useAutoTranslateList";
-import { stripHtml, toLocalizedItems, mergeLocalizedAr } from "@/utils/translateText";
+import { stripHtml } from "@/utils/translateText";
+import TranslateButton from "@/components/TranslateButton";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
 import { Reorder, AnimatePresence } from "framer-motion";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { 
-    Plus, X, ArrowLeft, CheckCircle, AlertCircle,
+    Plus, X, ArrowLeft, Check, CheckCircle, AlertCircle,
     Trash2, Edit, MapPin, Users, Layers, Loader2,
     Image as ImageIcon, Video, Code, Upload, GripVertical,
     Camera, User, FileText, Info, Copy
@@ -66,6 +66,7 @@ interface VideoMaterialItem {
     thumbnail?: string;
     caption?: any;
     type?: "video";
+    _file?: File;
 }
 
 interface Cast {
@@ -106,18 +107,149 @@ type SortableVideoItemProps = {
     onRemove: (i: number) => void;
     onThumbnailUpload: (index: number, file: File) => void;
     onRemoveThumbnail: (index: number) => void;
+    onFrameSelect: (index: number, dataUrl: string) => void;
     removeLabel: string;
     materialCaption?: any;
     materialDescription?: any;
 };
 
-const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRemove, onThumbnailUpload, onRemoveThumbnail, removeLabel, materialCaption, materialDescription }) => {
+const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: string) => void; onClose: () => void }> = ({ videoUrl, onSelect, onClose }) => {
+    const videoRef = React.useRef<HTMLVideoElement>(null);
+    const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+    const [frames, setFrames] = React.useState<{ dataUrl: string; time: number }[]>([]);
+    const [selectedIdx, setSelectedIdx] = React.useState<number | null>(null);
+    const [generating, setGenerating] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
+
+    const generateFrames = React.useCallback(async () => {
+        const video = videoRef.current;
+        if (!video || !video.duration || !isFinite(video.duration)) return;
+        video.pause();
+        setGenerating(true);
+        setError(null);
+
+        const canvas = canvasRef.current || document.createElement("canvas");
+        canvasRef.current = canvas;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { setGenerating(false); setError("Canvas not available."); return; }
+        canvas.width = 320;
+        canvas.height = 180;
+
+        const frameCount = 8;
+        const interval = video.duration / (frameCount + 1);
+        const captured: { dataUrl: string; time: number }[] = [];
+
+        const captureAt = (time: number): Promise<{ dataUrl: string; time: number } | null> => {
+            return new Promise((resolve) => {
+                video.currentTime = time;
+                let settled = false;
+                const cleanup = () => {
+                    settled = true;
+                    clearTimeout(fallbackTimer);
+                    video.removeEventListener("playing", onPlaying);
+                };
+                const fallbackTimer = setTimeout(() => {
+                    if (settled) return;
+                    try {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const url = canvas.toDataURL("image/jpeg", 0.6);
+                        cleanup();
+                        resolve({ dataUrl: url, time });
+                    } catch {
+                        cleanup();
+                        resolve(null);
+                    }
+                }, 300);
+                const onPlaying = () => {
+                    if (settled) return;
+                    video.pause();
+                    try {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const url = canvas.toDataURL("image/jpeg", 0.6);
+                        cleanup();
+                        resolve({ dataUrl: url, time });
+                    } catch {
+                        cleanup();
+                        resolve(null);
+                    }
+                };
+                video.addEventListener("playing", onPlaying);
+            });
+        };
+
+        for (let i = 1; i <= frameCount; i++) {
+            const result = await captureAt(interval * i);
+            if (result) captured.push(result);
+        }
+
+        if (captured.length > 0) {
+            setFrames(captured);
+            const mid = Math.floor(captured.length / 2);
+            setSelectedIdx(mid);
+            video.currentTime = captured[mid].time;
+        } else {
+            setError("Could not generate frames from this video.");
+        }
+        setGenerating(false);
+    }, []);
+
+    React.useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+        const handleReady = () => generateFrames();
+        video.addEventListener("loadeddata", handleReady);
+        return () => video.removeEventListener("loadeddata", handleReady);
+    }, [generateFrames]);
+
+    const selectFrame = (idx: number) => {
+        setSelectedIdx(idx);
+        if (videoRef.current) videoRef.current.currentTime = frames[idx].time;
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white dark:bg-dark-800 rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-4 border-b border-light-200 dark:border-dark-700">
+                    <h3 className="text-lg font-semibold text-light-900 dark:text-dark-50">Select Thumbnail Frame</h3>
+                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-light-100 dark:hover:bg-dark-700 text-light-500 dark:text-dark-400"><X className="w-5 h-5" /></button>
+                </div>
+                <div className="p-4 space-y-4">
+                    <video ref={videoRef} src={videoUrl} className="w-full rounded-lg" controls muted preload="metadata" autoPlay={false} playsInline={false} />
+                    {generating && <p className="text-sm text-light-500 dark:text-dark-400 text-center">Generating frames...</p>}
+                    {error && <p className="text-sm text-red-500 dark:text-red-400 text-center">{error}</p>}
+                    {frames.length > 0 && !generating && (
+                        <div className="grid grid-cols-4 gap-2">
+                            {frames.map((frame, idx) => (
+                                <div key={idx} onClick={() => selectFrame(idx)} className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${selectedIdx === idx ? "border-primary-500 ring-2 ring-primary-200 dark:ring-primary-800" : "border-transparent hover:border-light-300 dark:hover:border-dark-600"}`}>
+                                    <img src={frame.dataUrl} alt={`${frame.time.toFixed(1)}s`} className="w-full h-20 object-cover" />
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] text-center py-0.5">{frame.time.toFixed(1)}s</div>
+                                    {selectedIdx === idx && <div className="absolute top-1 right-1 bg-primary-500 rounded-full p-0.5"><Check className="w-3 h-3 text-white" /></div>}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {frames.length > 0 && !generating && selectedIdx !== null && (
+                        <div className="flex justify-end">
+                            <button onClick={() => onSelect(frames[selectedIdx].dataUrl)} className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors">Use This Frame</button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRemove, onThumbnailUpload, onRemoveThumbnail, onFrameSelect, removeLabel, materialCaption, materialDescription }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
     const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
     const thumbUrl = item.thumbnail || undefined;
     const caption = materialCaption || "";
     const description = materialDescription || "";
+    const [showFrameSelector, setShowFrameSelector] = React.useState(false);
     return (
+        <>
         <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex items-center gap-3 border border-light-200 dark:border-dark-700 rounded-lg p-2 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing touch-none">
             <GripVertical className="w-4 h-4 shrink-0 text-light-400 dark:text-dark-500" />
             {thumbUrl ? (
@@ -135,6 +267,9 @@ const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRe
                     <div className="text-xs text-light-400 dark:text-dark-500 truncate mt-0.5">{description}</div>
                 )}
             </div>
+            <button type="button" onClick={() => setShowFrameSelector(true)} className="shrink-0 p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950/30 text-primary-500 transition-colors pointer-events-auto" title="Select frame from video" aria-label="Select frame from video">
+                <Video className="w-4 h-4" />
+            </button>
             {thumbUrl ? (
                 <button type="button" onClick={() => onRemoveThumbnail(index)} className="shrink-0 p-1.5 rounded-lg hover:bg-warning-50 dark:hover:bg-warning-950/30 text-warning-500 transition-colors pointer-events-auto" title="Remove thumbnail" aria-label="Remove thumbnail">
                     <ImageIcon className="w-4 h-4" />
@@ -149,6 +284,10 @@ const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRe
                 <X className="w-4 h-4" />
             </button>
         </div>
+        {showFrameSelector && (
+            <VideoFrameSelector videoUrl={item.url} onSelect={(dataUrl) => { onFrameSelect(index, dataUrl); setShowFrameSelector(false); }} onClose={() => setShowFrameSelector(false)} />
+        )}
+        </>
     );
 };
 
@@ -285,87 +424,30 @@ const AddProject: React.FC = () => {
     // Do NOT auto-prefill `form.cast` from `projectCast` — users must add members manually
     const [selectedExistingCast, setSelectedExistingCast] = useState<any[]>([]);
 
-    useAutoTranslatePair(form.name?.en || "", form.name?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, name: { ...prev.name, ar: t } })));
-    useAutoTranslatePair(form.name?.ar || "", form.name?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, name: { ...prev.name, en: t } })));
-    useAutoTranslatePair(form.description?.en || "", form.description?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, description: { ...prev.description, ar: t } })));
-    useAutoTranslatePair(form.description?.ar || "", form.description?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, description: { ...prev.description, en: t } })));
-    useAutoTranslatePair(form.location?.en || "", form.location?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, location: { ...prev.location, ar: t } })));
-    useAutoTranslatePair(form.location?.ar || "", form.location?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, location: { ...prev.location, en: t } })));
-    useAutoTranslatePair(newTag, newTagAr, "ar", setNewTagAr);
-    useAutoTranslatePair(newTagAr, newTag, "en", setNewTag);
-    useAutoTranslatePair(newCategory, newCategoryAr, "ar", setNewCategoryAr);
-    useAutoTranslatePair(newCategoryAr, newCategory, "en", setNewCategory);
-    useAutoTranslatePair(newType, newTypeAr, "ar", setNewTypeAr);
-    useAutoTranslatePair(newTypeAr, newType, "en", setNewType);
-    useAutoTranslatePair(newCompanyEn, newCompanyAr, "ar", setNewCompanyAr);
-    useAutoTranslatePair(newCompanyAr, newCompanyEn, "en", setNewCompanyEn);
-    useAutoTranslatePair(editingMaterial?.caption?.en || "", editingMaterial?.caption?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, caption: { ...prev.caption, ar: t } } : prev)));
-    useAutoTranslatePair(editingMaterial?.caption?.ar || "", editingMaterial?.caption?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, caption: { ...prev.caption, en: t } } : prev)));
-    useAutoTranslatePair(stripHtml(editingMaterial?.textContent?.en || ""), editingMaterial?.textContent?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, textContent: { ...prev.textContent, ar: t } } : prev)));
-    useAutoTranslatePair(stripHtml(editingMaterial?.textContent?.ar || ""), editingMaterial?.textContent?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, textContent: { ...prev.textContent, en: t } } : prev)));
-    useAutoTranslatePair(editingMaterial?.before?.label?.en || "", editingMaterial?.before?.label?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, before: { ...prev.before, url: prev.before?.url || "", label: { ...prev.before?.label, ar: t } } } : prev)));
-    useAutoTranslatePair(editingMaterial?.before?.label?.ar || "", editingMaterial?.before?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, before: { ...prev.before, url: prev.before?.url || "", label: { ...prev.before?.label, en: t } } } : prev)));
-    useAutoTranslatePair(editingMaterial?.after?.label?.en || "", editingMaterial?.after?.label?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, ar: t } } } : prev)));
-    useAutoTranslatePair(editingMaterial?.after?.label?.ar || "", editingMaterial?.after?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, en: t } } } : prev)));
-    useAutoTranslatePair(editingMaterial?.description?.en || "", editingMaterial?.description?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, ar: t } } : prev)));
-    useAutoTranslatePair(editingMaterial?.description?.ar || "", editingMaterial?.description?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, en: t } } : prev)));
-
-    const tagItems = useMemo(() => toLocalizedItems(form.tags), [form.tags]);
-    useAutoTranslateList(tagItems, (index, ar) =>
-        setForm((prev: any) => ({ ...prev, tags: prev.tags.map((t: any, i: number) => (i === index ? mergeLocalizedAr(t, ar) : t)) })),
-    );
-    const categoryItems = useMemo(() => toLocalizedItems(form.categories), [form.categories]);
-    useAutoTranslateList(categoryItems, (index, ar) =>
-        setForm((prev: any) => ({ ...prev, categories: prev.categories.map((c: any, i: number) => (i === index ? mergeLocalizedAr(c, ar) : c)) })),
-    );
-    const typeItems = useMemo(() => toLocalizedItems(form.types), [form.types]);
-    useAutoTranslateList(typeItems, (index, ar) =>
-        setForm((prev: any) => ({ ...prev, types: prev.types.map((t: any, i: number) => (i === index ? mergeLocalizedAr(t, ar) : t)) })),
-    );
-    const materialCaptionItems = useMemo(
-        () => form.materials.map((m: Material) => ({ en: m.caption?.en || "", ar: m.caption?.ar || "" })),
-        [form.materials],
-    );
-    useAutoTranslateList(materialCaptionItems, (index, ar) =>
-        setForm((prev: any) => ({
-            ...prev,
-            materials: prev.materials.map((m: Material, i: number) => (i === index ? { ...m, caption: { ...m.caption, ar } } : m)),
-        })),
-    );
-    const materialTextItems = useMemo(
-        () => form.materials.map((m: Material) => ({ en: stripHtml(m.textContent?.en || ""), ar: stripHtml(m.textContent?.ar || "") })),
-        [form.materials],
-    );
-    useAutoTranslateList(materialTextItems, (index, ar) =>
-        setForm((prev: any) => ({
-            ...prev,
-            materials: prev.materials.map((m: Material, i: number) => (i === index ? { ...m, textContent: { ...m.textContent, ar } } : m)),
-        })),
-    );
-    const materialBeforeLabelItems = useMemo(
-        () => form.materials.map((m: Material) => ({ en: m.before?.label?.en || "", ar: m.before?.label?.ar || "" })),
-        [form.materials],
-    );
-    useAutoTranslateList(materialBeforeLabelItems, (index, ar) =>
-        setForm((prev: any) => ({
-            ...prev,
-            materials: prev.materials.map((m: Material, i: number) =>
-                i === index ? { ...m, before: { ...m.before, url: m.before?.url || "", label: { ...m.before?.label, ar } } } : m,
-            ),
-        })),
-    );
-    const materialAfterLabelItems = useMemo(
-        () => form.materials.map((m: Material) => ({ en: m.after?.label?.en || "", ar: m.after?.label?.ar || "" })),
-        [form.materials],
-    );
-    useAutoTranslateList(materialAfterLabelItems, (index, ar) =>
-        setForm((prev: any) => ({
-            ...prev,
-            materials: prev.materials.map((m: Material, i: number) =>
-                i === index ? { ...m, after: { ...m.after, url: m.after?.url || "", label: { ...m.after?.label, ar } } } : m,
-            ),
-        })),
-    );
+    const nameEnToAr = useAutoTranslatePair(form.name?.en || "", form.name?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, name: { ...prev.name, ar: t } })));
+    const nameArToEn = useAutoTranslatePair(form.name?.ar || "", form.name?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, name: { ...prev.name, en: t } })));
+    const descEnToAr = useAutoTranslatePair(form.description?.en || "", form.description?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, description: { ...prev.description, ar: t } })));
+    const descArToEn = useAutoTranslatePair(form.description?.ar || "", form.description?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, description: { ...prev.description, en: t } })));
+    const locEnToAr = useAutoTranslatePair(form.location?.en || "", form.location?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, location: { ...prev.location, ar: t } })));
+    const locArToEn = useAutoTranslatePair(form.location?.ar || "", form.location?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, location: { ...prev.location, en: t } })));
+    const tagEnToAr = useAutoTranslatePair(newTag, newTagAr, "ar", setNewTagAr);
+    const tagArToEn = useAutoTranslatePair(newTagAr, newTag, "en", setNewTag);
+    const catEnToAr = useAutoTranslatePair(newCategory, newCategoryAr, "ar", setNewCategoryAr);
+    const catArToEn = useAutoTranslatePair(newCategoryAr, newCategory, "en", setNewCategory);
+    const typeEnToAr = useAutoTranslatePair(newType, newTypeAr, "ar", setNewTypeAr);
+    const typeArToEn = useAutoTranslatePair(newTypeAr, newType, "en", setNewType);
+    const companyEnToAr = useAutoTranslatePair(newCompanyEn, newCompanyAr, "ar", setNewCompanyAr);
+    const companyArToEn = useAutoTranslatePair(newCompanyAr, newCompanyEn, "en", setNewCompanyEn);
+    const matCaptionEnToAr = useAutoTranslatePair(editingMaterial?.caption?.en || "", editingMaterial?.caption?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, caption: { ...prev.caption, ar: t } } : prev)));
+    const matCaptionArToEn = useAutoTranslatePair(editingMaterial?.caption?.ar || "", editingMaterial?.caption?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, caption: { ...prev.caption, en: t } } : prev)));
+    const matTextEnToAr = useAutoTranslatePair(stripHtml(editingMaterial?.textContent?.en || ""), editingMaterial?.textContent?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, textContent: { ...prev.textContent, ar: t } } : prev)));
+    const matTextArToEn = useAutoTranslatePair(stripHtml(editingMaterial?.textContent?.ar || ""), editingMaterial?.textContent?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, textContent: { ...prev.textContent, en: t } } : prev)));
+    const matBeforeEnToAr = useAutoTranslatePair(editingMaterial?.before?.label?.en || "", editingMaterial?.before?.label?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, before: { ...prev.before, url: prev.before?.url || "", label: { ...prev.before?.label, ar: t } } } : prev)));
+    const matBeforeArToEn = useAutoTranslatePair(editingMaterial?.before?.label?.ar || "", editingMaterial?.before?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, before: { ...prev.before, url: prev.before?.url || "", label: { ...prev.before?.label, en: t } } } : prev)));
+    const matAfterEnToAr = useAutoTranslatePair(editingMaterial?.after?.label?.en || "", editingMaterial?.after?.label?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, ar: t } } } : prev)));
+    const matAfterArToEn = useAutoTranslatePair(editingMaterial?.after?.label?.ar || "", editingMaterial?.after?.label?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, after: { ...prev.after, url: prev.after?.url || "", label: { ...prev.after?.label, en: t } } } : prev)));
+    const matDescEnToAr = useAutoTranslatePair(editingMaterial?.description?.en || "", editingMaterial?.description?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, ar: t } } : prev)));
+    const matDescArToEn = useAutoTranslatePair(editingMaterial?.description?.ar || "", editingMaterial?.description?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, en: t } } : prev)));
 
     const getOptionLabel = (value: any): string => {
         if (typeof value === "string") return value;
@@ -1141,24 +1223,16 @@ const AddProject: React.FC = () => {
                             };
                         });
                     } else if (editingMaterial.type === "video" || editingMaterial.type === "bulk") {
-                        const uploadedItems: VideoMaterialItem[] = await Promise.all(
-                            files.map(async (file) => {
-                                const dataUrl = await readFileAsDataUrl(file);
-                                return {
-                                    url: dataUrl,
-                                    mimeType: file.type,
-                                    size: file.size,
-                                    originalName: file.name,
-                                    type: "video" as const,
-                                };
-                            })
-                        );
-
-                        uploadedItems.forEach((item) => {
-                            uploadDataUrlToR2Cached(item.url, {
-                                resourceType: "video",
-                                fileName: item.originalName || "project-video.mp4",
-                            }).catch(() => {});
+                        const uploadedItems: VideoMaterialItem[] = files.map((file) => {
+                            const objectUrl = URL.createObjectURL(file);
+                            return {
+                                url: objectUrl,
+                                mimeType: file.type,
+                                size: file.size,
+                                originalName: file.name,
+                                type: "video" as const,
+                                _file: file,
+                            };
                         });
 
                         setEditingMaterial((prev) => {
@@ -1267,6 +1341,26 @@ const AddProject: React.FC = () => {
             return {
                 ...prev,
                 items,
+                url: primary?.url || "",
+                mimeType: primary?.mimeType,
+                originalName: primary?.originalName,
+                size: primary?.size,
+            };
+        });
+    };
+
+    const handleVideoItemFrameSelect = (itemIndex: number, dataUrl: string) => {
+        setEditingMaterial((prev) => {
+            if (!prev || (prev.type !== "video" && prev.type !== "bulk")) return prev;
+            const items = buildVideoItems(prev).map((item, idx) => {
+                if (idx !== itemIndex) return item;
+                return { ...item, thumbnail: dataUrl };
+            });
+            const primary = items[0];
+            return {
+                ...prev,
+                items,
+                thumbnail: dataUrl,
                 url: primary?.url || "",
                 mimeType: primary?.mimeType,
                 originalName: primary?.originalName,
@@ -1769,7 +1863,7 @@ const handleDateChange = (date: Date | null) => {
         };
 
         const uploadAssetIfNeeded = async (
-            asset: { url?: string; mimeType?: string; size?: number; originalName?: string },
+            asset: { url?: string; mimeType?: string; size?: number; originalName?: string; _file?: File },
             resourceType: "image" | "video",
             fallbackFileName: string,
         ) => {
@@ -1777,10 +1871,18 @@ const handleDateChange = (date: Date | null) => {
                 return asset;
             }
 
-            const uploaded = await uploadThumbnailToR2(asset.url, {
-                resourceType,
-                fileName: asset.originalName || fallbackFileName,
-            });
+            let uploaded;
+            if (asset._file) {
+                uploaded = await uploadFileToR2(asset._file, {
+                    resourceType,
+                    fileName: asset.originalName || fallbackFileName,
+                });
+            } else {
+                uploaded = await uploadThumbnailToR2(asset.url, {
+                    resourceType,
+                    fileName: asset.originalName || fallbackFileName,
+                });
+            }
 
             // count this uploaded step
             updateProgress();
@@ -1828,6 +1930,7 @@ const handleDateChange = (date: Date | null) => {
                                 size: item.size,
                                 thumbnail: item.thumbnail,
                                 type: "video" as const,
+                                _file: (item as any)._file,
                             }));
 
                             normalizedVideoItems = await Promise.all(
@@ -1871,6 +1974,7 @@ const handleDateChange = (date: Date | null) => {
                                     size: item.size,
                                     thumbnail: item.thumbnail,
                                     type: "video" as const,
+                                    _file: (item as any)._file,
                                 }));
 
                                 normalizedVideoItems = await Promise.all(
@@ -1904,8 +2008,9 @@ const handleDateChange = (date: Date | null) => {
                                 copy.size = normalizedVideoItems[0]?.size || copy.size;
                                 copy.type = "bulk";
                             } else {
+                                const videoFile = buildVideoItems(copy)[0] as any;
                                 const uploadedVideo = await uploadAssetIfNeeded(
-                                    copy,
+                                    { ...copy, _file: videoFile?._file },
                                     "video",
                                     copy.originalName || `project-video-${materialIndex + 1}.mp4`,
                                 );
@@ -2347,6 +2452,9 @@ const handleDateChange = (date: Date | null) => {
                         className="input w-full"
                         placeholder={tr("enter_project_name_en", "Enter project name (English)")}
                     />
+                    <div className="mt-1.5">
+                        <TranslateButton onClick={nameEnToAr.translate} isTranslating={nameEnToAr.isTranslating} disabled={!form.name?.en?.trim()} />
+                    </div>
                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
                         {tr("project_name_ar", "Project Name (Arabic) *")}
                     </label>
@@ -2359,6 +2467,9 @@ const handleDateChange = (date: Date | null) => {
                         className="input w-full"
                         placeholder="أدخل اسم المشروع (بالعربية)"
                     />
+                    <div className="mt-1.5">
+                        <TranslateButton onClick={nameArToEn.translate} isTranslating={nameArToEn.isTranslating} disabled={!form.name?.ar?.trim()} label="Translate to EN" />
+                    </div>
                 </div>
 
                 <div>
@@ -2372,6 +2483,9 @@ const handleDateChange = (date: Date | null) => {
                         className="input w-full resize-y min-h-[100px]"
                         placeholder={tr("describe_project_en", "Describe the project... (English)")}
                     />
+                    <div className="mt-1.5">
+                        <TranslateButton onClick={descEnToAr.translate} isTranslating={descEnToAr.isTranslating} disabled={!form.description?.en?.trim()} />
+                    </div>
                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
                         {tr("description_ar", "Description (Arabic)")}
                     </label>
@@ -2383,6 +2497,9 @@ const handleDateChange = (date: Date | null) => {
                         className="input w-full resize-y min-h-[100px]"
                         placeholder="وصف المشروع (بالعربية)"
                     />
+                    <div className="mt-1.5">
+                        <TranslateButton onClick={descArToEn.translate} isTranslating={descArToEn.isTranslating} disabled={!form.description?.ar?.trim()} label="Translate to EN" />
+                    </div>
                 </div>
 
                 <div>
@@ -2399,6 +2516,9 @@ const handleDateChange = (date: Date | null) => {
                             placeholder={tr("location_placeholder", "e.g., Cairo, Egypt")}
                         />
                     </div>
+                    <div className="mt-1.5">
+                        <TranslateButton onClick={locEnToAr.translate} isTranslating={locEnToAr.isTranslating} disabled={!form.location?.en?.trim()} />
+                    </div>
                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
                         {tr("location_ar", "Location (Arabic)")}
                     </label>
@@ -2412,6 +2532,9 @@ const handleDateChange = (date: Date | null) => {
                             className="input w-full pl-9"
                             placeholder="مثال: القاهرة، مصر"
                         />
+                    </div>
+                    <div className="mt-1.5">
+                        <TranslateButton onClick={locArToEn.translate} isTranslating={locArToEn.isTranslating} disabled={!form.location?.ar?.trim()} label="Translate to EN" />
                     </div>
                 </div>
 
@@ -2509,21 +2632,31 @@ const handleDateChange = (date: Date | null) => {
                                                 {tr("or_create_company", "Or create a new company")}
                                             </p>
                                             <div className="grid gap-3 sm:grid-cols-2">
-                                                <input
-                                                    type="text"
-                                                    value={newCompanyEn}
-                                                    onChange={(e) => setNewCompanyEn(e.target.value)}
-                                                    className="input w-full"
-                                                    placeholder={tr("company_name_en", "Company name (EN)...")}
-                                                />
-                                                <input
-                                                    type="text"
-                                                    dir="rtl"
-                                                    value={newCompanyAr}
-                                                    onChange={(e) => setNewCompanyAr(e.target.value)}
-                                                    className="input w-full"
-                                                    placeholder={tr("company_name_ar", "Company name (AR)...")}
-                                                />
+                                                <div>
+                                                    <input
+                                                        type="text"
+                                                        value={newCompanyEn}
+                                                        onChange={(e) => setNewCompanyEn(e.target.value)}
+                                                        className="input w-full"
+                                                        placeholder={tr("company_name_en", "Company name (EN)...")}
+                                                    />
+                                                    <div className="mt-1">
+                                                        <TranslateButton onClick={companyEnToAr.translate} isTranslating={companyEnToAr.isTranslating} disabled={!newCompanyEn.trim()} />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <input
+                                                        type="text"
+                                                        dir="rtl"
+                                                        value={newCompanyAr}
+                                                        onChange={(e) => setNewCompanyAr(e.target.value)}
+                                                        className="input w-full"
+                                                        placeholder={tr("company_name_ar", "Company name (AR)...")}
+                                                    />
+                                                    <div className="mt-1">
+                                                        <TranslateButton onClick={companyArToEn.translate} isTranslating={companyArToEn.isTranslating} disabled={!newCompanyAr.trim()} label="Translate to EN" />
+                                                    </div>
+                                                </div>
                                                 <input
                                                     type="text"
                                                     value={newCompanyField}
@@ -2610,25 +2743,35 @@ const handleDateChange = (date: Date | null) => {
                                             )}
                                         </select>
                                         <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={newCategory}
-                                                onChange={(e) => setNewCategory(e.target.value)}
-                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
-                                                data-enter-add
-                                                className="input flex-1"
-                                                placeholder={tr("add_category_en", "Add the category (EN)...")}
-                                            />
-                                            <input
-                                                type="text"
-                                                dir="rtl"
-                                                value={newCategoryAr}
-                                                onChange={(e) => setNewCategoryAr(e.target.value)}
-                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
-                                                data-enter-add
-                                                className="input flex-1"
-                                                placeholder={tr("add_category_ar", "Add the category (AR)...")}
-                                            />
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    value={newCategory}
+                                                    onChange={(e) => setNewCategory(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_category_en", "Add the category (EN)...")}
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={catEnToAr.translate} isTranslating={catEnToAr.isTranslating} disabled={!newCategory.trim()} />
+                                                </div>
+                                            </div>
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    dir="rtl"
+                                                    value={newCategoryAr}
+                                                    onChange={(e) => setNewCategoryAr(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_category_ar", "Add the category (AR)...")}
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={catArToEn.translate} isTranslating={catArToEn.isTranslating} disabled={!newCategoryAr.trim()} label="Translate to EN" />
+                                                </div>
+                                            </div>
                                             <button type="button" onClick={handleAddCategory} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
@@ -2650,25 +2793,35 @@ const handleDateChange = (date: Date | null) => {
                                             ))}
                                         </div>
                                         <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={newTag}
-                                                onChange={(e) => setNewTag(e.target.value)}
-                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
-                                                data-enter-add
-                                                className="input flex-1"
-                                                placeholder={tr("add_tag_en", "Add a tag (EN)...")}
-                                            />
-                                            <input
-                                                type="text"
-                                                dir="rtl"
-                                                value={newTagAr}
-                                                onChange={(e) => setNewTagAr(e.target.value)}
-                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
-                                                data-enter-add
-                                                className="input flex-1"
-                                                placeholder={tr("add_tag_ar", "Add the tag (AR)...")}
-                                            />
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    value={newTag}
+                                                    onChange={(e) => setNewTag(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_tag_en", "Add a tag (EN)...")}
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={tagEnToAr.translate} isTranslating={tagEnToAr.isTranslating} disabled={!newTag.trim()} />
+                                                </div>
+                                            </div>
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    dir="rtl"
+                                                    value={newTagAr}
+                                                    onChange={(e) => setNewTagAr(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_tag_ar", "Add the tag (AR)...")}
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={tagArToEn.translate} isTranslating={tagArToEn.isTranslating} disabled={!newTagAr.trim()} label="Translate to EN" />
+                                                </div>
+                                            </div>
                                             <button type="button" onClick={handleAddTag} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
@@ -2707,25 +2860,35 @@ const handleDateChange = (date: Date | null) => {
                                             )}
                                         </select>
                                         <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={newType}
-                                                onChange={(e) => setNewType(e.target.value)}
-                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
-                                                data-enter-add
-                                                className="input flex-1"
-                                                placeholder={tr("add_type_en", "Add the type (EN)...")}
-                                            />
-                                            <input
-                                                type="text"
-                                                dir="rtl"
-                                                value={newTypeAr}
-                                                onChange={(e) => setNewTypeAr(e.target.value)}
-                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
-                                                data-enter-add
-                                                className="input flex-1"
-                                                placeholder={tr("add_type_ar", "Add the type (AR)...")}
-                                            />
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    value={newType}
+                                                    onChange={(e) => setNewType(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_type_en", "Add the type (EN)...")}
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={typeEnToAr.translate} isTranslating={typeEnToAr.isTranslating} disabled={!newType.trim()} />
+                                                </div>
+                                            </div>
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    dir="rtl"
+                                                    value={newTypeAr}
+                                                    onChange={(e) => setNewTypeAr(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_type_ar", "Add the type (AR)...")}
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={typeArToEn.translate} isTranslating={typeArToEn.isTranslating} disabled={!newTypeAr.trim()} label="Translate to EN" />
+                                                </div>
+                                            </div>
                                             <button type="button" onClick={handleAddType} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
@@ -3310,6 +3473,9 @@ const handleDateChange = (date: Date | null) => {
                                     className="input w-full"
                                     placeholder={tr("optional_caption_en", "Optional caption (English)")}
                                 />
+                                <div className="mt-1.5">
+                                    <TranslateButton onClick={matCaptionEnToAr.translate} isTranslating={matCaptionEnToAr.isTranslating} disabled={!editingMaterial?.caption?.en?.trim()} />
+                                </div>
                                 <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_ar", "Title (Arabic)")}</label>
                                 <input
                                     type="text"
@@ -3319,6 +3485,9 @@ const handleDateChange = (date: Date | null) => {
                                     className="input w-full"
                                     placeholder="عنوان اختياري (بالعربية)"
                                 />
+                                <div className="mt-1.5">
+                                    <TranslateButton onClick={matCaptionArToEn.translate} isTranslating={matCaptionArToEn.isTranslating} disabled={!editingMaterial?.caption?.ar?.trim()} label="Translate to EN" />
+                                </div>
                             </div>
 
                             <div>
@@ -3340,6 +3509,9 @@ const handleDateChange = (date: Date | null) => {
                                         className="input w-full"
                                         placeholder={t("material_description_en") || "Optional description (English)"}
                                     />
+                                    <div className="mt-1.5">
+                                        <TranslateButton onClick={matDescEnToAr.translate} isTranslating={matDescEnToAr.isTranslating} disabled={!editingMaterial?.description?.en?.trim()} />
+                                    </div>
                                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
                                         {tr("description_ar", "Description (Arabic)")}
                                     </label>
@@ -3359,6 +3531,9 @@ const handleDateChange = (date: Date | null) => {
                                         className="input w-full"
                                         placeholder={t("material_description_ar") || "وصف اختياري (بالعربية)"}
                                     />
+                                    <div className="mt-1.5">
+                                        <TranslateButton onClick={matDescArToEn.translate} isTranslating={matDescArToEn.isTranslating} disabled={!editingMaterial?.description?.ar?.trim()} label="Translate to EN" />
+                                    </div>
                                 </div>
 
                             {(editingMaterial.type === "photo" || editingMaterial.type === "video" || editingMaterial.type === "bulk") && (
@@ -3433,7 +3608,7 @@ const handleDateChange = (date: Date | null) => {
                                                         <SortableContext items={videoItems.map((it, i) => `${it.originalName || it.url}-${i}`)} strategy={verticalListSortingStrategy}>
                                                             <div className="space-y-2">
                                                                 {videoItems.map((item, itemIndex) => (
-                                                                    <SortableVideoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemoveVideoItem} onThumbnailUpload={handleVideoItemThumbnailUpload} onRemoveThumbnail={handleRemoveVideoItemThumbnail} removeLabel={tr("remove_video", "Remove video")} materialCaption={localizedToString(editingMaterial?.caption)} materialDescription={localizedToString(editingMaterial?.description)} />
+                                                                    <SortableVideoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemoveVideoItem} onThumbnailUpload={handleVideoItemThumbnailUpload} onRemoveThumbnail={handleRemoveVideoItemThumbnail} onFrameSelect={handleVideoItemFrameSelect} removeLabel={tr("remove_video", "Remove video")} materialCaption={localizedToString(editingMaterial?.caption)} materialDescription={localizedToString(editingMaterial?.description)} />
                                                                 ))}
                                                             </div>
                                                         </SortableContext>
@@ -3497,6 +3672,9 @@ const handleDateChange = (date: Date | null) => {
                                             placeholder={tr("enter_text_content_en", "Enter your text content here... (English)")}
                                         />
                                     </div>
+                                    <div className="mt-1.5">
+                                        <TranslateButton onClick={matTextEnToAr.translate} isTranslating={matTextEnToAr.isTranslating} disabled={!editingMaterial?.textContent?.en?.trim()} />
+                                    </div>
                                     <label className="block mt-3 mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("text_content_ar", "Text Content (Arabic)")}</label>
                                     <div className="project-quill rounded-xl overflow-hidden border border-light-200 dark:border-dark-700">
                                         <ReactQuill
@@ -3505,6 +3683,9 @@ const handleDateChange = (date: Date | null) => {
                                             onChange={(value) => setEditingMaterial({ ...editingMaterial, textContent: { ...editingMaterial.textContent, ar: value } })}
                                             placeholder="أدخل محتوى النص هنا (بالعربية)"
                                         />
+                                    </div>
+                                    <div className="mt-1.5">
+                                        <TranslateButton onClick={matTextArToEn.translate} isTranslating={matTextArToEn.isTranslating} disabled={!editingMaterial?.textContent?.ar?.trim()} label="Translate to EN" />
                                     </div>
                                 </div>
                             )}
@@ -3529,31 +3710,41 @@ const handleDateChange = (date: Date | null) => {
                                             </div>
                                         )}
                                         <div className="grid grid-cols-2 gap-2 mt-3">
-                                            <input
-                                                type="text"
-                                                value={editingMaterial.before?.label?.en || ""}
-                                                onChange={(e) =>
-                                                    setEditingMaterial({
-                                                        ...editingMaterial,
-                                                        before: { ...(editingMaterial.before as any), label: { ...((editingMaterial.before as any)?.label || {}), en: e.target.value } },
-                                                    } as any)
-                                                }
-                                                className="input w-full"
-                                                placeholder={tr("before_label_en", "Before label (EN)")}
-                                            />
-                                            <input
-                                                type="text"
-                                                dir="rtl"
-                                                value={editingMaterial.before?.label?.ar || ""}
-                                                onChange={(e) =>
-                                                    setEditingMaterial({
-                                                        ...editingMaterial,
-                                                        before: { ...(editingMaterial.before as any), label: { ...((editingMaterial.before as any)?.label || {}), ar: e.target.value } },
-                                                    } as any)
-                                                }
-                                                className="input w-full"
-                                                placeholder="قبل (AR)"
-                                            />
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    value={editingMaterial.before?.label?.en || ""}
+                                                    onChange={(e) =>
+                                                        setEditingMaterial({
+                                                            ...editingMaterial,
+                                                            before: { ...(editingMaterial.before as any), label: { ...((editingMaterial.before as any)?.label || {}), en: e.target.value } },
+                                                        } as any)
+                                                    }
+                                                    className="input w-full"
+                                                    placeholder={tr("before_label_en", "Before label (EN)")}
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={matBeforeEnToAr.translate} isTranslating={matBeforeEnToAr.isTranslating} disabled={!editingMaterial?.before?.label?.en?.trim()} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    dir="rtl"
+                                                    value={editingMaterial.before?.label?.ar || ""}
+                                                    onChange={(e) =>
+                                                        setEditingMaterial({
+                                                            ...editingMaterial,
+                                                            before: { ...(editingMaterial.before as any), label: { ...((editingMaterial.before as any)?.label || {}), ar: e.target.value } },
+                                                        } as any)
+                                                    }
+                                                    className="input w-full"
+                                                    placeholder="قبل (AR)"
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={matBeforeArToEn.translate} isTranslating={matBeforeArToEn.isTranslating} disabled={!editingMaterial?.before?.label?.ar?.trim()} label="Translate to EN" />
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -3573,31 +3764,41 @@ const handleDateChange = (date: Date | null) => {
                                             </div>
                                         )}
                                         <div className="grid grid-cols-2 gap-2 mt-3">
-                                            <input
-                                                type="text"
-                                                value={editingMaterial.after?.label?.en || ""}
-                                                onChange={(e) =>
-                                                    setEditingMaterial({
-                                                        ...editingMaterial,
-                                                        after: { ...(editingMaterial.after as any), label: { ...((editingMaterial.after as any)?.label || {}), en: e.target.value } },
-                                                    } as any)
-                                                }
-                                                className="input w-full"
-                                                placeholder={tr("after_label_en", "After label (EN)")}
-                                            />
-                                            <input
-                                                type="text"
-                                                dir="rtl"
-                                                value={editingMaterial.after?.label?.ar || ""}
-                                                onChange={(e) =>
-                                                    setEditingMaterial({
-                                                        ...editingMaterial,
-                                                        after: { ...(editingMaterial.after as any), label: { ...((editingMaterial.after as any)?.label || {}), ar: e.target.value } },
-                                                    } as any)
-                                                }
-                                                className="input w-full"
-                                                placeholder="بعد (AR)"
-                                            />
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    value={editingMaterial.after?.label?.en || ""}
+                                                    onChange={(e) =>
+                                                        setEditingMaterial({
+                                                            ...editingMaterial,
+                                                            after: { ...(editingMaterial.after as any), label: { ...((editingMaterial.after as any)?.label || {}), en: e.target.value } },
+                                                        } as any)
+                                                    }
+                                                    className="input w-full"
+                                                    placeholder={tr("after_label_en", "After label (EN)")}
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={matAfterEnToAr.translate} isTranslating={matAfterEnToAr.isTranslating} disabled={!editingMaterial?.after?.label?.en?.trim()} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    dir="rtl"
+                                                    value={editingMaterial.after?.label?.ar || ""}
+                                                    onChange={(e) =>
+                                                        setEditingMaterial({
+                                                            ...editingMaterial,
+                                                            after: { ...(editingMaterial.after as any), label: { ...((editingMaterial.after as any)?.label || {}), ar: e.target.value } },
+                                                        } as any)
+                                                    }
+                                                    className="input w-full"
+                                                    placeholder="بعد (AR)"
+                                                />
+                                                <div className="mt-1">
+                                                    <TranslateButton onClick={matAfterArToEn.translate} isTranslating={matAfterArToEn.isTranslating} disabled={!editingMaterial?.after?.label?.ar?.trim()} label="Translate to EN" />
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 

@@ -179,6 +179,16 @@ export const uploadThumbnailToR2 = async (thumbnailUrl: string, options: R2Uploa
     return uploadDataUrlToR2Cached(dataUrl, options);
 };
 
+export const uploadFileToR2 = async (file: File, options: R2UploadOptions): Promise<R2UploadResult> => {
+    const publicUrl = await uploadToR2(file, options.folder, options.onProgress);
+    return {
+        url: publicUrl,
+        mimeType: file.type,
+        size: file.size,
+        originalName: file.name,
+    };
+};
+
 export const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png"];
 export const ALLOWED_PHOTO_EXTENSIONS = [".jpg", ".jpeg", ".png"];
 export const ALLOWED_CV_TYPES = ["application/pdf"];
