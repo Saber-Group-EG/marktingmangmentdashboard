@@ -10,13 +10,13 @@ const DEFAULT_MAX_DIMENSION = 1600;
 const DEFAULT_MIN_DIMENSION = 120;
 const DEFAULT_SCALE_FACTOR = 0.82;
 const QUALITY_STEPS = [0.86, 0.78, 0.7, 0.62, 0.54, 0.46, 0.38, 0.3, 0.24, 0.2];
-const OUTPUT_MIME_TYPES = ["image/webp", "image/jpeg"] as const;
+const OUTPUT_MIME_TYPES = ["image/webp", "image/jpeg", "image/png"] as const;
 
 const stripExtension = (fileName: string): string => fileName.replace(/\.[^/.]+$/, "");
 
 const getCompressedFileName = (fileName: string, mimeType: string): string => {
     const base = stripExtension(fileName) || "image";
-    const extension = mimeType === "image/webp" ? "webp" : "jpg";
+    const extension = mimeType === "image/webp" ? "webp" : mimeType === "image/png" ? "png" : "jpg";
     return `${base}_thumb.${extension}`;
 };
 
