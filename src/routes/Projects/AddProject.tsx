@@ -1703,17 +1703,26 @@ const AddProject: React.FC = () => {
             offsetY = 0;
         }
         const scale = displayedW / mainCoverMeta.width;
-        const sideNat = Math.min(mainCoverMeta.width, mainCoverMeta.height) / zoom;
-        const cx = clamp(cropCenter.x, 0, 1) * mainCoverMeta.width;
-        const cy = clamp(cropCenter.y, 0, 1) * mainCoverMeta.height;
-        let sx = cx - sideNat / 2;
-        let sy = cy - sideNat / 2;
-        sx = clamp(sx, 0, mainCoverMeta.width - sideNat);
-        sy = clamp(sy, 0, mainCoverMeta.height - sideNat);
+        const naturalW = mainCoverMeta.width;
+        const naturalH = mainCoverMeta.height;
+        const aspectRatio = 4 / 5;
+        let cropNatW: number, cropNatH: number;
+        if (naturalW / naturalH > aspectRatio) {
+            cropNatH = naturalH / zoom;
+            cropNatW = cropNatH * aspectRatio;
+        } else {
+            cropNatW = naturalW / zoom;
+            cropNatH = cropNatW / aspectRatio;
+        }
+        const cx = clamp(cropCenter.x, 0, 1) * naturalW;
+        const cy = clamp(cropCenter.y, 0, 1) * naturalH;
+        let sx = cx - cropNatW / 2;
+        let sy = cy - cropNatH / 2;
+        sx = clamp(sx, 0, naturalW - cropNatW);
+        sy = clamp(sy, 0, naturalH - cropNatH);
         const left = offsetX + sx * scale;
         const top = offsetY + sy * scale;
-        const sidePx = sideNat * scale;
-        setOverlayStyle({ left: `${left}px`, top: `${top}px`, width: `${sidePx}px`, height: `${sidePx}px` });
+        setOverlayStyle({ left: `${left}px`, top: `${top}px`, width: `${cropNatW * scale}px`, height: `${cropNatH * scale}px` });
     };
 
     const generateCropPreview = () => {
@@ -1721,24 +1730,34 @@ const AddProject: React.FC = () => {
         const img = loadedImgRef.current;
         const naturalW = mainCoverMeta.width;
         const naturalH = mainCoverMeta.height;
-        const side = Math.min(naturalW, naturalH) / zoom;
+        const aspectRatio = 4 / 5;
+        let cropNatW: number, cropNatH: number;
+        if (naturalW / naturalH > aspectRatio) {
+            cropNatH = naturalH / zoom;
+            cropNatW = cropNatH * aspectRatio;
+        } else {
+            cropNatW = naturalW / zoom;
+            cropNatH = cropNatW / aspectRatio;
+        }
         const cx = clamp(cropCenter.x, 0, 1) * naturalW;
         const cy = clamp(cropCenter.y, 0, 1) * naturalH;
-        let sx = Math.round(cx - side / 2);
-        let sy = Math.round(cy - side / 2);
-        sx = Math.max(0, Math.min(sx, Math.round(naturalW - side)));
-        sy = Math.max(0, Math.min(sy, Math.round(naturalH - side)));
+        let sx = Math.round(cx - cropNatW / 2);
+        let sy = Math.round(cy - cropNatH / 2);
+        sx = Math.max(0, Math.min(sx, Math.round(naturalW - cropNatW)));
+        sy = Math.max(0, Math.min(sy, Math.round(naturalH - cropNatH)));
 
         const canvas = document.createElement('canvas');
         const maxSize = 1200;
-        let outSize = Math.round(side);
-        if (outSize > maxSize) { outSize = maxSize; }
-        canvas.width = outSize;
-        canvas.height = outSize;
+        let outW = Math.round(cropNatW);
+        let outH = Math.round(cropNatH);
+        if (outW > maxSize) { outH = Math.round(outH * maxSize / outW); outW = maxSize; }
+        if (outH > maxSize) { outW = Math.round(outW * maxSize / outH); outH = maxSize; }
+        canvas.width = outW;
+        canvas.height = outH;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         try {
-            ctx.drawImage(img, sx, sy, side, side, 0, 0, outSize, outSize);
+            ctx.drawImage(img, sx, sy, cropNatW, cropNatH, 0, 0, outW, outH);
             const dataUrl = canvas.toDataURL(form.mainCover.mimeType || 'image/jpeg', 0.9);
             setCroppedPreview(dataUrl);
             setForm((prev: any) => ({ ...prev, mainCover: { ...prev.mainCover, croppedUrl: dataUrl, crop: { center: cropCenter, zoom } } }));
@@ -3468,15 +3487,15 @@ const handleShootedAtChange = (date: Date | null) => {
                                                         <button type="button" onClick={() => { setZoom(1); setCropCenter({ x: 0.5, y: 0.5 }); }} className="btn-ghost">{tr("reset", "Reset")}</button>
                                                     </div>
 
-                                                    <div className="mt-2 text-sm text-light-500 dark:text-dark-400">{tr("crop_help_text", "Drag the square on the image to position the 1:1 crop. Use the zoom slider to scale.")}</div>
+                                                    <div className="mt-2 text-sm text-light-500 dark:text-dark-400">{tr("crop_help_text", "Drag the square on the image to position the 4:5 crop. Use the zoom slider to scale.")}</div>
                                                 </div>
 
                                                 <div className="col-span-1">
-                                                    <div className="rounded-lg border border-light-200 dark:border-dark-700 overflow-hidden w-full aspect-square bg-white/5 flex items-center justify-center">
+                                                    <div className="rounded-lg border border-light-200 dark:border-dark-700 overflow-hidden w-full aspect-[4/5] bg-white/5 flex items-center justify-center">
                                                         {croppedPreview ? (
                                                             <img src={croppedPreview} alt={tr("cropped_preview_alt", "Cropped preview")} className="w-full h-full object-cover" />
                                                         ) : (
-                                                            <div className="text-sm text-light-500 dark:text-dark-400 p-4">{tr("cropped_preview_1_1", "Cropped preview (1:1)")}</div>
+                                                            <div className="text-sm text-light-500 dark:text-dark-400 p-4">{tr("cropped_preview_4_5", "Cropped preview (4:5)")}</div>
                                                         )}
                                                     </div>
                                                     <div className="mt-3 flex gap-2">
@@ -3487,7 +3506,9 @@ const handleShootedAtChange = (date: Date | null) => {
                                         ) : (
                                             <div className="space-y-4">
                                                 <div className="rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                                    <img src={form.mainCover.croppedUrl || form.mainCover.url} alt={tr("main_cover_alt", "Main Cover")} className="w-full h-auto max-h-[400px] object-contain" />
+                                                    <div className="max-w-sm mx-auto aspect-[4/5] overflow-hidden rounded">
+                                                        <img src={form.mainCover.croppedUrl || form.mainCover.url} alt={tr("main_cover_alt", "Main Cover")} className="w-full h-full object-cover" />
+                                                    </div>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                                     <div>

@@ -436,7 +436,7 @@ const ProjectsPage: React.FC = () => {
                                 <div className="absolute top-0 right-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-gradient-to-br blur-3xl from-secdark-300/20 to-secdark-700/10" />
 
                                 {(project.mainCover?.croppedUrl || project.mainCover?.url) ? (
-                                    <div className="relative z-10 mb-4 -mx-6 -mt-6 overflow-hidden aspect-video">
+                                    <div className="relative z-10 mb-4 -mx-6 -mt-6 overflow-hidden aspect-[4/5]">
                                         <img
                                             src={project.mainCover.croppedUrl || project.mainCover.url}
                                             alt={localizedText(project.localizedName || project.name)}

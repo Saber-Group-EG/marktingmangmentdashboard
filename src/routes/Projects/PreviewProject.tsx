@@ -776,7 +776,7 @@ const ProjectDetails: React.FC = () => {
                                 </div>
 
                                 {(p.mainCover?.croppedUrl || p.mainCover?.url) && (
-                                    <div className="hidden sm:block w-36 h-24 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
+                                    <div className="hidden sm:block w-20 aspect-[4/5] rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
                                         <img src={p.mainCover.croppedUrl || p.mainCover.url} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
                                     </div>
                                 )}
