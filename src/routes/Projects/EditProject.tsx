@@ -13,6 +13,7 @@ import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, u
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
+import { createCast } from "@/api/requests/castService";
 import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
 import { stripHtml } from "@/utils/translateText";
 import TranslateButton from "@/components/TranslateButton";
@@ -2287,18 +2288,19 @@ if (Array.isArray(clone.cast)) {
                             photo = null;
                         }
 
-                        // Existing member — send its Cast id via castId so the backend references the Cast doc
+                        // Existing member — send its Cast id via castId
                         if (c._id || c.id) {
-                            const existingMember: any = { castId: c._id || c.id, order: Number(c.order) || 0 };
-                            if (socialLinks.length) existingMember.socialLinks = socialLinks;
-                            if (photo) existingMember.photo = photo;
-                            return existingMember;
+                            return { castId: c._id || c.id, order: Number(c.order) || 0 };
                         }
-                        // New member — embed it under castId so the backend findOrCreates the Cast doc
-                        const newMember: any = { name: c.name || "", title: c.title || "", order: c.order };
-                        if (socialLinks.length) newMember.socialLinks = socialLinks;
-                        if (photo) newMember.photo = photo;
-                        return { castId: newMember, order: Number(c.order) || 0 };
+
+                        // New member — pre-create via API, then use returned _id as castId
+                        const created = await createCast({
+                            name: c.name || "",
+                            title: c.title || "",
+                            photo: photo || undefined,
+                            socialLinks: socialLinks.length ? socialLinks : undefined,
+                        });
+                        return { castId: created._id, order: Number(c.order) || 0 };
                     })
                 );
             }

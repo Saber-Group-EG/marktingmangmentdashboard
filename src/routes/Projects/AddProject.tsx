@@ -30,6 +30,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { Calendar } from "lucide-react";
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
+import { createCast } from "@/api/requests/castService";
 import { showAlert } from "@/utils/swal";
 
 interface Material {
@@ -2214,8 +2215,7 @@ const handleShootedAtChange = (date: Date | null) => {
             });
         }
 
-        // Prepare cast for submission: send castId (Cast id or embedded member) + order; the backend
-        // resolves existing Cast docs by id and findOrCreates new ones from the embedded member
+        // Prepare cast for submission: pre-create new members via API, then send castId (string) + order
         if (Array.isArray(clone.cast)) {
             clone.cast = await Promise.all(
                 clone.cast.map(async (c: any) => {
@@ -2241,15 +2241,19 @@ const handleShootedAtChange = (date: Date | null) => {
                         photo = photoUrl || null;
                     }
 
-                    // Existing member — send its Cast id via castId so the backend references the Cast doc
+                    // Existing member — send its Cast id via castId
                     if ((c.__existing || c._id || c.id) && (c._id || c.id)) {
                         return { castId: c._id || c.id, order: Number(c.order) || 0 };
                     }
-                    // New member — embed it under castId so the backend findOrCreates the Cast doc
-                    const newMember: any = { name: c.name || "", title: c.title || "", order: c.order };
-                    if (socialLinks.length) newMember.socialLinks = socialLinks;
-                    if (photo) newMember.photo = photo;
-                    return { castId: newMember, order: Number(c.order) || 0 };
+
+                    // New member — pre-create via API, then use returned _id as castId
+                    const created = await createCast({
+                        name: c.name || "",
+                        title: c.title || "",
+                        photo: photo || undefined,
+                        socialLinks: socialLinks.length ? socialLinks : undefined,
+                    });
+                    return { castId: created._id, order: Number(c.order) || 0 };
                 })
             );
         }
