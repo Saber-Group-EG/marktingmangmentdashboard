@@ -26,8 +26,10 @@ import {
   FileText, Info, AlertCircle, CheckCircle, Plus,
   Edit, Eye, MapPin,  Users, Layers,
         Image as ImageIcon, Video, Code, Upload, GripVertical,
-  Camera
+  Camera, Calendar
 } from "lucide-react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import { showAlert } from "@/utils/swal";
 
 interface Material {
@@ -332,6 +334,7 @@ const EditProject: React.FC = () => {
             description: "",
             location: "",
             published: false,
+            shootedAt: null as Date | null,
             categories: [] as string[],
             tags: [] as string[],
             types: [] as string[],
@@ -355,6 +358,7 @@ const EditProject: React.FC = () => {
             description: "",
             location: "",
             published: false,
+            shootedAt: null as Date | null,
             categories: [] as string[],
             tags: [] as string[],
             types: [] as string[],
@@ -980,6 +984,7 @@ const EditProject: React.FC = () => {
             location: toLocalizedString((project as any).localizedLocation ?? (project as any).location),
             order: Number((project as any).order) || 0,
             published: project.published || false,
+            shootedAt: (project as any).shootedAt ? new Date((project as any).shootedAt) : null,
             categories: project.categories || [],
             tags: project.tags || [],
             types: project.types || [],
@@ -999,6 +1004,10 @@ const EditProject: React.FC = () => {
         } else {
             setForm({ ...form, [name]: value });
         }
+    };
+
+    const handleShootedAtChange = (date: Date | null) => {
+        setForm({ ...form, shootedAt: date });
     };
 
     // Tag Management
@@ -2237,6 +2246,7 @@ if (Array.isArray(clone.cast)) {
                 location: toLocalizedString(clone.location),
                 order: clone.order,
                 published: clone.published,
+                shootedAt: clone.shootedAt ? new Date(clone.shootedAt).toISOString() : undefined,
                 categories: await resolveTaxonomyIds(clone.categories, "category"),
                 tags: normalizeArrayField(clone.tags),
                 types: await resolveTaxonomyIds(clone.types, "type"),
@@ -2607,6 +2617,33 @@ if (Array.isArray(clone.cast)) {
                                         <label htmlFor="published" className="text-sm text-light-700 dark:text-dark-300">
                                             Publish this project (make it publicly visible)
                                         </label>
+                                    </div>
+
+                                    <div className="mt-3">
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                            {tr("shoot_date", "Shoot Date")}
+                                        </label>
+                                        <div className="relative">
+                                            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500 z-10" />
+                                            <DatePicker
+                                                selected={form.shootedAt}
+                                                onChange={handleShootedAtChange}
+                                                dateFormat="MMMM d, yyyy"
+                                                placeholderText={tr("select_shoot_date", "Select the shoot date")}
+                                                className="input w-full pl-10"
+                                                calendarClassName="!bg-white dark:!bg-dark-800 !border-light-200 dark:!border-dark-600 !rounded-lg shadow-lg"
+                                                dayClassName={(date) =>
+                                                    date.toDateString() === new Date().toDateString()
+                                                        ? "!bg-primary-500 !text-white !rounded-full"
+                                                        : "!text-light-700 dark:!text-dark-200 hover:!bg-light-100 dark:hover:!bg-dark-700 !rounded-full"
+                                                }
+                                                popperClassName="!z-50"
+                                                wrapperClassName="w-full"
+                                            />
+                                        </div>
+                                        <p className="mt-1 text-xs text-light-500 dark:text-dark-400">
+                                            {tr("shoot_date_note", "The date when the project was shot or will be shot")}
+                                        </p>
                                     </div>
                                 </div>
                             </div>

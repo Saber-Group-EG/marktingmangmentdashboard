@@ -349,6 +349,7 @@ const AddProject: React.FC = () => {
             tags: [] as string[],
             types: [] as string[],    
             publishAt: null as Date | null,
+            shootedAt: null as Date | null,
             parentProject: null as any,
             company: null as any,
             materials: [] as Material[],
@@ -1811,6 +1812,9 @@ const AddProject: React.FC = () => {
 const handleDateChange = (date: Date | null) => {
     setForm({ ...form, publishAt: date });
 };
+const handleShootedAtChange = (date: Date | null) => {
+    setForm({ ...form, shootedAt: date });
+};
     useEffect(() => {
         const onResize = () => updateOverlayStyle();
         window.addEventListener('resize', onResize);
@@ -2208,6 +2212,7 @@ const handleDateChange = (date: Date | null) => {
             order: clone.order,
             published: clone.published,
             publishedAt: clone.publishAt ? new Date(clone.publishAt).toISOString() : undefined,
+            shootedAt: clone.shootedAt ? new Date(clone.shootedAt).toISOString() : undefined,
             categories: await resolveTaxonomyIds(clone.categories, "category"),
             tags: normalizeArrayField(clone.tags),
             types: await resolveTaxonomyIds(clone.types, "type"),
@@ -2621,6 +2626,33 @@ const handleDateChange = (date: Date | null) => {
                             </p>
                         </div>
                     )}
+
+                    <div className="mt-3">
+                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                            {tr("shoot_date", "Shoot Date")}
+                        </label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-light-400 dark:text-dark-500 z-10" />
+                            <DatePicker
+                                selected={form.shootedAt}
+                                onChange={handleShootedAtChange}
+                                dateFormat="MMMM d, yyyy"
+                                placeholderText={tr("select_shoot_date", "Select the shoot date")}
+                                className="input w-full pl-10"
+                                calendarClassName="!bg-white dark:!bg-dark-800 !border-light-200 dark:!border-dark-600 !rounded-lg shadow-lg"
+                                dayClassName={(date) =>
+                                    date.toDateString() === new Date().toDateString()
+                                        ? "!bg-primary-500 !text-white !rounded-full"
+                                        : "!text-light-700 dark:!text-dark-200 hover:!bg-light-100 dark:hover:!bg-dark-700 !rounded-full"
+                                }
+                                popperClassName="!z-50"
+                                wrapperClassName="w-full"
+                            />
+                        </div>
+                        <p className="mt-1 text-xs text-light-500 dark:text-dark-400">
+                            {tr("shoot_date_note", "The date when the project was shot or will be shot")}
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

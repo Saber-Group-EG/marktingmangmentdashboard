@@ -258,3 +258,76 @@ input[type="number"] {
         color: var(--color-dark-50);
     }
 }
+
+/* react-datepicker theme overrides */
+.react-datepicker {
+    font-family: inherit;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-light-200);
+    overflow: hidden;
+}
+.dark .react-datepicker {
+    background-color: var(--color-dark-800);
+    border-color: var(--color-dark-600);
+    color: var(--color-dark-50);
+}
+.react-datepicker__header {
+    background-color: var(--color-light-50);
+    border-bottom: 1px solid var(--color-light-200);
+}
+.dark .react-datepicker__header {
+    background-color: var(--color-dark-700);
+    border-bottom-color: var(--color-dark-600);
+}
+.react-datepicker__current-month,
+.react-datepicker-time-header,
+.react-datepicker-header select {
+    color: var(--color-light-900);
+}
+.dark .react-datepicker__current-month,
+.dark .react-datepicker-time-header {
+    color: var(--color-dark-50);
+}
+.react-datepicker__day {
+    color: var(--color-light-700);
+    border-radius: 9999px;
+}
+.dark .react-datepicker__day {
+    color: var(--color-dark-200);
+}
+.react-datepicker__day:hover {
+    background-color: var(--color-light-100);
+}
+.dark .react-datepicker__day:hover {
+    background-color: var(--color-dark-700);
+}
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+    background-color: var(--color-light-500);
+    color: #fff;
+}
+.react-datepicker__day--today {
+    font-weight: 600;
+}
+.react-datepicker__time-list-item {
+    color: var(--color-light-700);
+}
+.dark .react-datepicker__time-list-item {
+    color: var(--color-dark-200);
+}
+.react-datepicker__time-list-item:hover {
+    background-color: var(--color-light-100);
+}
+.dark .react-datepicker__time-list-item:hover {
+    background-color: var(--color-dark-700);
+}
+.react-datepicker__time-list-item--selected {
+    background-color: var(--color-light-500) !important;
+    color: #fff !important;
+}
+.react-datepicker__triangle {
+    display: none;
+}
+.react-datepicker-popper {
+    z-index: 50 !important;
+}
