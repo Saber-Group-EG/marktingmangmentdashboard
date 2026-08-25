@@ -65,13 +65,6 @@ const ProjectDetails: React.FC = () => {
         return /<\/?[a-z][\s\S]*>/i.test(content) ? content : content.replace(/\n/g, "<br />");
     };
 
-    const getOptionLabel = (value: any): string => {
-        if (typeof value === "string") return value;
-        if (!value || typeof value !== "object") return "";
-        if (value[lang]) return String(value[lang]);
-        if (value.name && typeof value.name === "object" && value.name[lang]) return String(value.name[lang]);
-        return localizedToString(value.name) || localizedToString(value);
-    };
 
     const getOptionKey = (value: any, index: number): string => {
         if (typeof value === "string") return value;
