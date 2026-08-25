@@ -49,6 +49,7 @@ export const useCategories = (params?: CategoryQueryParams) => {
     return useQuery({
         queryKey: categoriesKeys.list(normalizedParams),
         queryFn: () => getCategories(normalizedParams),
+        refetchOnMount: "always",
     });
 };
 
