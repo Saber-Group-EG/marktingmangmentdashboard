@@ -116,30 +116,13 @@ type SortableVideoItemProps = {
 const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: string) => void; onClose: () => void }> = ({ videoUrl, onSelect, onClose }) => {
     const videoRef = React.useRef<HTMLVideoElement>(null);
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
-    const [localUrl, setLocalUrl] = React.useState<string>("");
     const [currentTime, setCurrentTime] = React.useState(0);
     const [duration, setDuration] = React.useState(0);
 
-    React.useEffect(() => {
-        let revokeUrl: string | null = null;
-        const load = async () => {
-            if (videoUrl.startsWith("blob:") || videoUrl.startsWith("data:")) {
-                setLocalUrl(videoUrl);
-                return;
-            }
-            try {
-                const res = await fetch(videoUrl);
-                if (!res.ok) throw new Error();
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                revokeUrl = url;
-                setLocalUrl(url);
-            } catch {
-                setLocalUrl(videoUrl);
-            }
-        };
-        load();
-        return () => { if (revokeUrl) URL.revokeObjectURL(revokeUrl); };
+    // Use proxy URL to avoid CORS taint on canvas
+    const proxyVideoUrl = React.useMemo(() => {
+        if (videoUrl.startsWith("blob:") || videoUrl.startsWith("data:")) return videoUrl;
+        return videoUrl.replace(/^https?:\/\/upload\.ats\.sabergroup-eg\.com/, '/r2-proxy');
     }, [videoUrl]);
 
     const formatTime = (s: number) => {
@@ -150,7 +133,7 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-2 sm:p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-2 sm:p-4" onClick={onClose}>
             <div className="bg-dark-900 rounded-xl sm:rounded-2xl shadow-2xl w-full h-full max-w-[95vw] sm:max-w-[85vw] md:max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-dark-700 shrink-0">
                     <h3 className="text-sm sm:text-base font-semibold text-dark-50">Select Thumbnail Frame</h3>
@@ -160,7 +143,7 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                     <div className="flex-1 min-h-0 rounded-lg sm:rounded-xl overflow-hidden bg-black flex items-center justify-center">
                         <video
                             ref={videoRef}
-                            src={localUrl || videoUrl}
+                            src={proxyVideoUrl}
                             className="max-w-full max-h-full rounded-lg"
                             controls
                             muted
@@ -269,7 +252,7 @@ const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRe
                     <div className="text-xs text-light-400 dark:text-dark-500 truncate mt-0.5">{description}</div>
                 )}
             </div>
-            <button type="button" onClick={() => setShowFrameSelector(true)} className="shrink-0 p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950/30 text-primary-500 transition-colors pointer-events-auto" title="Select frame from video" aria-label="Select frame from video">
+            <button type="button" onClick={() => setShowFrameSelector(true)} onPointerDown={(e) => e.stopPropagation()} className="shrink-0 p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950/30 text-primary-500 transition-colors pointer-events-auto" title="Select frame from video" aria-label="Select frame from video">
                 <Video className="w-4 h-4" />
             </button>
             {thumbUrl ? (
