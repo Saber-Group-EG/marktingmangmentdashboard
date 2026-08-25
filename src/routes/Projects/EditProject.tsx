@@ -298,7 +298,7 @@ const EditProject: React.FC = () => {
         const details = data.details;
         if (Array.isArray(details) && details.length > 0) {
             const msgs = details.map((d: any) => d.message || d.msg || "").filter(Boolean);
-            if (msgs.length > 0) return `${base}\n${msgs.join("\n")}`;
+            if (msgs.length > 0) return `${base}<br><br>${msgs.join("<br>")}`;
         }
         return base;
     };
@@ -2107,12 +2107,11 @@ const EditProject: React.FC = () => {
                                 }),
                             );
 
-                            const [primary, ...restItems] = normalizedItems;
-                            copy.url = primary?.url || copy.url;
-                            copy.mimeType = primary?.mimeType || copy.mimeType;
-                            copy.originalName = primary?.originalName || copy.originalName;
-                            copy.size = primary?.size || copy.size;
-                            copy.items = restItems;
+                            copy.url = normalizedItems[0]?.url || copy.url;
+                            copy.mimeType = normalizedItems[0]?.mimeType || copy.mimeType;
+                            copy.originalName = normalizedItems[0]?.originalName || copy.originalName;
+                            copy.size = normalizedItems[0]?.size || copy.size;
+                            copy.items = normalizedItems;
                             copy.type = normalizedItems.length > 1 ? "bulk" : "photo";
                         }
 

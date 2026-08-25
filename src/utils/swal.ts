@@ -19,8 +19,11 @@ export const showAlert = (message: string, type: "success" | "error" | "warning"
     const textColor = dark ? "#e5e5e5" : "#0a0a0a";
     const iconColor = colors[type];
 
+    const useHtml = message.includes("<br>");
+    const content: any = useHtml ? { html: message } : { text: message };
+
     return Swal.fire({
-        text: message,
+        ...content,
         icon: type,
         iconColor: iconColor,
         background: bgColor,

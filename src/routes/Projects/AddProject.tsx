@@ -293,6 +293,18 @@ const AddProject: React.FC = () => {
         return "";
     };
 
+    const extractBackendError = (err: any): string => {
+        const data = err?.response?.data;
+        if (!data) return err?.message || "Failed to create project";
+        const base = data.message || "Failed to create project";
+        const details = data.details;
+        if (Array.isArray(details) && details.length > 0) {
+            const msgs = details.map((d: any) => d.message || d.msg || "").filter(Boolean);
+            if (msgs.length > 0) return `${base}<br><br>${msgs.join("<br>")}`;
+        }
+        return base;
+    };
+
     const toLocalizedString = (value: any): { ar: string; en: string } => {
         if (value && typeof value === "object") {
             return { ar: value.ar ?? "", en: value.en ?? "" };
@@ -2066,12 +2078,11 @@ const handleDateChange = (date: Date | null) => {
                             }),
                         );
 
-                        const [primary, ...restItems] = normalizedItems;
-                        copy.url = primary?.url || copy.url;
-                        copy.mimeType = primary?.mimeType || copy.mimeType;
-                        copy.originalName = primary?.originalName || copy.originalName;
-                        copy.size = primary?.size || copy.size;
-                        copy.items = restItems;
+                        copy.url = normalizedItems[0]?.url || copy.url;
+                        copy.mimeType = normalizedItems[0]?.mimeType || copy.mimeType;
+                        copy.originalName = normalizedItems[0]?.originalName || copy.originalName;
+                        copy.size = normalizedItems[0]?.size || copy.size;
+                        copy.items = normalizedItems;
                         copy.type = normalizedItems.length > 1 ? "bulk" : "photo";
                     }
 
@@ -2225,8 +2236,7 @@ const handleDateChange = (date: Date | null) => {
     } catch (error: any) {
         console.error("Project submission failed:", error);
         setUploadModalOpen(false);
-        const msg = error?.response?.data?.message || error?.message || "Failed to create project";
-        showAlert(msg, "error");
+        showAlert(extractBackendError(error), "error");
     }
 };
 
