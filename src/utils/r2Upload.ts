@@ -54,9 +54,17 @@ const dataUrlToFile = (dataUrl: string, fileName: string): File => {
     return new File([buffer], fileName, { type: mimeType });
 };
 
+function isCorsError(err: any): boolean {
+    const msg = (err?.message || "").toLowerCase();
+    return msg.includes("cors") || msg.includes("access-control-allow-origin") || msg.includes("err_failed 403");
+}
+
 export async function uploadToR2(file: File, folder = DEFAULT_UPLOAD_FOLDER, onProgress?: (percent: number) => void): Promise<string> {
     let attempt = 0;
     let lastError: unknown;
+
+    const safeName = file.name || `upload-${Date.now()}`;
+    const safeType = file.type || "application/octet-stream";
 
     while (attempt < MAX_RETRIES) {
         try {
@@ -65,8 +73,8 @@ export async function uploadToR2(file: File, folder = DEFAULT_UPLOAD_FOLDER, onP
             try {
                 const { data } = await axios.post(
                     `${BACKEND_URL.replace(/\/$/, "")}/upload/presign`,
-                    { name: file.name, type: file.type, folder },
-                    { timeout: 30000 }
+                    { name: safeName, type: safeType, folder },
+                    { timeout: 60000 }
                 );
                 presignData = data;
             } catch (err: any) {
@@ -90,7 +98,7 @@ export async function uploadToR2(file: File, folder = DEFAULT_UPLOAD_FOLDER, onP
             const uploadResult = await new Promise<string>((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open("PUT", presignedUrl);
-                xhr.setRequestHeader("Content-Type", file.type);
+                xhr.setRequestHeader("Content-Type", safeType);
                 xhr.timeout = 180000;
 
                 xhr.upload.onprogress = (e) => {
@@ -133,6 +141,14 @@ export async function uploadToR2(file: File, folder = DEFAULT_UPLOAD_FOLDER, onP
             return uploadResult;
         } catch (error) {
             lastError = error;
+
+            if (isCorsError(error)) {
+                throw new Error(
+                    "Upload blocked by CORS policy. The R2 bucket is missing CORS configuration for this domain. " +
+                    "Please add the Vercel domain to the R2 bucket's CORS allowed origins in the Cloudflare dashboard."
+                );
+            }
+
             attempt += 1;
             if (attempt >= MAX_RETRIES) {
                 throw new Error(`Upload failed after ${MAX_RETRIES} attempts. Last error: ${(lastError as Error).message}`);
@@ -169,14 +185,18 @@ export const uploadDataUrlToR2Cached = (dataUrl: string, options: R2UploadOption
 };
 
 export const uploadThumbnailToR2 = async (thumbnailUrl: string, options: R2UploadOptions): Promise<R2UploadResult> => {
-    let dataUrl = thumbnailUrl;
     if (isBlobUrl(thumbnailUrl)) {
-        dataUrl = await blobUrlToDataUrl(thumbnailUrl);
+        const response = await fetch(thumbnailUrl);
+        const blob = await response.blob();
+        const ext = blob.type.split("/")[1] || "jpg";
+        const file = new File([blob], options.fileName || `upload.${ext}`, { type: blob.type });
+        const publicUrl = await uploadToR2(file, options.folder, options.onProgress);
+        return { url: publicUrl, mimeType: file.type, size: file.size, originalName: file.name };
     }
-    if (!isDataUrl(dataUrl)) {
+    if (!isDataUrl(thumbnailUrl)) {
         return { url: thumbnailUrl };
     }
-    return uploadDataUrlToR2Cached(dataUrl, options);
+    return uploadDataUrlToR2Cached(thumbnailUrl, options);
 };
 
 export const uploadFileToR2 = async (file: File, options: R2UploadOptions): Promise<R2UploadResult> => {

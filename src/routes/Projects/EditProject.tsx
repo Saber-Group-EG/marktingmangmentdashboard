@@ -323,7 +323,7 @@ const EditProject: React.FC = () => {
     const update = useUpdateProject();
     const del = useDeleteProject();
     // Replace useProjectCategories with useCategories
-    const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading } = useCategories({ type: "project" });
+    const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading, refetch: refetchCategories } = useCategories({ type: "project" });
     const projectCategories = projectCategoriesResponse?.categories || [];
     const { data: projectTypes = [], isLoading: projectTypesLoading } = useProjectTypes();
     const { data: projectCompanies = [] } = useProjectCompanies();
@@ -553,6 +553,7 @@ const EditProject: React.FC = () => {
                 : await createType({ name: { en: label, ar } });
             const createdId = (created as any)?._id || (created as any)?.id;
             if (createdId) resolved.push(createdId);
+            if (kind === "category") refetchCategories();
         }
         return resolved.filter(Boolean);
     };
@@ -782,6 +783,7 @@ const EditProject: React.FC = () => {
                 size: material.size,
                 thumbnail: primaryThumb,
                 type: "video",
+                _file: (material as any)._file || primaryItem?._file,
             });
         }
 
@@ -797,6 +799,7 @@ const EditProject: React.FC = () => {
                         size: item.size,
                         thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : item.thumbnail?.url,
                         type: "video",
+                        _file: item._file,
                     });
                 });
         }
@@ -2218,20 +2221,23 @@ const EditProject: React.FC = () => {
                         return undefined;
                     };
 
-                    // Keep `items` only for bulk materials; strip for others
-                    if (material.type === "bulk") {
+                    const { _file: _mf, items: rawItems, thumbnail: rawThumb, ...rest } = material || {};
+                    const cleanItems = Array.isArray(rawItems)
+                        ? rawItems.map(({ _file: _if, ...ri }: any) => ri)
+                        : [];
+
+                    if (rest.type === "bulk") {
                         return {
-                            ...material,
-                            items: Array.isArray(material.items) ? material.items : [],
-                            thumbnail: getThumbUrl(material.thumbnail),
+                            ...rest,
+                            items: cleanItems,
+                            thumbnail: getThumbUrl(rawThumb),
                             order: index + 1,
                         };
                     }
 
-                    const { items, thumbnail, ...rest } = material || {};
                     return {
                         ...rest,
-                        thumbnail: getThumbUrl(thumbnail),
+                        thumbnail: getThumbUrl(rawThumb),
                         order: index + 1,
                     };
                 });
