@@ -319,7 +319,7 @@ const AddProject: React.FC = () => {
     
     const mutation = useCreateProject();
     // Replace useProjectCategories with useCategories
-    const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading, refetch: refetchCategories } = useCategories({ type: "project" });
+    const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading } = useCategories({ type: "project" });
     const projectCategories = projectCategoriesResponse?.categories || [];
     const { data: projectTypes = [], isLoading: projectTypesLoading } = useProjectTypes();
     const { data: projectCast = []} = useProjectCast();
@@ -552,7 +552,6 @@ const AddProject: React.FC = () => {
                 : await createType({ name: { en: label, ar } });
             const createdId = (created as any)?._id || (created as any)?.id;
             if (createdId) resolved.push(createdId);
-            if (kind === "category") refetchCategories();
         }
         return resolved.filter(Boolean);
     };
@@ -1054,7 +1053,6 @@ const AddProject: React.FC = () => {
                 size: material.size,
                 thumbnail: primaryThumb,
                 type: "video",
-                _file: (material as any)._file || primaryItem?._file,
             });
         }
 
@@ -1070,7 +1068,6 @@ const AddProject: React.FC = () => {
                         size: item.size,
                         thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : item.thumbnail?.url,
                         type: "video",
-                        _file: item._file,
                     });
                 });
         }
@@ -1858,20 +1855,6 @@ const handleShootedAtChange = (date: Date | null) => {
         // shallow clone for inspection
         const clone = JSON.parse(JSON.stringify(form));
 
-        // restore _file references that JSON.stringify strips
-        if (Array.isArray(clone.materials) && Array.isArray(form.materials)) {
-            clone.materials.forEach((m: any, mi: number) => {
-                const src = form.materials[mi];
-                if (!src) return;
-                if (src._file) m._file = src._file;
-                if (Array.isArray(m.items) && Array.isArray(src.items)) {
-                    m.items.forEach((item: any, ii: number) => {
-                        if (src.items[ii]?._file) item._file = src.items[ii]._file;
-                    });
-                }
-            });
-        }
-
         // precompute how many asset uploads we will perform (data-URL based)
         let uploadsCount = 0;
         if (clone.mainCover) {
@@ -2157,7 +2140,6 @@ const handleShootedAtChange = (date: Date | null) => {
                         copy.items = copy.items.map((item: any) => {
                             const cleanItem: any = { ...item };
                             delete cleanItem._id;
-                            delete cleanItem._file;
                             cleanItem.caption = cleanItem.caption ? toLocalizedString(cleanItem.caption) : undefined;
                             cleanItem.before = cleanItem.before ? localizeSideLabel(cleanItem.before) : cleanItem.before;
                             cleanItem.after = cleanItem.after ? localizeSideLabel(cleanItem.after) : cleanItem.after;
@@ -2183,23 +2165,20 @@ const handleShootedAtChange = (date: Date | null) => {
                     return undefined;
                 };
 
-                const { _file: _mf, items: rawItems, thumbnail: rawThumb, ...rest } = material || {};
-                const cleanItems = Array.isArray(rawItems)
-                    ? rawItems.map(({ _file: _if, ...ri }: any) => ri)
-                    : [];
-
-                if (rest.type === "bulk") {
+                // Keep `items` only for bulk materials; strip for others
+                if (material.type === "bulk") {
                     return {
-                        ...rest,
-                        items: cleanItems,
-                        thumbnail: getThumbUrl(rawThumb),
+                        ...material,
+                        items: Array.isArray(material.items) ? material.items : [],
+                        thumbnail: getThumbUrl(material.thumbnail),
                         order: index + 1,
                     };
                 }
 
+                const { items, thumbnail, ...rest } = material || {};
                 return {
                     ...rest,
-                    thumbnail: getThumbUrl(rawThumb),
+                    thumbnail: getThumbUrl(thumbnail),
                     order: index + 1,
                 };
             });
