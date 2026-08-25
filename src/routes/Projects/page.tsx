@@ -50,6 +50,7 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
         accept: PROJECT_CARD_TYPE,
         hover: (item: any, monitor) => {
             if (!ref.current) return;
+            void item; // To satisfy TypeScript that item is used
             const offset = monitor.getClientOffset();
             if (!offset) return;
 

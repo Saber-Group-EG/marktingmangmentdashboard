@@ -5,6 +5,11 @@ const BACKEND_URL =
 
 const DEFAULT_UPLOAD_FOLDER = "Markting/projects";
 const MAX_RETRIES = 3;
+const MIN_TIMEOUT_MS = 180000;
+const BYTES_PER_SEC_FLOOR = 300 * 1024; // assume ~300KB/s worst case
+function computeTimeout(fileSize: number): number {
+    return Math.max(MIN_TIMEOUT_MS, Math.ceil((fileSize / BYTES_PER_SEC_FLOOR) * 1000));
+}
 
 export interface R2UploadResult {
     url: string;
@@ -91,7 +96,7 @@ export async function uploadToR2(file: File, folder = DEFAULT_UPLOAD_FOLDER, onP
                 const xhr = new XMLHttpRequest();
                 xhr.open("PUT", presignedUrl);
                 xhr.setRequestHeader("Content-Type", file.type);
-                xhr.timeout = 180000;
+                xhr.timeout = computeTimeout(file.size);
 
                 xhr.upload.onprogress = (e) => {
                     if (e.lengthComputable && onProgress) {
@@ -123,7 +128,7 @@ export async function uploadToR2(file: File, folder = DEFAULT_UPLOAD_FOLDER, onP
                 xhr.ontimeout = () =>
                     reject(
                         new Error(
-                            `Upload timed out after 180s (file size: ${(file.size / 1e6).toFixed(1)}MB) — likely a slow or unstable connection.`
+                            `Upload timed out after ${Math.round(computeTimeout(file.size) / 1000)}s (file size: ${(file.size / 1e6).toFixed(1)}MB) — likely a slow or unstable connection.`
                         )
                     );
 
@@ -208,4 +213,21 @@ export function isAllowedFileType(file: File, allowedTypes: string[], allowedExt
 
 export function isFileWithinSizeLimit(file: File, maxSize: number): boolean {
     return file.size <= maxSize;
+}
+
+export async function runWithConcurrency<T, R>(
+    items: T[],
+    limit: number,
+    worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+    const results: R[] = new Array(items.length);
+    let cursor = 0;
+    const runNext = async (): Promise<void> => {
+        const current = cursor++;
+        if (current >= items.length) return;
+        results[current] = await worker(items[current], current);
+        return runNext();
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runNext));
+    return results;
 }

@@ -9,7 +9,7 @@ import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
-import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2 } from "@/utils/r2Upload";
+import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency } from "@/utils/r2Upload";
 import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
@@ -387,11 +387,36 @@ const EditProject: React.FC = () => {
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
 
-    // Persist form draft to localStorage
+    // Persist form draft to localStorage (strip heavy media to avoid quota issues)
     useEffect(() => {
         if (!id) return;
         try {
-            const toSave = { ...form };
+            const toSave = {
+                ...form,
+                materials: (form.materials || []).map((m: any) => {
+                    if (!m) return m;
+                    const stripped: any = { ...m };
+                    // Strip blob URLs (pending uploads) — they can't survive a page refresh anyway
+                    if (needsUpload(stripped.url)) stripped.url = "";
+                    if (needsUpload(stripped.thumbnail)) stripped.thumbnail = "";
+                    if (stripped.before && needsUpload(stripped.before.url)) stripped.before = { ...stripped.before, url: "" };
+                    if (stripped.after && needsUpload(stripped.after.url)) stripped.after = { ...stripped.after, url: "" };
+                    // Strip items with pending uploads
+                    if (Array.isArray(stripped.items)) {
+                        stripped.items = stripped.items.map((it: any) => {
+                            if (!it) return it;
+                            const clean: any = { ...it };
+                            if (needsUpload(clean.url)) clean.url = "";
+                            if (needsUpload(clean.thumbnail)) clean.thumbnail = "";
+                            if (clean._file) delete clean._file;
+                            return clean;
+                        });
+                    }
+                    if (stripped._file) delete stripped._file;
+                    return stripped;
+                }),
+                mainCover: form.mainCover && needsUpload(form.mainCover.url) ? null : form.mainCover,
+            };
             localStorage.setItem(`${EDIT_STORAGE_KEY_PREFIX}${id}`, JSON.stringify(toSave));
         } catch {
             // ignore storage errors (e.g. quota exceeded)
@@ -1263,16 +1288,12 @@ const EditProject: React.FC = () => {
                         });
                     } else {
                         const file = files[0];
-                        const dataUrl = await readFileAsDataUrl(file);
-                        uploadDataUrlToR2Cached(dataUrl, {
-                            resourceType: "video",
-                            fileName: file.name,
-                        }).catch(() => {});
+                        const objectUrl = URL.createObjectURL(file);
                         setEditingMaterial((prev) =>
                             prev
                                 ? {
                                       ...prev,
-                                      url: dataUrl,
+                                      url: objectUrl,
                                       mimeType: file.type,
                                       size: file.size,
                                       originalName: file.name,
@@ -2031,8 +2052,9 @@ const EditProject: React.FC = () => {
                                 _file: (item as any)._file,
                             }));
 
-                            normalizedVideoItems = await Promise.all(
-                                normalizedVideoItems.map(async (item, itemIndex) => {
+                            normalizedVideoItems = await runWithConcurrency(
+                                normalizedVideoItems, 3,
+                                async (item, itemIndex) => {
                                     const uploadedItem = await uploadAssetIfNeeded(
                                         item,
                                         "video",
@@ -2052,7 +2074,7 @@ const EditProject: React.FC = () => {
                                         thumbnail: uploadedThumb,
                                         type: "video",
                                     };
-                                }),
+                                },
                             );
 
                             const primaryVideo = normalizedVideoItems[0];
@@ -2075,8 +2097,9 @@ const EditProject: React.FC = () => {
                                     _file: (item as any)._file,
                                 }));
 
-                                normalizedVideoItems = await Promise.all(
-                                    normalizedVideoItems.map(async (item, itemIndex) => {
+                                normalizedVideoItems = await runWithConcurrency(
+                                    normalizedVideoItems, 3,
+                                    async (item, itemIndex) => {
                                         const uploadedItem = await uploadAssetIfNeeded(
                                             item,
                                             "video",
@@ -2096,7 +2119,7 @@ const EditProject: React.FC = () => {
                                             thumbnail: uploadedThumb,
                                             type: "video",
                                         };
-                                    }),
+                                    },
                                 );
 
                                 copy.items = normalizedVideoItems;
@@ -2193,12 +2216,15 @@ const EditProject: React.FC = () => {
                                 const cleanItem: any = { ...item };
                                 delete cleanItem._id;
                                 delete cleanItem.id;
+                                delete cleanItem._file;
                                 cleanItem.caption = cleanItem.caption ? toLocalizedString(cleanItem.caption) : undefined;
                                 cleanItem.before = cleanItem.before ? localizeSideLabel(cleanItem.before) : cleanItem.before;
                                 cleanItem.after = cleanItem.after ? localizeSideLabel(cleanItem.after) : cleanItem.after;
                                 return cleanItem;
                             });
                         }
+
+                        if (copy._file) delete copy._file;
 
                         if (copy.caption) copy.caption = toLocalizedString(copy.caption);
                         if (copy.textContent) copy.textContent = toLocalizedString(copy.textContent);
