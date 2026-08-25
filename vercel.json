@@ -4,8 +4,12 @@
         { "src": "api/**/*.js", "use": "@vercel/node" },
         { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
     ],
+    "rewrites": [
+        { "source": "/r2-proxy/(.*)", "destination": "https://upload.ats.sabergroup-eg.com/$1" }
+    ],
     "routes": [
         { "src": "^/api/(.*)$", "dest": "/api/$1" },
+        { "src": "^/r2-proxy/(.*)$", "headers": { "cache-control": "public, max-age=86400" }, "dest": "https://upload.ats.sabergroup-eg.com/$1" },
         { "src": "^/assets/(.*)", "headers": { "cache-control": "public, max-age=31536000, immutable" }, "dest": "/assets/$1" },
         { "src": "^/favicon.ico$", "dest": "/favicon.ico" },
         { "src": "^/robots.txt$", "dest": "/robots.txt" },

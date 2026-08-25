@@ -1866,7 +1866,29 @@ const EditProject: React.FC = () => {
         console.log("[CoverImg] onLoad fired, natural:", imgEl.naturalWidth, "x", imgEl.naturalHeight, "src:", imgEl.src?.substring(0, 60));
         if (imgEl.naturalWidth && imgEl.naturalHeight) {
             setMainCoverMeta({ width: imgEl.naturalWidth, height: imgEl.naturalHeight });
-            loadedImgRef.current = imgEl;
+            // Also try to fetch the image as a blob via proxy for untainted canvas operations
+            const url = imgEl.src;
+            if (!url.startsWith("data:") && !url.startsWith("blob:")) {
+                const proxyUrl = url.replace(/^https?:\/\/upload\.ats\.sabergroup-eg\.com/, '/r2-proxy');
+                fetch(proxyUrl)
+                    .then((res) => { if (!res.ok) throw new Error(); return res.blob(); })
+                    .then((blob) => {
+                        const objectUrl = URL.createObjectURL(blob);
+                        const img = new Image();
+                        img.onload = () => {
+                            loadedImgRef.current = img;
+                            console.log("[CoverImg] Proxy-loaded image set for untainted canvas");
+                        };
+                        img.src = objectUrl;
+                    })
+                    .catch(() => {
+                        // Proxy also blocked — use the DOM element (canvas crop won't work, CSS preview still works)
+                        loadedImgRef.current = imgEl;
+                        console.log("[CoverImg] Proxy fetch failed, using DOM element (canvas crop disabled)");
+                    });
+            } else {
+                loadedImgRef.current = imgEl;
+            }
         }
     };
 

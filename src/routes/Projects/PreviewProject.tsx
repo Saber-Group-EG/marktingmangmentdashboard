@@ -506,9 +506,9 @@ const ProjectDetails: React.FC = () => {
                             </div>
                         </div>
                         <div className="p-3 space-y-2">
-                            {caption && <div className="text-sm text-light-600 dark:text-dark-400 line-clamp-2"><BilingualText value={m.caption} size="sm" /></p>}
+                            {caption && <div className="text-sm text-light-600 dark:text-dark-400 line-clamp-2"><BilingualText value={m.caption} size="sm"  /></div>}
                             {localizedToString(m.description) && (
-                                <div className="text-xs text-light-400 dark:text-dark-500"><BilingualText value={m.description} size="sm" /></p>
+                                <div className="text-xs text-light-400 dark:text-dark-500"><BilingualText value={m.description} size="sm"  /></div>
                             )}
                             <div className="text-xs text-light-400 dark:text-dark-500 space-y-1">
                                 <div className="flex items-center justify-between">
@@ -545,9 +545,9 @@ const ProjectDetails: React.FC = () => {
                             </div>
                         </div>
                         <div className="p-3 space-y-2">
-                            {caption && <div className="text-sm text-light-600 dark:text-dark-400"><BilingualText value={m.caption} size="sm" /></p>}
+                            {caption && <div className="text-sm text-light-600 dark:text-dark-400"><BilingualText value={m.caption} size="sm"  /></div>}
                             {localizedToString(m.description) && (
-                                <div className="text-xs text-light-400 dark:text-dark-500"><BilingualText value={m.description} size="sm" /></p>
+                                <div className="text-xs text-light-400 dark:text-dark-500"><BilingualText value={m.description} size="sm"  /></div>
                             )}
                             <div className="text-xs text-light-400 dark:text-dark-500 space-y-1">
                                 <div className="flex items-center justify-between">
@@ -633,7 +633,7 @@ const ProjectDetails: React.FC = () => {
                             </div>
                         </div>
                         <div className="p-3 space-y-2">
-                            {caption && <div className="text-sm text-light-600 dark:text-dark-400 line-clamp-2"><BilingualText value={m.caption} size="sm" /></p>}
+                            {caption && <div className="text-sm text-light-600 dark:text-dark-400 line-clamp-2"><BilingualText value={m.caption} size="sm"  /></div>}
                             <div className="text-xs text-light-400 dark:text-dark-500 space-y-1">
                                 <div className="flex items-center justify-between">
                                     <span>{bulkItems.length > 1 ? `${bulkItems.length} grouped ${isVidBulk ? "videos" : "photos"}` : (bulkItems[0]?.mimeType || m.mimeType || (isVidBulk ? "video" : "image"))}</span>
@@ -656,9 +656,9 @@ const ProjectDetails: React.FC = () => {
                             showSlider={false}
                         />
                         <div className="p-3">
-                            {caption && <div className="text-sm text-light-600 dark:text-dark-400 mb-2"><BilingualText value={m.caption} size="sm" /></p>}
+                            {caption && <div className="text-sm text-light-600 dark:text-dark-400 mb-2"><BilingualText value={m.caption} size="sm"  /></div>}
                             {localizedToString(m.description) && (
-                                <div className="text-xs text-light-400 dark:text-dark-500 mb-2"><BilingualText value={m.description} size="sm" /></p>
+                                <div className="text-xs text-light-400 dark:text-dark-500 mb-2"><BilingualText value={m.description} size="sm"  /></div>
                             )}
                             <div className="text-xs text-light-400 dark:text-dark-500 space-y-1">
                                 <div>{tr("order_label", "Order:")} {m.order}</div>
@@ -687,11 +687,11 @@ const ProjectDetails: React.FC = () => {
                             <FileText className="w-5 h-5 text-light-500 dark:text-secdark-500 mt-0.5" />
                             <div className="flex-1">
                                 <div className="flex items-center justify-between mb-2">
-                                    {caption && <div className="text-xs text-light-500 dark:text-secdark-400 font-medium"><BilingualText value={m.caption} size="sm" /></p>}
+                                    {caption && <div className="text-xs text-light-500 dark:text-secdark-400 font-medium"><BilingualText value={m.caption} size="sm"  /></div>}
                                     <span className="text-xs text-light-400 dark:text-dark-500">Text #{m.order}</span>
                                 </div>
                                 {localizedToString(m.description) && (
-                                    <div className="text-xs text-light-400 dark:text-dark-500 mb-2"><BilingualText value={m.description} size="sm" /></p>
+                                    <div className="text-xs text-light-400 dark:text-dark-500 mb-2"><BilingualText value={m.description} size="sm"  /></div>
                                 )}
                                 <div className="text-light-700 dark:text-dark-300 space-y-3">
                                     {m.textContent?.en && (
@@ -725,11 +725,11 @@ const ProjectDetails: React.FC = () => {
                             <Code className="w-5 h-5 text-light-500 dark:text-secdark-500 mt-0.5" />
                             <div className="flex-1">
                                 <div className="flex items-center justify-between mb-2">
-                                    {caption && <div className="text-xs text-light-500 dark:text-secdark-400 font-medium"><BilingualText value={m.caption} size="sm" /></p>}
+                                    {caption && <div className="text-xs text-light-500 dark:text-secdark-400 font-medium"><BilingualText value={m.caption} size="sm"  /></div>}
                                     <span className="text-xs text-light-400 dark:text-dark-500">HTML #{m.order}</span>
                                 </div>
                                 {localizedToString(m.description) && (
-                                    <div className="text-xs text-light-400 dark:text-dark-500 mb-2"><BilingualText value={m.description} size="sm" /></p>
+                                    <div className="text-xs text-light-400 dark:text-dark-500 mb-2"><BilingualText value={m.description} size="sm"  /></div>
                                 )}
                                 <div className="prose prose-sm max-w-none text-light-700 dark:text-dark-300" dangerouslySetInnerHTML={{ __html: localizedToString(m.htmlContent) }} />
                                 <div className="mt-2 pt-2 border-t border-light-200 dark:border-dark-700 text-xs text-light-400 dark:text-dark-500">
@@ -1110,7 +1110,7 @@ const ProjectDetails: React.FC = () => {
                         
                         {localizedToString(selectedMedia.caption) && (
                             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
-                                <div className="text-white text-center"><BilingualText value={selectedMedia.caption} size="md" className="text-white [&>span]:text-white/70" /></p>
+                                <div className="text-white text-center"><BilingualText value={selectedMedia.caption} size="md" className="text-white [&>span]:text-white/70" /></div>
                                 <div className="text-xs text-white/60 text-center mt-1">
                                             {/* ID removed for privacy */}
                                         </div>
