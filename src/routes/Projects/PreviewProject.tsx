@@ -863,6 +863,7 @@ const ProjectDetails: React.FC = () => {
                         </div>
                         <div className="space-y-3">
                             <DetailRow label={tr("published", "Published")} value={p.published ? tr("yes_value", "Yes") : tr("no_value", "No")} icon={Globe} />
+                            <DetailRow label={tr("shoot_date", "Shoot Date")} value={(p as any).shootedAt ? new Date((p as any).shootedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : tr("no_value", "No")} icon={Camera} />
                             <DetailRow label={tr("created_by", "Created By")} value={typeof p.createdBy === 'object' ? (p.createdBy.fullName || p.createdBy.name || 'Hidden') : 'Hidden'} icon={User} />
                             <DetailRow label={tr("parent_project", "Parent Project")} value={typeof p.parentProject === 'object' ? (p.parentProject?.name || 'Hidden') : 'Hidden'} icon={LinkIcon} />
 
