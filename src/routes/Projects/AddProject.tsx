@@ -2259,8 +2259,10 @@ const handleShootedAtChange = (date: Date | null) => {
         }, 900);
     } catch (error: any) {
         console.error("Project submission failed:", error);
+        setSaveStatus("error");
         setUploadModalOpen(false);
         showAlert(extractBackendError(error), "error");
+        setTimeout(() => setSaveStatus("idle"), 3000);
     }
 };
 

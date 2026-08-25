@@ -2306,7 +2306,9 @@ if (Array.isArray(clone.cast)) {
                         }, 1500);
                     },
                     onError: (err: any) => {
+                        setSaveStatus("error");
                         showAlert(extractBackendError(err), "error");
+                        setTimeout(() => setSaveStatus("idle"), 3000);
                     },
                 }
             );
@@ -2314,7 +2316,9 @@ if (Array.isArray(clone.cast)) {
             });
         } catch (error: any) {
             console.error("Project submission failed:", error);
+            setSaveStatus("error");
             showAlert(extractBackendError(error), "error");
+            setTimeout(() => setSaveStatus("idle"), 3000);
         }
     };
 
