@@ -1079,6 +1079,7 @@ const AddProject: React.FC = () => {
                 size: material.size,
                 thumbnail: primaryThumb,
                 type: "video",
+                _file: primaryItem?._file || (material as any)._file,
             });
         }
 
@@ -1094,6 +1095,7 @@ const AddProject: React.FC = () => {
                         size: item.size,
                         thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : item.thumbnail?.url,
                         type: "video",
+                        _file: item._file,
                     });
                 });
         }
@@ -1878,8 +1880,35 @@ const handleShootedAtChange = (date: Date | null) => {
     setSaveStatus("saving");
 
     try {
+        // Preserve File references before deep-clone (JSON.stringify destroys them)
+        const fileRefs = new Map<string, File>();
+        if (Array.isArray(form.materials)) {
+            form.materials.forEach((m: any, mi: number) => {
+                if (m?._file) fileRefs.set(`material:${mi}:_file`, m._file);
+                if (Array.isArray(m?.items)) {
+                    m.items.forEach((it: any, ii: number) => {
+                        if (it?._file) fileRefs.set(`material:${mi}:item:${ii}:_file`, it._file);
+                    });
+                }
+            });
+        }
+
         // shallow clone for inspection
         const clone = JSON.parse(JSON.stringify(form));
+
+        // Restore File references onto cloned materials
+        if (Array.isArray(clone.materials)) {
+            clone.materials.forEach((m: any, mi: number) => {
+                const ref = fileRefs.get(`material:${mi}:_file`);
+                if (ref) m._file = ref;
+                if (Array.isArray(m?.items)) {
+                    m.items.forEach((it: any, ii: number) => {
+                        const ref = fileRefs.get(`material:${mi}:item:${ii}:_file`);
+                        if (ref) it._file = ref;
+                    });
+                }
+            });
+        }
 
         // precompute how many asset uploads we will perform (data-URL based)
         let uploadsCount = 0;
@@ -1988,10 +2017,11 @@ const handleShootedAtChange = (date: Date | null) => {
             delete clone.mainCover.crop;
         }
 
-        // process materials and upload nested assets when needed
+        // Process materials sequentially to cap total concurrent uploads at 3
         if (Array.isArray(clone.materials)) {
-            clone.materials = await Promise.all(
-                clone.materials.map(async (m: any, materialIndex: number) => {
+            const processedMaterials: any[] = [];
+            for (let materialIndex = 0; materialIndex < clone.materials.length; materialIndex++) {
+                const m = clone.materials[materialIndex];
                     const copy: any = { ...m };
 
                         if (copy.type === "bulk" && isVideoBulkType(copy)) {
@@ -2182,9 +2212,9 @@ const handleShootedAtChange = (date: Date | null) => {
                     if (copy.textContent) copy.textContent = toLocalizedString(copy.textContent);
                     if (copy.htmlContent) copy.htmlContent = toLocalizedString(copy.htmlContent);
 
-                    return copy;
-                }),
-            );
+                    processedMaterials.push(copy);
+            }
+            clone.materials = processedMaterials;
 
             clone.materials = clone.materials.map((material: any, index: number) => {
                 if (!material) return { order: index + 1 };
@@ -2217,10 +2247,11 @@ const handleShootedAtChange = (date: Date | null) => {
 
         // Prepare cast for submission: pre-create new members via API, then send castId (string) + order
         if (Array.isArray(clone.cast)) {
-            clone.cast = await Promise.all(
-                clone.cast.map(async (c: any) => {
-                    if (!c) return c;
-                    if (typeof c === "string") return { castId: c };
+            const processedCast: any[] = [];
+            for (let ci = 0; ci < clone.cast.length; ci++) {
+                const c = clone.cast[ci];
+                    if (!c) { processedCast.push(c); continue; }
+                    if (typeof c === "string") { processedCast.push({ castId: c }); continue; }
 
                     const socialLinks = (c.socialLinks || [])
                         .filter((l: any) => l && (l.platform || "").trim() && (l.url || "").trim())
@@ -2243,7 +2274,8 @@ const handleShootedAtChange = (date: Date | null) => {
 
                     // Existing member — send its Cast id via castId
                     if ((c.__existing || c._id || c.id) && (c._id || c.id)) {
-                        return { castId: c._id || c.id, order: Number(c.order) || 0 };
+                        processedCast.push({ castId: c._id || c.id, order: Number(c.order) || 0 });
+                        continue;
                     }
 
                     // New member — pre-create via API, then use returned _id as castId
@@ -2253,9 +2285,9 @@ const handleShootedAtChange = (date: Date | null) => {
                         photo: photo || undefined,
                         socialLinks: socialLinks.length ? socialLinks : undefined,
                     });
-                    return { castId: created._id, order: Number(c.order) || 0 };
-                })
-            );
+                    processedCast.push({ castId: created._id, order: Number(c.order) || 0 });
+            }
+            clone.cast = processedCast;
         }
 
         const submitData = {

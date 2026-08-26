@@ -808,6 +808,7 @@ const EditProject: React.FC = () => {
                 size: material.size,
                 thumbnail: primaryThumb,
                 type: "video",
+                _file: primaryItem?._file || (material as any)._file,
             });
         }
 
@@ -823,6 +824,7 @@ const EditProject: React.FC = () => {
                         size: item.size,
                         thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : item.thumbnail?.url,
                         type: "video",
+                        _file: item._file,
                     });
                 });
         }
@@ -1971,7 +1973,9 @@ const EditProject: React.FC = () => {
                 resourceType: "image" | "video",
                 fallbackFileName: string,
             ) => {
+                console.log("[uploadAssetIfNeeded]", { url: asset?.url?.substring(0, 50), hasFile: !!asset?._file, fileSize: asset?._file?.size, resourceType });
                 if (!asset?.url || !needsUpload(asset.url)) {
+                    console.log("[uploadAssetIfNeeded] SKIP - no upload needed");
                     return asset;
                 }
 
@@ -2001,8 +2005,35 @@ const EditProject: React.FC = () => {
             // fully-populated project with circular references that would make JSON.stringify throw.
             const { parentProject: _parentProject, ...cloneSource } = form;
 
+            // Preserve File references before deep-clone (JSON.stringify destroys them)
+            const fileRefs = new Map<string, File>();
+            if (Array.isArray(cloneSource.materials)) {
+                cloneSource.materials.forEach((m: any, mi: number) => {
+                    if (m?._file) fileRefs.set(`material:${mi}:_file`, m._file);
+                    if (Array.isArray(m?.items)) {
+                        m.items.forEach((it: any, ii: number) => {
+                            if (it?._file) fileRefs.set(`material:${mi}:item:${ii}:_file`, it._file);
+                        });
+                    }
+                });
+            }
+
             // Prepare data for submission (sanitize fields the server validation disallows)
             const clone = JSON.parse(JSON.stringify(cloneSource));
+
+            // Restore File references onto cloned materials
+            if (Array.isArray(clone.materials)) {
+                clone.materials.forEach((m: any, mi: number) => {
+                    const ref = fileRefs.get(`material:${mi}:_file`);
+                    if (ref) m._file = ref;
+                    if (Array.isArray(m?.items)) {
+                        m.items.forEach((it: any, ii: number) => {
+                            const ref = fileRefs.get(`material:${mi}:item:${ii}:_file`);
+                            if (ref) it._file = ref;
+                        });
+                    }
+                });
+            }
 
             if (clone.mainCover) {
                 console.log("[Submit] clone.mainCover keys:", Object.keys(clone.mainCover), "crop:", clone.mainCover.crop, "croppedUrl:", clone.mainCover.croppedUrl ? "present" : "absent");
@@ -2033,10 +2064,11 @@ const EditProject: React.FC = () => {
                 }
             }
 
-            // strip nested metadata from before/after sub-objects (server expects simple {url,label,type})
+            // Process materials sequentially to cap total concurrent uploads at PART_CONCURRENCY (3)
             if (Array.isArray(clone.materials)) {
-                clone.materials = await Promise.all(
-                    clone.materials.map(async (m: any, materialIndex: number) => {
+                const processedMaterials: any[] = [];
+                for (let materialIndex = 0; materialIndex < clone.materials.length; materialIndex++) {
+                    const m = clone.materials[materialIndex];
                         const copy: any = { ...m };
                         // keep existing material ids so the backend matches and updates them instead of re-creating
                         delete copy.id;
@@ -2052,6 +2084,7 @@ const EditProject: React.FC = () => {
                                 type: "video" as const,
                                 _file: (item as any)._file,
                             }));
+                            console.log("[EditProject] bulk video items:", normalizedVideoItems.map(i => ({ url: i.url?.substring(0,30), hasFile: !!i._file, size: i._file?.size })));
 
                             normalizedVideoItems = await runWithConcurrency(
                                 normalizedVideoItems, 3,
@@ -2231,9 +2264,9 @@ const EditProject: React.FC = () => {
                         if (copy.textContent) copy.textContent = toLocalizedString(copy.textContent);
                         if (copy.htmlContent) copy.htmlContent = toLocalizedString(copy.htmlContent);
 
-                        return copy;
-                    }),
-                );
+                        processedMaterials.push(copy);
+                }
+                clone.materials = processedMaterials;
 
                 clone.materials = clone.materials.map((material: any, index: number) => {
                     if (!material) return { order: index + 1 };
@@ -2265,10 +2298,11 @@ const EditProject: React.FC = () => {
             }
 
 if (Array.isArray(clone.cast)) {
-                clone.cast = await Promise.all(
-                    clone.cast.map(async (c: any) => {
-                        if (!c) return c;
-                        if (typeof c === "string") return { castId: c };
+                const processedCast: any[] = [];
+                for (let ci = 0; ci < clone.cast.length; ci++) {
+                    const c = clone.cast[ci];
+                        if (!c) { processedCast.push(c); continue; }
+                        if (typeof c === "string") { processedCast.push({ castId: c }); continue; }
 
                         const socialLinks = (c.socialLinks || [])
                             .filter((l: any) => l && (l.platform || "").trim() && (l.url || "").trim())
@@ -2290,7 +2324,8 @@ if (Array.isArray(clone.cast)) {
 
                         // Existing member — send its Cast id via castId
                         if (c._id || c.id) {
-                            return { castId: c._id || c.id, order: Number(c.order) || 0 };
+                            processedCast.push({ castId: c._id || c.id, order: Number(c.order) || 0 });
+                            continue;
                         }
 
                         // New member — pre-create via API, then use returned _id as castId
@@ -2300,9 +2335,9 @@ if (Array.isArray(clone.cast)) {
                             photo: photo || undefined,
                             socialLinks: socialLinks.length ? socialLinks : undefined,
                         });
-                        return { castId: created._id, order: Number(c.order) || 0 };
-                    })
-                );
+                        processedCast.push({ castId: created._id, order: Number(c.order) || 0 });
+                }
+                clone.cast = processedCast;
             }
 
             const submitData = {

@@ -4,6 +4,24 @@
         { "src": "api/**/*.js", "use": "@vercel/node" },
         { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
     ],
+    "env": {
+        "VITE_MULTIPART_URL": "https://r2-multipart-worker.sabergroup.workers.dev"
+    },
+    "headers": [
+        {
+            "source": "/ffmpeg-core.wasm",
+            "headers": [
+                { "key": "Content-Type", "value": "application/wasm" },
+                { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+            ]
+        },
+        {
+            "source": "/ffmpeg-core.js",
+            "headers": [
+                { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+            ]
+        }
+    ],
     "rewrites": [
         { "source": "/r2-proxy/(.*)", "destination": "https://upload.ats.sabergroup-eg.com/$1" }
     ],
@@ -13,7 +31,7 @@
         { "src": "^/assets/(.*)", "headers": { "cache-control": "public, max-age=31536000, immutable" }, "dest": "/assets/$1" },
         { "src": "^/favicon.ico$", "dest": "/favicon.ico" },
         { "src": "^/robots.txt$", "dest": "/robots.txt" },
-        { "src": "^/(.*)\\.(js|css|map|png|jpg|jpeg|svg|webp|gif|ico)$", "dest": "/$1.$2" },
+        { "src": "^/(.*)\\.(js|css|map|png|jpg|jpeg|svg|webp|gif|ico|wasm)$", "dest": "/$1.$2" },
         { "src": "^/(.*)$", "dest": "/index.html" }
     ]
 }

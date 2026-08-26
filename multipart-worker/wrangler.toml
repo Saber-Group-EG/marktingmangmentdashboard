@@ -1,0 +1,10 @@
+name = "r2-multipart-worker"
+main = "src/worker.js"
+compatibility_date = "2024-01-01"
+
+[[r2_buckets]]
+binding = "MY_BUCKET"
+bucket_name = "sabergroup-ats"
+
+[vars]
+PUBLIC_BUCKET_URL = "https://upload.ats.sabergroup-eg.com"  # user's existing R2 public domain
