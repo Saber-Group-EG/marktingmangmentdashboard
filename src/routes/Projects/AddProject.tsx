@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useProjectCompanies, useCreateProjectCompany } from "@/hooks/queries";
+import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useProjectCompanies, useCreateProjectCompany, projectsKeys } from "@/hooks/queries";
+import { useQueryClient } from "@tanstack/react-query";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
@@ -357,6 +358,7 @@ const AddProject: React.FC = () => {
     };
     
     const mutation = useCreateProject();
+    const queryClient = useQueryClient();
     // Replace useProjectCategories with useCategories
     const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading } = useCategories({ type: "project" });
     const projectCategories = projectCategoriesResponse?.categories || [];
@@ -1300,7 +1302,7 @@ const AddProject: React.FC = () => {
 
                         setEditingMaterial((prev) => {
                             if (!prev || (prev.type !== "video" && prev.type !== "bulk")) return prev;
-                            const existingItems = prev.type === "bulk" ? buildVideoItems(prev) : [];
+                            const existingItems = buildVideoItems(prev);
                             const items = [...existingItems, ...uploadedItems];
                             const primary = items[0];
                             return {
@@ -1651,6 +1653,7 @@ const AddProject: React.FC = () => {
                 cast: prev.cast.map((c: Cast, i: number) => (i === editingCastIndex ? { ...c, ...editingCast } : c)),
             }));
             setEditingCast(null);
+            queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
             return;
         }
 
@@ -1683,6 +1686,7 @@ const AddProject: React.FC = () => {
             setSelectedExistingCast([]);
             setNewMembersRows([]);
             setEditingCast(null);
+            queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
             return;
         }
 
@@ -1692,6 +1696,7 @@ const AddProject: React.FC = () => {
             cast: [...prev.cast, { ...editingCast, order: prev.cast.length + 1 }],
         }));
         setEditingCast(null);
+        queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
     };
 
     const handleDeleteCast = (castIndex: number) => {
