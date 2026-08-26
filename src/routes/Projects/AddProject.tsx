@@ -2448,7 +2448,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.cast.length}</div>
                             </div>
                             <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Categories")}</div>
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Sectors")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.categories.length}</div>
                             </div>
                         </div>
@@ -2745,7 +2745,7 @@ const handleShootedAtChange = (date: Date | null) => {
         </div>
 
                             <div className="card p-6">
-                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("categories_and_tags", "Categories & Tags")}</h2>
+                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("categories_and_tags", "Sectors & Tags")}</h2>
                                 <div className="space-y-6">
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
@@ -2849,7 +2849,7 @@ const handleShootedAtChange = (date: Date | null) => {
 
                                     <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            {tr("categories_label", "Categories")}
+                                            {tr("categories_label", "Sectors")}
                                         </label>
                                         <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("categories_hint", "The field or industry that the project or client belongs to")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
@@ -2873,9 +2873,9 @@ const handleShootedAtChange = (date: Date | null) => {
                                             }}
                                             className="input w-full mb-2"
                                         >
-                                            <option value="">{tr("select_existing_category", "Select existing category...")}</option>
+                                            <option value="">{tr("select_existing_category", "Select existing sector...")}</option>
                                             {projectCategoriesLoading ? (
-                                                <option value="" disabled>{tr("loading_categories", "Loading categories...")}</option>
+                                                <option value="" disabled>{tr("loading_categories", "Loading sectors...")}</option>
                                             ) : (
                                                 projectCategories.map((c: any, idx: number) => (
                                                     <option key={idx} value={idx}>{getOptionLabel(c)}</option>
@@ -2891,7 +2891,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_category_en", "Add the category (EN)...")}
+                                                    placeholder={tr("add_category_en", "Add the sector (EN)...")}
                                                 />
                                                 <div className="mt-1">
                                                     <TranslateButton onClick={catEnToAr.translate} isTranslating={catEnToAr.isTranslating} disabled={!newCategory.trim()} />
@@ -2906,7 +2906,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_category_ar", "Add the category (AR)...")}
+                                                    placeholder={tr("add_category_ar", "Add the sector (AR)...")}
                                                 />
                                                 <div className="mt-1">
                                                     <TranslateButton onClick={catArToEn.translate} isTranslating={catArToEn.isTranslating} disabled={!newCategoryAr.trim()} label="Translate to EN" />

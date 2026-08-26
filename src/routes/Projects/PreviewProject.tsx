@@ -874,16 +874,16 @@ const ProjectDetails: React.FC = () => {
                
 
                 {/* Section: Categories & Tags */}
-                <Section id="categories" title={tr("categories_and_tags", "Categories & Tags")} icon={Tag}>
+                <Section id="categories" title={tr("categories_and_tags", "Sectors & Tags")} icon={Tag}>
                     <div className="space-y-6">
                         <div>
-                            <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">{tr("categories_label", "Categories")}</h3>
+                            <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">{tr("categories_label", "Sectors")}</h3>
                             <div className="flex flex-wrap gap-2">
                                 {p.categories?.map((cat: any, idx: number) => (
                                     <span key={getOptionKey(cat, idx)} className="px-3 py-1.5 bg-light-500 text-white dark:bg-secdark-700 dark:text-white rounded-lg text-sm">
                                         <BilingualText value={cat?.name || cat} size="sm" className="text-white [&>span]:text-white/70" />
                                     </span>
-                                )) || <span className="text-light-400 dark:text-dark-500">{tr("no_categories", "No categories")}</span>}
+                                )) || <span className="text-light-400 dark:text-dark-500">{tr("no_categories", "No sectors")}</span>}
                             </div>
                         </div>
                         <div>
@@ -981,7 +981,7 @@ const ProjectDetails: React.FC = () => {
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
                             <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{p.categories?.length || 0}</div>
-                            <div className="text-xs text-light-600 dark:text-dark-400">{tr("categories_label", "Categories")}</div>
+                            <div className="text-xs text-light-600 dark:text-dark-400">{tr("categories_label", "Sectors")}</div>
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
                             <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{p.tags?.length || 0}</div>
