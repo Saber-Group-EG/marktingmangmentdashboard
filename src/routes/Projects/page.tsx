@@ -157,7 +157,10 @@ const ProjectsPage: React.FC = () => {
         const sorted = [...projects].sort(
             (a: any, b: any) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
         );
-        setOrderedProjects(sorted);
+        setOrderedProjects((prev) => {
+            if (prev.length === sorted.length && prev.every((p: any, i: number) => getProjectId(p) === getProjectId(sorted[i]))) return prev;
+            return sorted;
+        });
     }, [projects]);
 
     useEffect(() => {

@@ -3558,10 +3558,10 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     {showCoverPicker && (
                                                         <div className="absolute right-0 top-full mt-1 z-50 w-80 max-h-96 overflow-auto rounded-xl border border-light-200 dark:border-dark-700 bg-white dark:bg-dark-900 shadow-xl p-3">
                                                             <div className="text-xs font-semibold text-light-500 dark:text-dark-400 mb-2">{tr("select_photo_from_materials", "Select a photo from your materials")}</div>
-                                                            {(() => {
+                                                             {(() => {
                                                                 const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
                                                                 form.materials.forEach((m: any) => {
-                                                                    if (m.type === "video") return;
+                                                                    if (m.type === "video" || (m.type === "bulk" && isVideoBulkType(m))) return;
                                                                     buildPhotoItems(m).forEach((item) => {
                                                                         if (item.url) allPhotos.push(item);
                                                                     });
@@ -3696,14 +3696,14 @@ const handleShootedAtChange = (date: Date | null) => {
                                                 {showCoverPicker && (
                                                     <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 w-80 max-h-96 overflow-auto rounded-xl border border-light-200 dark:border-dark-700 bg-white dark:bg-dark-900 shadow-xl p-3">
                                                         <div className="text-xs font-semibold text-light-500 dark:text-dark-400 mb-2">{tr("select_photo_from_materials", "Select a photo from your materials")}</div>
-                                                        {(() => {
-                                                            const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
-                                                            form.materials.forEach((m: any) => {
-                                                                if (m.type === "video") return;
-                                                                buildPhotoItems(m).forEach((item) => {
-                                                                    if (item.url) allPhotos.push(item);
-                                                                });
-                                                            });
+                                                         {(() => {
+                                                             const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
+                                                             form.materials.forEach((m: any) => {
+                                                                 if (m.type === "video" || (m.type === "bulk" && isVideoBulkType(m))) return;
+                                                                 buildPhotoItems(m).forEach((item) => {
+                                                                     if (item.url) allPhotos.push(item);
+                                                                 });
+                                                             });
                                                             if (allPhotos.length === 0) return <div className="text-sm text-light-500 dark:text-dark-400 py-2">{tr("no_photos_available", "No photos in materials yet")}</div>;
                                                             return (
                                                                 <div className="grid grid-cols-3 gap-2">

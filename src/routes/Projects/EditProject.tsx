@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { showAlert } from "@/utils/swal";
+import { showAlert, showConfirm } from "@/utils/swal";
 
 interface Material {
   _id?: string;
@@ -421,7 +421,6 @@ const EditProject: React.FC = () => {
     const [newCompanyAr, setNewCompanyAr] = useState("");
     const [newCompanyField, setNewCompanyField] = useState("");
     const [newCompanyLogo, setNewCompanyLogo] = useState("");
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -2461,8 +2460,10 @@ if (Array.isArray(clone.cast)) {
         }
     };
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
         if (!id) return;
+        const confirmed = await showConfirm(tr("are_you_sure_delete", "Are you sure you want to delete this project?"), tr("yes_delete", "Yes, Delete"), tr("cancel", "Cancel"));
+        if (!confirmed) return;
         del.mutate(id, {
             onSuccess: () => navigate("/projects"),
         });
@@ -3549,14 +3550,14 @@ if (Array.isArray(clone.cast)) {
                                                     {showCoverPicker && (
                                                         <div className="absolute right-0 top-full mt-1 z-50 w-80 max-h-96 overflow-auto rounded-xl border border-light-200 dark:border-dark-700 bg-white dark:bg-dark-900 shadow-xl p-3">
                                                             <div className="text-xs font-semibold text-light-500 dark:text-dark-400 mb-2">{tr("select_photo_from_materials", "Select a photo from your materials")}</div>
-                                                            {(() => {
-                                                                const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
-                                                                form.materials.forEach((m: any) => {
-                                                                    if (m.type === "video") return;
-                                                                    buildPhotoItems(m).forEach((item) => {
-                                                                        if (item.url) allPhotos.push(item);
-                                                                    });
-                                                                });
+                                                             {(() => {
+                                                                 const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
+                                                                 form.materials.forEach((m: any) => {
+                                                                     if (m.type === "video" || (m.type === "bulk" && isVideoBulkType(m))) return;
+                                                                     buildPhotoItems(m).forEach((item) => {
+                                                                         if (item.url) allPhotos.push(item);
+                                                                     });
+                                                                 });
                                                                 if (allPhotos.length === 0) return <div className="text-sm text-light-500 dark:text-dark-400 py-2">{tr("no_photos_available", "No photos in materials yet")}</div>;
                                                                 return (
                                                                     <div className="grid grid-cols-3 gap-2">
@@ -3725,14 +3726,14 @@ if (Array.isArray(clone.cast)) {
                                                 {showCoverPicker && (
                                                     <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 w-80 max-h-96 overflow-auto rounded-xl border border-light-200 dark:border-dark-700 bg-white dark:bg-dark-900 shadow-xl p-3">
                                                         <div className="text-xs font-semibold text-light-500 dark:text-dark-400 mb-2">{tr("select_photo_from_materials", "Select a photo from your materials")}</div>
-                                                        {(() => {
-                                                            const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
-                                                            form.materials.forEach((m: any) => {
-                                                                if (m.type === "video") return;
-                                                                buildPhotoItems(m).forEach((item) => {
-                                                                    if (item.url) allPhotos.push(item);
-                                                                });
-                                                            });
+                                                         {(() => {
+                                                             const allPhotos: { url: string; mimeType?: string; originalName?: string; size?: number }[] = [];
+                                                             form.materials.forEach((m: any) => {
+                                                                 if (m.type === "video" || (m.type === "bulk" && isVideoBulkType(m))) return;
+                                                                 buildPhotoItems(m).forEach((item) => {
+                                                                     if (item.url) allPhotos.push(item);
+                                                                 });
+                                                             });
                                                             if (allPhotos.length === 0) return <div className="text-sm text-light-500 dark:text-dark-400 py-2">{tr("no_photos_available", "No photos in materials yet")}</div>;
                                                             return (
                                                                 <div className="grid grid-cols-3 gap-2">
@@ -3784,38 +3785,15 @@ if (Array.isArray(clone.cast)) {
                     {/* Action Buttons */}
                     <div className="flex items-center justify-between gap-4 pt-8 mt-8 border-t border-light-200 dark:border-dark-800">
                         <div>
-                            {!showDeleteConfirm ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setShowDeleteConfirm(true)}
-                                    className="btn-danger inline-flex items-center gap-2"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    {tr("delete_project", "Delete Project")}
-                                </button>
-                            ) : (
-                                <div className="flex items-center gap-3">
-                                    <span className="text-sm text-danger-600 dark:text-danger-400">
-                                        {tr("are_you_sure", "Are you sure?")}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={handleDelete}
-                                        disabled={del.isPending}
-                                        className="btn-danger inline-flex items-center gap-2"
-                                    >
-                                        {del.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                                        {tr("yes_delete", "Yes, Delete")}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowDeleteConfirm(false)}
-                                        className="btn-ghost"
-                                    >
-                                        {tr("cancel", "Cancel")}
-                                    </button>
-                                </div>
-                            )}
+                            <button
+                                type="button"
+                                onClick={handleDelete}
+                                disabled={del.isPending}
+                                className="btn-danger inline-flex items-center gap-2"
+                            >
+                                {del.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                {tr("delete_project", "Delete Project")}
+                            </button>
                         </div>
 
                         <div className="flex items-center gap-3">
