@@ -109,12 +109,13 @@ type SortableVideoItemProps = {
     onThumbnailUpload: (index: number, file: File) => void;
     onRemoveThumbnail: (index: number) => void;
     onFrameSelect: (index: number, dataUrl: string) => void;
+    onFrameSelectForCover: (dataUrl: string) => void;
     removeLabel: string;
     materialCaption?: any;
     materialDescription?: any;
 };
 
-const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: string) => void; onClose: () => void }> = ({ videoUrl, onSelect, onClose }) => {
+const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: string) => void; onSelectForCover?: (dataUrl: string) => void; onClose: () => void }> = ({ videoUrl, onSelect, onSelectForCover, onClose }) => {
     const videoRef = React.useRef<HTMLVideoElement>(null);
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
     const [currentTime, setCurrentTime] = React.useState(0);
@@ -212,13 +213,50 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
                                 const ctx = canvas.getContext("2d");
                                 if (!ctx) return;
                                 ctx.drawImage(video, 0, 0, w, h);
+                                onSelectForCover?.(canvas.toDataURL("image/jpeg", 0.85));
+                            }}
+                            className="px-4 sm:px-5 py-2 sm:py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center gap-2"
+                        >
+                            <Camera className="w-4 h-4" />
+                            <span className="hidden sm:inline">Capture for Main Cover</span>
+                            <span className="sm:hidden">Cover</span>
+                        </button>
+                        <button
+                            onClick={async () => {
+                                const video = videoRef.current;
+                                if (!video) return;
+                                const time = video.currentTime;
+                                if (!video.videoWidth || !video.videoHeight) {
+                                    try {
+                                        await video.play();
+                                        await new Promise((r) => setTimeout(r, 200));
+                                        video.pause();
+                                        video.currentTime = time;
+                                        await new Promise((r) => {
+                                            const handler = () => { video.removeEventListener("seeked", handler); r(null); };
+                                            video.addEventListener("seeked", handler);
+                                            setTimeout(r, 1000);
+                                        });
+                                        await new Promise((r) => setTimeout(r, 100));
+                                    } catch { /* ignore */ }
+                                }
+                                const w = video.videoWidth;
+                                const h = video.videoHeight;
+                                if (!w || !h) return;
+                                const canvas = canvasRef.current || document.createElement("canvas");
+                                canvasRef.current = canvas;
+                                canvas.width = w;
+                                canvas.height = h;
+                                const ctx = canvas.getContext("2d");
+                                if (!ctx) return;
+                                ctx.drawImage(video, 0, 0, w, h);
                                 onSelect(canvas.toDataURL("image/jpeg", 0.85));
                             }}
                             className="px-4 sm:px-5 py-2 sm:py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center gap-2"
                         >
                             <Camera className="w-4 h-4" />
-                            <span className="hidden sm:inline">Capture This Frame</span>
-                            <span className="sm:hidden">Capture</span>
+                            <span className="hidden sm:inline">Capture for Thumbnail</span>
+                            <span className="sm:hidden">Thumbnail</span>
                         </button>
                     </div>
                 </div>
@@ -227,7 +265,7 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
     );
 };
 
-const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRemove, onThumbnailUpload, onRemoveThumbnail, onFrameSelect, removeLabel, materialCaption, materialDescription }) => {
+const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRemove, onThumbnailUpload, onRemoveThumbnail, onFrameSelect, onFrameSelectForCover, removeLabel, materialCaption, materialDescription }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
     const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
     const thumbUrl = item.thumbnail || undefined;
@@ -271,7 +309,7 @@ const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRe
             </button>
         </div>
         {showFrameSelector && (
-            <VideoFrameSelector videoUrl={item.url} onSelect={(dataUrl) => { onFrameSelect(index, dataUrl); setShowFrameSelector(false); }} onClose={() => setShowFrameSelector(false)} />
+            <VideoFrameSelector videoUrl={item.url} onSelect={(dataUrl) => { onFrameSelect(index, dataUrl); setShowFrameSelector(false); }} onSelectForCover={(dataUrl) => { onFrameSelectForCover(dataUrl); setShowFrameSelector(false); }} onClose={() => setShowFrameSelector(false)} />
         )}
         </>
     );
@@ -1394,6 +1432,43 @@ const AddProject: React.FC = () => {
         });
     };
 
+    const handleCaptureFrameForCover = (dataUrl: string) => {
+        setForm((prev: any) => ({
+            ...prev,
+            mainCover: {
+                url: dataUrl,
+                mimeType: "image/jpeg",
+                originalName: "frame-from-video",
+                size: 0,
+            },
+        }));
+        showAlert(tr("imported_to_cover", "Frame imported as main cover"), "success");
+    };
+
+    const handleResetProject = () => {
+        localStorage.removeItem(STORAGE_KEY);
+        setForm({
+            name: { ar: "", en: "" },
+            description: { ar: "", en: "" },
+            location: { ar: "", en: "" },
+            published: false,
+            categories: [],
+            tags: [],
+            types: [],
+            publishAt: null,
+            shootedAt: null,
+            parentProject: null,
+            company: null,
+            materials: [],
+            cast: [],
+            mainCover: null,
+        });
+        setEditingMaterial(null);
+        setEditingMaterialIndex(null);
+        setSaveStatus("idle");
+        showAlert(tr("project_reset", "Project data has been cleared"), "success");
+    };
+
     const handleVideoItemReorder = (newItems: VideoMaterialItem[]) => {
         setEditingMaterial((prev) => {
             if (!prev || (prev.type !== "video" && prev.type !== "bulk")) return prev;
@@ -2409,6 +2484,10 @@ const handleShootedAtChange = (date: Date | null) => {
                                     <ArrowLeft className="w-4 h-4" />
                                     {tr("back", "Back")}
                                 </Link>
+                                <button type="button" onClick={handleResetProject} className="btn-ghost inline-flex items-center gap-2 text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-950/30">
+                                    <Trash2 className="w-4 h-4" />
+                                    {tr("reset_project", "Reset Project")}
+                                </button>
                             </div>
                         </div>
 
@@ -3923,7 +4002,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     <SortableContext items={videoItems.map((it, i) => `${it.originalName || it.url}-${i}`)} strategy={verticalListSortingStrategy}>
                                                         <div className="space-y-2">
                                                             {videoItems.map((item, itemIndex) => (
-                                                                <SortableVideoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemoveVideoItem} onThumbnailUpload={handleVideoItemThumbnailUpload} onRemoveThumbnail={handleRemoveVideoItemThumbnail} onFrameSelect={handleVideoItemFrameSelect} removeLabel={tr("remove_video", "Remove video")} materialCaption={localizedToString(editingMaterial?.caption)} materialDescription={localizedToString(editingMaterial?.description)} />
+                                                                <SortableVideoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemoveVideoItem} onThumbnailUpload={handleVideoItemThumbnailUpload} onRemoveThumbnail={handleRemoveVideoItemThumbnail} onFrameSelect={handleVideoItemFrameSelect} onFrameSelectForCover={handleCaptureFrameForCover} removeLabel={tr("remove_video", "Remove video")} materialCaption={localizedToString(editingMaterial?.caption)} materialDescription={localizedToString(editingMaterial?.description)} />
                                                             ))}
                                                         </div>
                                                     </SortableContext>
