@@ -932,6 +932,41 @@ const AddProject: React.FC = () => {
     };
 
     // Tag Management
+    const existingTags = React.useMemo(() => {
+        const tagSet = new Set<string>();
+        (allProjects || []).forEach((p: any) => {
+            (p.tags || []).forEach((t: any) => {
+                const label = getOptionLabel(t);
+                if (label) tagSet.add(label.toLowerCase());
+            });
+        });
+        const tags: { en: string; ar: string }[] = [];
+        tagSet.forEach((label) => {
+            (allProjects || []).forEach((p: any) => {
+                (p.tags || []).forEach((t: any) => {
+                    const l = getOptionLabel(t);
+                    if (l && l.toLowerCase() === label) {
+                        const existing = tags.find((x) => x.en.toLowerCase() === label);
+                        if (!existing) {
+                            tags.push(typeof t === "object" && t.en ? { en: t.en, ar: t.ar || "" } : { en: l, ar: "" });
+                        }
+                    }
+                });
+            });
+        });
+        return tags.sort((a, b) => a.en.localeCompare(b.en));
+    }, [allProjects]);
+
+    const handleSelectExistingTag = (enValue: string) => {
+        if (!enValue) return;
+        const tag = existingTags.find((t) => t.en === enValue);
+        if (!tag) return;
+        const alreadyAdded = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === tag.en.toLowerCase());
+        if (!alreadyAdded) {
+            setForm({ ...form, tags: [...form.tags, tag.ar ? tag : tag.en] });
+        }
+    };
+
     const handleAddTag = () => {
         const next = newTag.trim();
         const ar = newTagAr.trim();
@@ -3016,6 +3051,22 @@ const handleShootedAtChange = (date: Date | null) => {
                                                 </span>
                                             ))}
                                         </div>
+                                        <Autocomplete
+                                            options={existingTags}
+                                            getOptionLabel={(opt) => opt.ar ? `${opt.en} / ${opt.ar}` : opt.en}
+                                            isOptionEqualToValue={(opt, val) => opt.en === val.en}
+                                            value={null}
+                                            onChange={(_e, val) => {
+                                                if (val) handleSelectExistingTag(val.en);
+                                            }}
+                                            renderInput={(params) => (
+                                                <TextField {...params} placeholder={tr("select_existing_tag", "Search existing tags...")} size="small" />
+                                            )}
+                                            sx={taxonomyAutocompleteSx}
+                                            slotProps={taxonomyAutocompleteSlotProps}
+                                            size="small"
+                                            className="mb-2"
+                                        />
                                         <div className="flex gap-2">
                                             <div className="flex-1">
                                                 <input
