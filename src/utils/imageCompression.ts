@@ -10,14 +10,26 @@ const DEFAULT_MAX_DIMENSION = 1600;
 const DEFAULT_MIN_DIMENSION = 120;
 const DEFAULT_SCALE_FACTOR = 0.82;
 const QUALITY_STEPS = [0.86, 0.78, 0.7, 0.62, 0.54, 0.46, 0.38, 0.3, 0.24, 0.2];
-const OUTPUT_MIME_TYPES = ["image/webp", "image/jpeg", "image/png"] as const;
-
 const stripExtension = (fileName: string): string => fileName.replace(/\.[^/.]+$/, "");
+
+const getFileExtension = (mimeType: string): string => {
+    switch (mimeType) {
+        case "image/png":
+            return "png";
+        case "image/gif":
+            return "gif";
+        case "image/webp":
+            return "webp";
+        case "image/jpeg":
+        default:
+            return "jpg";
+    }
+};
 
 const getCompressedFileName = (fileName: string, mimeType: string): string => {
     const base = stripExtension(fileName) || "image";
-    const extension = mimeType === "image/webp" ? "webp" : mimeType === "image/png" ? "png" : "jpg";
-    return `${base}_thumb.${extension}`;
+    const extension = getFileExtension(mimeType);
+    return `${base}.${extension}`;
 };
 
 const loadImageFromFile = (file: File): Promise<HTMLImageElement> =>
@@ -70,8 +82,9 @@ export const compressImageFileToMaxBytes = async (file: File, options: CompressI
         return file;
     }
 
+    const originalMimeType = file.type;
+
     let bestBlob: Blob | null = null;
-    let bestMimeType: typeof OUTPUT_MIME_TYPES[number] = OUTPUT_MIME_TYPES[0];
 
     for (let attempt = 0; attempt < 10; attempt += 1) {
         canvas.width = Math.max(1, width);
@@ -79,22 +92,19 @@ export const compressImageFileToMaxBytes = async (file: File, options: CompressI
         context.clearRect(0, 0, canvas.width, canvas.height);
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-        for (const mimeType of OUTPUT_MIME_TYPES) {
-            for (const quality of QUALITY_STEPS) {
-                const blob = await canvasToBlob(canvas, mimeType, quality);
-                if (!blob) continue;
+        for (const quality of QUALITY_STEPS) {
+            const blob = await canvasToBlob(canvas, originalMimeType, quality);
+            if (!blob) continue;
 
-                if (!bestBlob || blob.size < bestBlob.size) {
-                    bestBlob = blob;
-                    bestMimeType = mimeType;
-                }
+            if (!bestBlob || blob.size < bestBlob.size) {
+                bestBlob = blob;
+            }
 
-                if (blob.size <= maxBytes) {
-                    return new File([blob], getCompressedFileName(file.name, mimeType), {
-                        type: mimeType,
-                        lastModified: Date.now(),
-                    });
-                }
+            if (blob.size <= maxBytes) {
+                return new File([blob], getCompressedFileName(file.name, originalMimeType), {
+                    type: originalMimeType,
+                    lastModified: Date.now(),
+                });
             }
         }
 
@@ -107,8 +117,8 @@ export const compressImageFileToMaxBytes = async (file: File, options: CompressI
     }
 
     if (bestBlob) {
-        return new File([bestBlob], getCompressedFileName(file.name, bestMimeType), {
-            type: bestMimeType,
+        return new File([bestBlob], getCompressedFileName(file.name, originalMimeType), {
+            type: originalMimeType,
             lastModified: Date.now(),
         });
     }

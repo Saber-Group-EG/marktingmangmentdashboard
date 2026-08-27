@@ -11,7 +11,7 @@ import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency } from "@/utils/r2Upload";
-import { compressImageFileToMaxBytes } from "@/utils/imageCompression";
+
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
 import { createCast } from "@/api/requests/castService";
@@ -81,7 +81,6 @@ interface Cast {
     photo?: any;
 }
 
-const MAX_PHOTO_THUMBNAIL_BYTES = 50 * 1024;
 const EDIT_STORAGE_KEY_PREFIX = "editproject_draft_";
 
 type PhotoItem = { url: string; mimeType?: string; size?: number; originalName?: string; type?: string };
@@ -1302,15 +1301,11 @@ const EditProject: React.FC = () => {
                     if (editingMaterial.type === "photo") {
                         const uploadedItems: PhotoMaterialItem[] = await Promise.all(
                             files.map(async (file) => {
-                                const optimizedFile = await compressImageFileToMaxBytes(file, {
-                                    maxBytes: MAX_PHOTO_THUMBNAIL_BYTES,
-                                });
-
                                 return {
-                                    url: await readFileAsDataUrl(optimizedFile),
-                                    mimeType: optimizedFile.type || file.type,
-                                    size: optimizedFile.size || file.size,
-                                    originalName: optimizedFile.name || file.name,
+                                    url: await readFileAsDataUrl(file),
+                                    mimeType: file.type,
+                                    size: file.size,
+                                    originalName: file.name,
                                     type: "photo" as const,
                                 };
                             })
