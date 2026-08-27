@@ -23,6 +23,8 @@ export interface Project {
   cast?: CastMember[];
   // Main cover/hero media
   mainCover?: CoverMedia;
+  // Full main cover (original image before crop)
+  fullMainCover?: CoverMedia;
   // Soft-delete flag
   deleted?: boolean;
   // Mongoose version key (if present)

@@ -2112,6 +2112,17 @@ const handleShootedAtChange = (date: Date | null) => {
             };
         };
 
+        // upload full main cover (original image before crop)
+        if (clone.mainCover) {
+            const fullCoverSource = form.mainCover?.url || clone.mainCover.url;
+            const uploadedFullCover = await uploadAssetIfNeeded(
+                { url: fullCoverSource, mimeType: clone.mainCover.mimeType, originalName: clone.mainCover.originalName, size: clone.mainCover.size },
+                "image",
+                clone.mainCover.originalName || `full-main-cover-${Date.now()}.jpg`,
+            );
+            clone.fullMainCover = uploadedFullCover;
+        }
+
         // upload main cover if needed
         if (clone.mainCover) {
             const coverUploadSource = clone.mainCover.croppedUrl || clone.mainCover.url;
@@ -2419,6 +2430,7 @@ const handleShootedAtChange = (date: Date | null) => {
             material: clone.materials,
             cast: clone.cast,
             mainCover: clone.mainCover,
+            fullMainCover: clone.fullMainCover,
             parentProject: getOptionValue(clone.parentProject) || undefined,
             company: getOptionValue(clone.company) || undefined,
         };
