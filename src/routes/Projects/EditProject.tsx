@@ -363,9 +363,9 @@ const EditProject: React.FC = () => {
     const del = useDeleteProject();
     const queryClient = useQueryClient();
     // Replace useProjectCategories with useCategories
-    const { data: projectCategoriesResponse, isLoading: projectCategoriesLoading } = useCategories({ type: "project" });
+    const { data: projectCategoriesResponse } = useCategories({ type: "project" });
     const projectCategories = projectCategoriesResponse?.categories || [];
-    const { data: projectTypes = [], isLoading: projectTypesLoading } = useProjectTypes();
+    const { data: projectTypes = [] } = useProjectTypes();
     const { data: projectCompanies = [] } = useProjectCompanies();
 
     const [form, setForm] = useState<any>(() => {
@@ -416,8 +416,10 @@ const EditProject: React.FC = () => {
     const [newCategoryAr, setNewCategoryAr] = useState("");
     const [newType, setNewType] = useState("");
     const [newTypeAr, setNewTypeAr] = useState("");
-    const [selectedExistingCategory, setSelectedExistingCategory] = useState("");
-    const [selectedExistingType, setSelectedExistingType] = useState("");
+    const [catAutocompleteKey, setCatAutocompleteKey] = useState(0);
+    const [typeAutocompleteKey, setTypeAutocompleteKey] = useState(0);
+    const [tagAutocompleteKey, setTagAutocompleteKey] = useState(0);
+    const [validationErrors, setValidationErrors] = useState<{ tags?: string; categories?: string; types?: string }>({});
     const [newCompanyEn, setNewCompanyEn] = useState("");
     const [newCompanyAr, setNewCompanyAr] = useState("");
     const [newCompanyField, setNewCompanyField] = useState("");
@@ -516,14 +518,14 @@ const EditProject: React.FC = () => {
     const descArToEn = useAutoTranslatePair(form.description?.ar || "", form.description?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, description: { ...prev.description, en: t } })));
     const locEnToAr = useAutoTranslatePair(form.location?.en || "", form.location?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, location: { ...prev.location, ar: t } })));
     const locArToEn = useAutoTranslatePair(form.location?.ar || "", form.location?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, location: { ...prev.location, en: t } })));
+    const companyEnToAr = useAutoTranslatePair(newCompanyEn, newCompanyAr, "ar", setNewCompanyAr);
+    const companyArToEn = useAutoTranslatePair(newCompanyAr, newCompanyEn, "en", setNewCompanyEn);
     const tagEnToAr = useAutoTranslatePair(newTag, newTagAr, "ar", setNewTagAr);
     const tagArToEn = useAutoTranslatePair(newTagAr, newTag, "en", setNewTag);
     const catEnToAr = useAutoTranslatePair(newCategory, newCategoryAr, "ar", setNewCategoryAr);
     const catArToEn = useAutoTranslatePair(newCategoryAr, newCategory, "en", setNewCategory);
     const typeEnToAr = useAutoTranslatePair(newType, newTypeAr, "ar", setNewTypeAr);
     const typeArToEn = useAutoTranslatePair(newTypeAr, newType, "en", setNewType);
-    const companyEnToAr = useAutoTranslatePair(newCompanyEn, newCompanyAr, "ar", setNewCompanyAr);
-    const companyArToEn = useAutoTranslatePair(newCompanyAr, newCompanyEn, "en", setNewCompanyEn);
     const matCaptionEnToAr = useAutoTranslatePair(editingMaterial?.caption?.en || "", editingMaterial?.caption?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, caption: { ...prev.caption, ar: t } } : prev)));
     const matCaptionArToEn = useAutoTranslatePair(editingMaterial?.caption?.ar || "", editingMaterial?.caption?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, caption: { ...prev.caption, en: t } } : prev)));
     const matTextEnToAr = useAutoTranslatePair(stripHtml(editingMaterial?.textContent?.en || ""), editingMaterial?.textContent?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, textContent: { ...prev.textContent, ar: t } } : prev)));
@@ -1114,16 +1116,33 @@ const EditProject: React.FC = () => {
     };
 
     const handleAddTag = () => {
-        const next = newTag.trim();
-        const ar = newTagAr.trim();
-        if (!next) return;
-        const exists = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === next.toLowerCase());
-        if (exists) {
-            setNewTag("");
-            setNewTagAr("");
+        const enInput = newTag.trim();
+        const arInput = newTagAr.trim();
+        if (!enInput) return;
+        const enParts = enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+        const arParts = arInput ? arInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
+        if (arParts.length === 0) {
+            setValidationErrors((prev) => ({ ...prev, tags: "Arabic translations are required for all tags" }));
             return;
         }
-        setForm({ ...form, tags: [...form.tags, ar ? makeLocalizedName(next, ar) : next] });
+        if (enParts.length !== arParts.length) {
+            setValidationErrors((prev) => ({ ...prev, tags: `Count mismatch: ${enParts.length} EN items but ${arParts.length} AR items` }));
+            return;
+        }
+        setValidationErrors((prev) => ({ ...prev, tags: undefined }));
+        const newTags: any[] = [];
+        for (let i = 0; i < enParts.length; i++) {
+            const en = enParts[i];
+            const ar = arParts[i];
+            if (!en || !ar) continue;
+            const exists = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            const alreadyAdded = newTags.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            if (exists || alreadyAdded) continue;
+            newTags.push(makeLocalizedName(en, ar));
+        }
+        if (newTags.length > 0) {
+            setForm({ ...form, tags: [...form.tags, ...newTags] });
+        }
         setNewTag("");
         setNewTagAr("");
     };
@@ -1141,31 +1160,65 @@ const EditProject: React.FC = () => {
     };
 
     const handleAddCategory = () => {
-        const next = newCategory.trim();
-        const ar = newCategoryAr.trim();
-        if (!next) return;
-        const exists = form.categories.some((c: any) => getOptionLabel(c).toLowerCase() === next.toLowerCase());
-        if (exists) {
-            setNewCategory("");
-            setNewCategoryAr("");
+        const enInput = newCategory.trim();
+        const arInput = newCategoryAr.trim();
+        if (!enInput) return;
+        const enParts = enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+        const arParts = arInput ? arInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
+        if (arParts.length === 0) {
+            setValidationErrors((prev) => ({ ...prev, categories: "Arabic translations are required for all sectors" }));
             return;
         }
-        setForm({ ...form, categories: [...form.categories, { en: next, ar }] });
+        if (enParts.length !== arParts.length) {
+            setValidationErrors((prev) => ({ ...prev, categories: `Count mismatch: ${enParts.length} EN items but ${arParts.length} AR items` }));
+            return;
+        }
+        setValidationErrors((prev) => ({ ...prev, categories: undefined }));
+        const newCats: any[] = [];
+        for (let i = 0; i < enParts.length; i++) {
+            const en = enParts[i];
+            const ar = arParts[i];
+            if (!en || !ar) continue;
+            const exists = form.categories.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
+            const alreadyAdded = newCats.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
+            if (exists || alreadyAdded) continue;
+            newCats.push({ en, ar });
+        }
+        if (newCats.length > 0) {
+            setForm({ ...form, categories: [...form.categories, ...newCats] });
+        }
         setNewCategory("");
         setNewCategoryAr("");
     };
 
     const handleAddType = () => {
-        const next = newType.trim();
-        const ar = newTypeAr.trim();
-        if (!next) return;
-        const exists = form.types.some((t: any) => getOptionLabel(t).toLowerCase() === next.toLowerCase());
-        if (exists) {
-            setNewType("");
-            setNewTypeAr("");
+        const enInput = newType.trim();
+        const arInput = newTypeAr.trim();
+        if (!enInput) return;
+        const enParts = enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+        const arParts = arInput ? arInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
+        if (arParts.length === 0) {
+            setValidationErrors((prev) => ({ ...prev, types: "Arabic translations are required for all types" }));
             return;
         }
-        setForm({ ...form, types: [...form.types, { en: next, ar }] });
+        if (enParts.length !== arParts.length) {
+            setValidationErrors((prev) => ({ ...prev, types: `Count mismatch: ${enParts.length} EN items but ${arParts.length} AR items` }));
+            return;
+        }
+        setValidationErrors((prev) => ({ ...prev, types: undefined }));
+        const newTypes: any[] = [];
+        for (let i = 0; i < enParts.length; i++) {
+            const en = enParts[i];
+            const ar = arParts[i];
+            if (!en || !ar) continue;
+            const exists = form.types.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            const alreadyAdded = newTypes.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            if (exists || alreadyAdded) continue;
+            newTypes.push({ en, ar });
+        }
+        if (newTypes.length > 0) {
+            setForm({ ...form, types: [...form.types, ...newTypes] });
+        }
         setNewType("");
         setNewTypeAr("");
     };
@@ -2716,7 +2769,7 @@ if (Array.isArray(clone.cast)) {
                                             placeholder="أدخل اسم المشروع (بالعربية)"
                                         />
                                         <div className="mt-1.5">
-                                            <TranslateButton onClick={nameArToEn.translate} isTranslating={nameArToEn.isTranslating} disabled={!form.name?.ar?.trim()} label="Translate to EN" />
+                                            <TranslateButton onClick={nameArToEn.translate} isTranslating={nameArToEn.isTranslating} disabled={!form.name?.ar?.trim()} label="Translate" />
                                         </div>
                                     </div>
 
@@ -2746,7 +2799,7 @@ if (Array.isArray(clone.cast)) {
                                             placeholder="وصف المشروع (بالعربية)"
                                         />
                                         <div className="mt-1.5">
-                                            <TranslateButton onClick={descArToEn.translate} isTranslating={descArToEn.isTranslating} disabled={!form.description?.ar?.trim()} label="Translate to EN" />
+                                            <TranslateButton onClick={descArToEn.translate} isTranslating={descArToEn.isTranslating} disabled={!form.description?.ar?.trim()} label="Translate" />
                                         </div>
                                     </div>
 
@@ -2782,7 +2835,7 @@ if (Array.isArray(clone.cast)) {
                                             />
                                         </div>
                                         <div className="mt-1.5">
-                                            <TranslateButton onClick={locArToEn.translate} isTranslating={locArToEn.isTranslating} disabled={!form.location?.ar?.trim()} label="Translate to EN" />
+                                            <TranslateButton onClick={locArToEn.translate} isTranslating={locArToEn.isTranslating} disabled={!form.location?.ar?.trim()} label="Translate" />
                                         </div>
                                     </div>
 
@@ -2902,7 +2955,7 @@ if (Array.isArray(clone.cast)) {
                                                         placeholder={tr("company_name_ar", "Company name (AR)...")}
                                                     />
                                                     <div className="mt-1">
-                                                        <TranslateButton onClick={companyArToEn.translate} isTranslating={companyArToEn.isTranslating} disabled={!newCompanyAr.trim()} label="Translate to EN" />
+                                                        <TranslateButton onClick={companyArToEn.translate} isTranslating={companyArToEn.isTranslating} disabled={!newCompanyAr.trim()} label="Translate" />
                                                     </div>
                                                 </div>
                                                 <input
@@ -2973,25 +3026,33 @@ if (Array.isArray(clone.cast)) {
                                                 </span>
                                             ))}
                                         </div>
-                                        <select
-                                            value={selectedExistingCategory}
-                                            onChange={(e) => {
-                                                handleSelectExistingCategory(e.target.value);
-                                                setSelectedExistingCategory("");
+                                        <Autocomplete
+                                            key={catAutocompleteKey}
+                                            options={projectCategories}
+                                            getOptionLabel={(opt) => {
+                                                const label = getOptionLabel(opt);
+                                                const name = opt?.name;
+                                                const ar = name && typeof name === "object" ? (name as any).ar : undefined;
+                                                return ar ? `${label} / ${ar}` : label;
                                             }}
-                                            className="input w-full mb-2"
-                                        >
-                                            <option value="">{tr("select_existing_category", "Select existing sector...")}</option>
-                                            {projectCategoriesLoading ? (
-                                                <option value="" disabled>{tr("loading_categories", "Loading sectors...")}</option>
-                                            ) : (
-                                                projectCategories.map((c: any, idx: number) => (
-                                                    <option key={idx} value={idx}>{getOptionLabel(c)}</option>
-                                                ))
+                                            isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
+                                            value={null}
+                                            onChange={(_e, val) => {
+                                                if (val) {
+                                                    handleSelectExistingCategory(String(projectCategories.indexOf(val)));
+                                                    setCatAutocompleteKey((k) => k + 1);
+                                                }
+                                            }}
+                                            renderInput={(params) => (
+                                                <TextField {...params} placeholder={tr("select_existing_category", "Search existing sectors...")} size="small" />
                                             )}
-                                        </select>
-                                        <div className="flex gap-2">
-                                            <div className="flex-1">
+                                            sx={taxonomyAutocompleteSx}
+                                            slotProps={taxonomyAutocompleteSlotProps}
+                                            size="small"
+                                            className="mb-2"
+                                        />
+                                        <div className="space-y-2">
+                                            <div className="flex gap-2 items-center">
                                                 <input
                                                     type="text"
                                                     value={newCategory}
@@ -2999,13 +3060,11 @@ if (Array.isArray(clone.cast)) {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_category_en", "Add the sector (EN)...")}
+                                                    placeholder={tr("add_category_hint", "en1,en2,en3...")}
                                                 />
-                                                <div className="mt-1">
-                                                    <TranslateButton onClick={catEnToAr.translate} isTranslating={catEnToAr.isTranslating} disabled={!newCategory.trim()} />
-                                                </div>
+                                                <TranslateButton onClick={catEnToAr.translate} isTranslating={catEnToAr.isTranslating} disabled={!newCategory.trim()} />
                                             </div>
-                                            <div className="flex-1">
+                                            <div className="flex gap-2 items-center">
                                                 <input
                                                     type="text"
                                                     dir="rtl"
@@ -3014,12 +3073,13 @@ if (Array.isArray(clone.cast)) {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_category_ar", "Add the sector (AR)...")}
+                                                    placeholder={tr("add_category_ar_hint", "ar1,ar2,ar3...")}
                                                 />
-                                                <div className="mt-1">
-                                                    <TranslateButton onClick={catArToEn.translate} isTranslating={catArToEn.isTranslating} disabled={!newCategoryAr.trim()} label="Translate to EN" />
-                                                </div>
+                                                <TranslateButton onClick={catArToEn.translate} isTranslating={catArToEn.isTranslating} disabled={!newCategoryAr.trim()} label="Translate" />
                                             </div>
+                                            {validationErrors.categories && (
+                                                <p className="text-xs text-danger-500">{validationErrors.categories}</p>
+                                            )}
                                             <button type="button" onClick={handleAddCategory} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
@@ -3041,12 +3101,16 @@ if (Array.isArray(clone.cast)) {
                                             ))}
                                         </div>
                                         <Autocomplete
+                                            key={tagAutocompleteKey}
                                             options={existingTags}
                                             getOptionLabel={(opt) => opt.ar ? `${opt.en} / ${opt.ar}` : opt.en}
                                             isOptionEqualToValue={(opt, val) => opt.en === val.en}
                                             value={null}
                                             onChange={(_e, val) => {
-                                                if (val) handleSelectExistingTag(val.en);
+                                                if (val) {
+                                                    handleSelectExistingTag(val.en);
+                                                    setTagAutocompleteKey((k) => k + 1);
+                                                }
                                             }}
                                             renderInput={(params) => (
                                                 <TextField {...params} placeholder={tr("select_existing_tag", "Search existing tags...")} size="small" />
@@ -3056,8 +3120,8 @@ if (Array.isArray(clone.cast)) {
                                             size="small"
                                             className="mb-2"
                                         />
-                                        <div className="flex gap-2">
-                                            <div className="flex-1">
+                                        <div className="space-y-2">
+                                            <div className="flex gap-2 items-center">
                                                 <input
                                                     type="text"
                                                     value={newTag}
@@ -3065,13 +3129,11 @@ if (Array.isArray(clone.cast)) {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_tag_en", "Add a tag (EN)...")}
+                                                    placeholder={tr("add_tag_hint", "en1,en2,en3...")}
                                                 />
-                                                <div className="mt-1">
-                                                    <TranslateButton onClick={tagEnToAr.translate} isTranslating={tagEnToAr.isTranslating} disabled={!newTag.trim()} />
-                                                </div>
+                                                <TranslateButton onClick={tagEnToAr.translate} isTranslating={tagEnToAr.isTranslating} disabled={!newTag.trim()} />
                                             </div>
-                                            <div className="flex-1">
+                                            <div className="flex gap-2 items-center">
                                                 <input
                                                     type="text"
                                                     dir="rtl"
@@ -3080,12 +3142,13 @@ if (Array.isArray(clone.cast)) {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_tag_ar", "Add the tag (AR)...")}
+                                                    placeholder={tr("add_tag_ar_hint", "ar1,ar2,ar3...")}
                                                 />
-                                                <div className="mt-1">
-                                                    <TranslateButton onClick={tagArToEn.translate} isTranslating={tagArToEn.isTranslating} disabled={!newTagAr.trim()} label="Translate to EN" />
-                                                </div>
+                                                <TranslateButton onClick={tagArToEn.translate} isTranslating={tagArToEn.isTranslating} disabled={!newTagAr.trim()} label="Translate" />
                                             </div>
+                                            {validationErrors.tags && (
+                                                <p className="text-xs text-danger-500">{validationErrors.tags}</p>
+                                            )}
                                             <button type="button" onClick={handleAddTag} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
@@ -3106,25 +3169,33 @@ if (Array.isArray(clone.cast)) {
                                                 </span>
                                             ))}
                                         </div>
-                                        <select
-                                            value={selectedExistingType}
-                                            onChange={(e) => {
-                                                handleSelectExistingType(e.target.value);
-                                                setSelectedExistingType("");
+                                        <Autocomplete
+                                            key={typeAutocompleteKey}
+                                            options={projectTypes}
+                                            getOptionLabel={(opt) => {
+                                                const label = getOptionLabel(opt);
+                                                const name = opt?.name;
+                                                const ar = name && typeof name === "object" ? (name as any).ar : undefined;
+                                                return ar ? `${label} / ${ar}` : label;
                                             }}
-                                            className="input w-full mb-2"
-                                        >
-                                            <option value="">{tr("select_existing_type", "Select existing type...")}</option>
-                                            {projectTypesLoading ? (
-                                                <option value="" disabled>{tr("loading_types", "Loading types...")}</option>
-                                            ) : (
-                                                projectTypes.map((t: any, idx: number) => (
-                                                    <option key={idx} value={idx}>{getOptionLabel(t)}</option>
-                                                ))
+                                            isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
+                                            value={null}
+                                            onChange={(_e, val) => {
+                                                if (val) {
+                                                    handleSelectExistingType(String(projectTypes.indexOf(val)));
+                                                    setTypeAutocompleteKey((k) => k + 1);
+                                                }
+                                            }}
+                                            renderInput={(params) => (
+                                                <TextField {...params} placeholder={tr("select_existing_type", "Search existing types...")} size="small" />
                                             )}
-                                        </select>
-                                        <div className="flex gap-2">
-                                            <div className="flex-1">
+                                            sx={taxonomyAutocompleteSx}
+                                            slotProps={taxonomyAutocompleteSlotProps}
+                                            size="small"
+                                            className="mb-2"
+                                        />
+                                        <div className="space-y-2">
+                                            <div className="flex gap-2 items-center">
                                                 <input
                                                     type="text"
                                                     value={newType}
@@ -3132,13 +3203,11 @@ if (Array.isArray(clone.cast)) {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_type_en", "Add the type (EN)...")}
+                                                    placeholder={tr("add_type_hint", "en1,en2,en3...")}
                                                 />
-                                                <div className="mt-1">
-                                                    <TranslateButton onClick={typeEnToAr.translate} isTranslating={typeEnToAr.isTranslating} disabled={!newType.trim()} />
-                                                </div>
+                                                <TranslateButton onClick={typeEnToAr.translate} isTranslating={typeEnToAr.isTranslating} disabled={!newType.trim()} />
                                             </div>
-                                            <div className="flex-1">
+                                            <div className="flex gap-2 items-center">
                                                 <input
                                                     type="text"
                                                     dir="rtl"
@@ -3147,12 +3216,13 @@ if (Array.isArray(clone.cast)) {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_type_ar", "Add the type (AR)...")}
+                                                    placeholder={tr("add_type_ar_hint", "ar1,ar2,ar3...")}
                                                 />
-                                                <div className="mt-1">
-                                                    <TranslateButton onClick={typeArToEn.translate} isTranslating={typeArToEn.isTranslating} disabled={!newTypeAr.trim()} label="Translate to EN" />
-                                                </div>
+                                                <TranslateButton onClick={typeArToEn.translate} isTranslating={typeArToEn.isTranslating} disabled={!newTypeAr.trim()} label="Translate" />
                                             </div>
+                                            {validationErrors.types && (
+                                                <p className="text-xs text-danger-500">{validationErrors.types}</p>
+                                            )}
                                             <button type="button" onClick={handleAddType} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
@@ -3939,7 +4009,7 @@ if (Array.isArray(clone.cast)) {
                                     placeholder="عنوان اختياري (بالعربية)"
                                 />
                                 <div className="mt-1.5">
-                                    <TranslateButton onClick={matCaptionArToEn.translate} isTranslating={matCaptionArToEn.isTranslating} disabled={!editingMaterial?.caption?.ar?.trim()} label="Translate to EN" />
+                                    <TranslateButton onClick={matCaptionArToEn.translate} isTranslating={matCaptionArToEn.isTranslating} disabled={!editingMaterial?.caption?.ar?.trim()} label="Translate" />
                                 </div>
                             </div>
 
@@ -3987,7 +4057,7 @@ if (Array.isArray(clone.cast)) {
                                         placeholder="وصف اختياري (بالعربية)"
                                     />
                                     <div className="mt-1.5">
-                                        <TranslateButton onClick={matDescArToEn.translate} isTranslating={matDescArToEn.isTranslating} disabled={!editingMaterial?.description?.ar?.trim()} label="Translate to EN" />
+                                        <TranslateButton onClick={matDescArToEn.translate} isTranslating={matDescArToEn.isTranslating} disabled={!editingMaterial?.description?.ar?.trim()} label="Translate" />
                                     </div>
                                 </div>
 
@@ -4102,7 +4172,7 @@ if (Array.isArray(clone.cast)) {
                                         />
                                     </div>
                                     <div className="mt-1.5">
-                                        <TranslateButton onClick={matTextArToEn.translate} isTranslating={matTextArToEn.isTranslating} disabled={!editingMaterial?.textContent?.ar?.trim()} label="Translate to EN" />
+                                        <TranslateButton onClick={matTextArToEn.translate} isTranslating={matTextArToEn.isTranslating} disabled={!editingMaterial?.textContent?.ar?.trim()} label="Translate" />
                                     </div>
                                 </div>
                             )}
@@ -4158,7 +4228,7 @@ if (Array.isArray(clone.cast)) {
                                                     placeholder="قبل (AR)"
                                                 />
                                                 <div className="mt-1">
-                                                    <TranslateButton onClick={matBeforeArToEn.translate} isTranslating={matBeforeArToEn.isTranslating} disabled={!editingMaterial?.before?.label?.ar?.trim()} label="Translate to EN" />
+                                                    <TranslateButton onClick={matBeforeArToEn.translate} isTranslating={matBeforeArToEn.isTranslating} disabled={!editingMaterial?.before?.label?.ar?.trim()} label="Translate" />
                                                 </div>
                                             </div>
                                         </div>
@@ -4212,7 +4282,7 @@ if (Array.isArray(clone.cast)) {
                                                     placeholder="بعد (AR)"
                                                 />
                                                 <div className="mt-1">
-                                                    <TranslateButton onClick={matAfterArToEn.translate} isTranslating={matAfterArToEn.isTranslating} disabled={!editingMaterial?.after?.label?.ar?.trim()} label="Translate to EN" />
+                                                    <TranslateButton onClick={matAfterArToEn.translate} isTranslating={matAfterArToEn.isTranslating} disabled={!editingMaterial?.after?.label?.ar?.trim()} label="Translate" />
                                                 </div>
                                             </div>
                                         </div>
