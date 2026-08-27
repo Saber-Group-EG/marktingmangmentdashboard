@@ -1057,6 +1057,7 @@ const EditProject: React.FC = () => {
             materials: normalizeProjectMaterials(project.material || []),
             cast: mappedCast,
             mainCover: project.mainCover || null,
+            fullMainCover: (project as any).fullMainCover || null,
             parentProject: parentInitial,
             company: companyInitial,
         });
@@ -2120,6 +2121,17 @@ const EditProject: React.FC = () => {
                 });
             }
 
+            // upload full main cover (original image before crop)
+            if (clone.mainCover) {
+                const fullCoverSource = form.mainCover?.url || clone.mainCover.url;
+                const uploadedFullCover = await uploadAssetIfNeeded(
+                    { url: fullCoverSource, mimeType: clone.mainCover.mimeType, originalName: clone.mainCover.originalName, size: clone.mainCover.size },
+                    "image",
+                    clone.mainCover.originalName || `full-main-cover-${Date.now()}.jpg`,
+                );
+                clone.fullMainCover = uploadedFullCover;
+            }
+
             if (clone.mainCover) {
                 console.log("[Submit] clone.mainCover keys:", Object.keys(clone.mainCover), "crop:", clone.mainCover.crop, "croppedUrl:", clone.mainCover.croppedUrl ? "present" : "absent");
                 if (clone.mainCover.croppedUrl) {
@@ -2438,6 +2450,7 @@ if (Array.isArray(clone.cast)) {
                 material: clone.materials,
                 cast: clone.cast,
                 mainCover: clone.mainCover,
+                fullMainCover: clone.fullMainCover,
                 parentProject: getOptionValue(clone.parentProject) || undefined,
                 company: getOptionValue(clone.company) || undefined,
             };
