@@ -45,5 +45,8 @@ export * from "./useCategoriesQuery";
 // Cast
 export * from "./useCastQuery";
 
+// Project Counts (cast/category usage)
+export * from "./useProjectCounts";
+
 // Project Companies
 export * from "./useProjectCompaniesQuery";

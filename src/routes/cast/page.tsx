@@ -2,7 +2,7 @@ import { useState, useMemo, KeyboardEvent, ChangeEvent } from "react";
 import { Plus, Edit2, Trash2, Check, X, Loader2, User, Search } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
-import { useCast, useCreateCast, useUpdateCast, useDeleteCast } from "@/hooks/queries";
+import { useCast, useCreateCast, useUpdateCast, useDeleteCast, useProjectCounts } from "@/hooks/queries";
 import type { CastMember } from "@/api/requests/castService";
 import CastSocialLinks, { type SocialLink } from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
@@ -55,6 +55,7 @@ const CastPage = () => {
     const { data: castResponse, isLoading } = useCast();
     const members = castResponse?.cast || [];
     const totalMembers = castResponse?.meta?.total ?? members.length;
+    const { castCounts, totalProjects } = useProjectCounts();
 
     const filteredMembers = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
@@ -216,10 +217,14 @@ const CastPage = () => {
             </section>
 
             {/* Stats Section */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/60">
                     <p className="text-light-600 dark:text-dark-300 text-xs uppercase tracking-[0.08em]">{tr("total_members", "Total Members")}</p>
                     <p className="text-light-900 dark:text-dark-50 mt-2 text-2xl font-semibold">{totalMembers}</p>
+                </div>
+                <div className="rounded-2xl border border-light-200/70 bg-white/90 p-4 shadow-sm dark:border-dark-700/70 dark:bg-dark-900/60">
+                    <p className="text-light-600 dark:text-dark-300 text-xs uppercase tracking-[0.08em]">{tr("total_projects", "Total Projects")}</p>
+                    <p className="text-light-900 dark:text-dark-50 mt-2 text-2xl font-semibold">{totalProjects}</p>
                 </div>
             </section>
 
@@ -352,6 +357,7 @@ const CastPage = () => {
                                     <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("photo", "Photo")}</th>
                                     <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_name", "Name")}</th>
                                     <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_title_role", "Title/Role")}</th>
+                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("used_in_projects", "Used in Projects")}</th>
                                     <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("social_links", "Social Links")}</th>
                                     <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("actions", "Actions")}</th>
                                 </tr>
@@ -378,6 +384,15 @@ const CastPage = () => {
                                             </td>
                                             <td className="py-3 pr-4 text-light-600 dark:text-dark-300 whitespace-nowrap">
                                                 {member.title || "-"}
+                                            </td>
+                                            <td className="py-3 pr-4 whitespace-nowrap">
+                                                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                                    (castCounts[member._id] || 0) > 0
+                                                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
+                                                        : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                                }`}>
+                                                    {castCounts[member._id] || 0}
+                                                </span>
                                             </td>
                                             <td className="py-3 pr-4">
                                                 <SocialLinkIcons links={member.socialLinks} size={14} />

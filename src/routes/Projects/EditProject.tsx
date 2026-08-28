@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLang } from "@/hooks/useLang";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
-import BeforeAfterSlider from "@/components/BeforeAfterSlider";
+
 import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
@@ -19,9 +19,10 @@ import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
 import { stripHtml } from "@/utils/translateText";
 import TranslateButton from "@/components/TranslateButton";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
-import { Reorder, AnimatePresence } from "framer-motion";
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+
+
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragOverlay, useDroppable, Collision } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { 
   Save, Trash2, X, ArrowLeft, Loader2, 
@@ -81,13 +82,122 @@ interface Cast {
     photo?: any;
 }
 
+const DraggableItemThumb: React.FC<{
+    id: string;
+    url: string;
+    isVideo?: boolean;
+    thumbnail?: string;
+    label: string;
+    onRemove: () => void;
+    otherGroups?: { label: string; index: number }[];
+    onMoveToGroup?: (targetGroupIndex: number) => void;
+}> = ({ id, url, isVideo, thumbnail, label, onRemove, otherGroups, onMoveToGroup }) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, data: { url, isVideo, thumbnail, label } });
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 50 : undefined,
+        opacity: isDragging ? 0 : 1,
+    };
+    const [showMoveMenu, setShowMoveMenu] = useState(false);
+    const moveMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!showMoveMenu) return;
+        const handler = (e: MouseEvent) => {
+            if (moveMenuRef.current && !moveMenuRef.current.contains(e.target as Node)) {
+                setShowMoveMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [showMoveMenu]);
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
+            {...listeners}
+            className="group relative shrink-0 w-24 h-24 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow touch-none"
+        >
+            {isVideo ? (
+                thumbnail ? (
+                    <img src={thumbnail} alt={label} className="w-full h-full object-cover pointer-events-none" />
+                ) : (
+                    <video src={url} className="w-full h-full object-cover pointer-events-none" muted preload="metadata" />
+                )
+            ) : (
+                <img src={url} alt={label} className="w-full h-full object-cover pointer-events-none" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="absolute bottom-0 left-0 right-0 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="text-[10px] text-white font-medium truncate drop-shadow">{label}</div>
+            </div>
+            <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {otherGroups && otherGroups.length > 0 && onMoveToGroup && (
+                    <div className="relative" ref={moveMenuRef}>
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setShowMoveMenu(!showMoveMenu); }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="p-1 rounded-md bg-black/50 hover:bg-blue-600 text-white transition-colors"
+                            title="Move to group"
+                        >
+                            <Layers className="w-3 h-3" />
+                        </button>
+                        {showMoveMenu && (
+                            <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-dark-800 border border-light-200 dark:border-dark-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+                                <div className="px-2 py-1 text-[10px] font-medium text-light-500 dark:text-dark-400 border-b border-light-200 dark:border-dark-700">Move to</div>
+                                {otherGroups.map((g) => (
+                                    <button
+                                        key={g.index}
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); onMoveToGroup(g.index); setShowMoveMenu(false); }}
+                                        className="w-full text-left px-3 py-1.5 text-xs text-light-700 dark:text-dark-300 hover:bg-light-100 dark:hover:bg-dark-700 transition-colors"
+                                    >
+                                        {g.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="p-1 rounded-md bg-black/50 hover:bg-danger-600 text-white transition-colors"
+                    title="Remove"
+                >
+                    <X className="w-3 h-3" />
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const EDIT_STORAGE_KEY_PREFIX = "editproject_draft_";
 
 type PhotoItem = { url: string; mimeType?: string; size?: number; originalName?: string; type?: string };
 
-const SortablePhotoItem: React.FC<{ item: PhotoItem; index: number; onRemove: (i: number) => void; removeLabel: string }> = ({ item, index, onRemove, removeLabel }) => {
+const SortablePhotoItem: React.FC<{ item: PhotoItem; index: number; onRemove: (i: number) => void; removeLabel: string; otherGroups?: { label: string; index: number }[]; onMoveToGroup?: (itemIndex: number, targetGroupIndex: number) => void }> = ({ item, index, onRemove, removeLabel, otherGroups, onMoveToGroup }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
     const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
+    const [showMoveMenu, setShowMoveMenu] = useState(false);
+    const moveMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!showMoveMenu) return;
+        const handler = (e: MouseEvent) => {
+            if (moveMenuRef.current && !moveMenuRef.current.contains(e.target as Node)) {
+                setShowMoveMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [showMoveMenu]);
+
     return (
         <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex items-center gap-3 border border-light-200 dark:border-dark-700 rounded-lg p-2 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing touch-none">
             <GripVertical className="w-4 h-4 shrink-0 text-light-400 dark:text-dark-500" />
@@ -96,6 +206,23 @@ const SortablePhotoItem: React.FC<{ item: PhotoItem; index: number; onRemove: (i
                 <div className="text-sm font-medium text-light-900 dark:text-dark-50 truncate">{item.originalName || `Photo ${index + 1}`}</div>
                 <div className="text-xs text-light-500 dark:text-dark-400">#{index + 1}</div>
             </div>
+            {otherGroups && otherGroups.length > 0 && onMoveToGroup && (
+                <div className="relative shrink-0 pointer-events-auto" ref={moveMenuRef}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setShowMoveMenu(!showMoveMenu); }} onPointerDown={(e) => e.stopPropagation()} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-500 transition-colors" title="Move to another group" aria-label="Move to another group">
+                        <Layers className="w-4 h-4" />
+                    </button>
+                    {showMoveMenu && (
+                        <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-dark-800 border border-light-200 dark:border-dark-700 rounded-lg shadow-lg py-1 min-w-[180px]">
+                            <div className="px-3 py-1.5 text-xs font-medium text-light-500 dark:text-dark-400 border-b border-light-200 dark:border-dark-700">Move to group</div>
+                            {otherGroups.map((g) => (
+                                <button key={g.index} type="button" onClick={(e) => { e.stopPropagation(); onMoveToGroup(index, g.index); setShowMoveMenu(false); }} className="w-full text-left px-3 py-2 text-sm text-light-700 dark:text-dark-300 hover:bg-light-100 dark:hover:bg-dark-700 transition-colors">
+                                    {g.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
             <button type="button" onClick={() => onRemove(index)} className="shrink-0 p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors pointer-events-auto" title={removeLabel} aria-label={removeLabel}>
                 <X className="w-4 h-4" />
             </button>
@@ -114,6 +241,8 @@ type SortableVideoItemProps = {
     removeLabel: string;
     materialCaption?: any;
     materialDescription?: any;
+    otherGroups?: { label: string; index: number }[];
+    onMoveToGroup?: (itemIndex: number, targetGroupIndex: number) => void;
 };
 
 const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: string) => void; onSelectForCover?: (dataUrl: string) => void; onClose: () => void }> = ({ videoUrl, onSelect, onSelectForCover, onClose }) => {
@@ -266,13 +395,27 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
     );
 };
 
-const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRemove, onThumbnailUpload, onRemoveThumbnail, onFrameSelect, onFrameSelectForCover, removeLabel, materialCaption, materialDescription }) => {
+const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRemove, onThumbnailUpload, onRemoveThumbnail, onFrameSelect, onFrameSelectForCover, removeLabel, materialCaption, materialDescription, otherGroups, onMoveToGroup }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
     const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
     const thumbUrl = item.thumbnail || undefined;
     const caption = materialCaption || "";
     const description = materialDescription || "";
     const [showFrameSelector, setShowFrameSelector] = React.useState(false);
+    const [showMoveMenu, setShowMoveMenu] = React.useState(false);
+    const moveMenuRef = React.useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        if (!showMoveMenu) return;
+        const handler = (e: MouseEvent) => {
+            if (moveMenuRef.current && !moveMenuRef.current.contains(e.target as Node)) {
+                setShowMoveMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [showMoveMenu]);
+
     return (
         <>
         <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex items-center gap-3 border border-light-200 dark:border-dark-700 rounded-lg p-2 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing touch-none">
@@ -305,6 +448,23 @@ const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRe
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onThumbnailUpload(index, f); e.target.value = ""; }} />
                 </label>
             )}
+            {otherGroups && otherGroups.length > 0 && onMoveToGroup && (
+                <div className="relative shrink-0 pointer-events-auto" ref={moveMenuRef}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setShowMoveMenu(!showMoveMenu); }} onPointerDown={(e) => e.stopPropagation()} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-500 transition-colors" title="Move to another group" aria-label="Move to another group">
+                        <Layers className="w-4 h-4" />
+                    </button>
+                    {showMoveMenu && (
+                        <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-dark-800 border border-light-200 dark:border-dark-700 rounded-lg shadow-lg py-1 min-w-[180px]">
+                            <div className="px-3 py-1.5 text-xs font-medium text-light-500 dark:text-dark-400 border-b border-light-200 dark:border-dark-700">Move to group</div>
+                            {otherGroups.map((g) => (
+                                <button key={g.index} type="button" onClick={(e) => { e.stopPropagation(); onMoveToGroup(index, g.index); setShowMoveMenu(false); }} className="w-full text-left px-3 py-2 text-sm text-light-700 dark:text-dark-300 hover:bg-light-100 dark:hover:bg-dark-700 transition-colors">
+                                    {g.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
             <button type="button" onClick={() => onRemove(index)} className="shrink-0 p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors pointer-events-auto" title={removeLabel} aria-label={removeLabel}>
                 <X className="w-4 h-4" />
             </button>
@@ -314,6 +474,44 @@ const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRe
         )}
         </>
     );
+};
+
+const DroppableGroupContent: React.FC<{
+    groupId: string;
+    children: React.ReactNode;
+    className?: string;
+}> = ({ groupId, children, className }) => {
+    const { setNodeRef, isOver } = useDroppable({ id: groupId });
+    return (
+        <div ref={setNodeRef} className={className} style={isOver ? { outline: "2px dashed #6366f1", outlineOffset: "-2px", borderRadius: "0.5rem" } : undefined}>
+            {children}
+        </div>
+    );
+};
+
+const materialsCollisionDetection = (args: any): Collision[] => {
+    const { droppableContainers, pointerCoordinates } = args;
+    if (!pointerCoordinates) return closestCenter(args);
+
+    const within = droppableContainers.filter((c: any) => {
+        const r = c.rect?.current || c.rect;
+        if (!r) return false;
+        return pointerCoordinates.x >= r.left && pointerCoordinates.x <= r.right && pointerCoordinates.y >= r.top && pointerCoordinates.y <= r.bottom;
+    });
+
+
+
+    if (within.length > 0) {
+        within.sort((a: any, b: any) => {
+            const ra = a.rect?.current || a.rect;
+            const rb = b.rect?.current || b.rect;
+            if (!ra || !rb) return 0;
+            return (ra.width * ra.height) - (rb.width * rb.height);
+        });
+        return [{ id: within[0].id, data: within[0].data }];
+    }
+
+    return closestCenter(args);
 };
 
 const EditProject: React.FC = () => {
@@ -540,6 +738,7 @@ const EditProject: React.FC = () => {
     // Photo selection upload progress overlay
     const photoUpload = useUploadProgress();
     const photoSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+    const [activeDragItem, setActiveDragItem] = useState<{ id: string; url: string; isVideo: boolean; thumbnail?: string; label: string } | null>(null);
 
     const getOptionLabel = (value: any): string => {
         if (typeof value === "string") return value;
@@ -833,14 +1032,23 @@ const EditProject: React.FC = () => {
         });
     };
 
+    const isVideoUrl = (url?: string): boolean => {
+        if (!url) return false;
+        const lower = url.toLowerCase().split("?")[0];
+        return /\.(mp4|webm|ogg|mov|avi|m4v|mkv)(\?|$)/.test(lower);
+    };
+
     const buildVideoItems = (material: Partial<Material>): VideoMaterialItem[] => {
         const merged: VideoMaterialItem[] = [];
 
+
         if (material.url && material.type === "video") {
             const primaryItem: any = Array.isArray(material.items) ? material.items[0] : undefined;
-            const primaryThumb = primaryItem?.thumbnail
+            const rawThumb = primaryItem?.thumbnail
                 ? (typeof primaryItem.thumbnail === "string" ? primaryItem.thumbnail : primaryItem.thumbnail?.url)
                 : (typeof material.thumbnail === "string" ? material.thumbnail : material.thumbnail?.url);
+            const primaryThumb = isVideoUrl(rawThumb) ? undefined : rawThumb;
+
             merged.push({
                 url: material.url,
                 mimeType: material.mimeType,
@@ -857,12 +1065,15 @@ const EditProject: React.FC = () => {
                 .filter((item): item is VideoMaterialItem => !!item?.url)
                 .forEach((item: any, idx: number) => {
                     if (material.url && material.type === "video" && idx === 0) return;
+                    const rawThumb = typeof item.thumbnail === "string" ? item.thumbnail : item.thumbnail?.url;
+                    const thumb = isVideoUrl(rawThumb) ? undefined : rawThumb;
+
                     merged.push({
                         url: item.url,
                         mimeType: item.mimeType || material.mimeType,
                         originalName: item.originalName,
                         size: item.size,
-                        thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : item.thumbnail?.url,
+                        thumbnail: thumb,
                         type: "video",
                         _file: item._file,
                     });
@@ -870,12 +1081,14 @@ const EditProject: React.FC = () => {
         }
 
         const seen = new Set<string>();
-        return merged.filter((item) => {
+        const deduped = merged.filter((item) => {
             const key = item.url.trim();
             if (!key || seen.has(key)) return false;
             seen.add(key);
             return true;
         });
+
+        return deduped;
     };
 
     const normalizeVideoMaterial = (material: Material): Material => {
@@ -1064,6 +1277,7 @@ const EditProject: React.FC = () => {
             parentProject: parentInitial,
             company: companyInitial,
         });
+
     }, [project, projectCast, allProjects]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -1482,6 +1696,7 @@ const EditProject: React.FC = () => {
             return {
                 ...prev,
                 items,
+                thumbnail: thumbUrl,
                 url: primary?.url || "",
                 mimeType: primary?.mimeType,
                 originalName: primary?.originalName,
@@ -1572,11 +1787,296 @@ const EditProject: React.FC = () => {
         });
     };
 
-    const handleMaterialsReorder = (newMaterials: Material[]) => {
+    const handleMovePhotoToGroup = (itemIndex: number, targetGroupIndex: number) => {
+        if (editingMaterialIndex === null || !editingMaterial) return;
+        const items = buildPhotoItems(editingMaterial);
+        const itemToMove = items[itemIndex];
+        if (!itemToMove) return;
+
+        const targetMaterial = form.materials[targetGroupIndex];
+        if (!targetMaterial) return;
+
+        const remainingItems = items.filter((_, idx) => idx !== itemIndex);
+        const targetItems = buildPhotoItems(targetMaterial);
+
+        const updatedEditingMaterial: Material = {
+            ...editingMaterial,
+            type: editingMaterial.type,
+            items: remainingItems,
+            url: remainingItems[0]?.url || "",
+            mimeType: remainingItems[0]?.mimeType,
+            originalName: remainingItems[0]?.originalName,
+            size: remainingItems[0]?.size,
+        };
+
+        const updatedTargetMaterial: Material = {
+            ...targetMaterial,
+            type: targetMaterial.type,
+            items: [...targetItems, itemToMove],
+            url: [...targetItems, itemToMove][0]?.url || "",
+            mimeType: [...targetItems, itemToMove][0]?.mimeType,
+            originalName: [...targetItems, itemToMove][0]?.originalName,
+            size: [...targetItems, itemToMove][0]?.size,
+        };
+
         setForm((prev: any) => ({
             ...prev,
-            materials: newMaterials.map((m: Material, idx: number) => ({ ...m, order: idx + 1 })),
+            materials: prev.materials.map((m: Material, idx: number) => {
+                if (idx === editingMaterialIndex) return updatedEditingMaterial;
+                if (idx === targetGroupIndex) return updatedTargetMaterial;
+                return m;
+            }),
         }));
+
+        setEditingMaterial(updatedEditingMaterial);
+    };
+
+    const handleMoveVideoToGroup = (itemIndex: number, targetGroupIndex: number) => {
+        if (editingMaterialIndex === null || !editingMaterial) return;
+        const items = buildVideoItems(editingMaterial);
+        const itemToMove = items[itemIndex];
+        if (!itemToMove) return;
+
+        const targetMaterial = form.materials[targetGroupIndex];
+        if (!targetMaterial) return;
+
+        const remainingItems = items.filter((_, idx) => idx !== itemIndex);
+        const targetItems = buildVideoItems(targetMaterial);
+
+        const updatedEditingMaterial: Material = {
+            ...editingMaterial,
+            type: editingMaterial.type,
+            items: remainingItems,
+            url: remainingItems[0]?.url || "",
+            mimeType: remainingItems[0]?.mimeType,
+            originalName: remainingItems[0]?.originalName,
+            size: remainingItems[0]?.size,
+            thumbnail: remainingItems[0]?.thumbnail ? { url: remainingItems[0].thumbnail } : undefined,
+        };
+
+        const allTargetItems = [...targetItems, itemToMove];
+        const updatedTargetMaterial: Material = {
+            ...targetMaterial,
+            type: targetMaterial.type,
+            items: allTargetItems,
+            url: allTargetItems[0]?.url || "",
+            mimeType: allTargetItems[0]?.mimeType,
+            originalName: allTargetItems[0]?.originalName,
+            size: allTargetItems[0]?.size,
+            thumbnail: allTargetItems[0]?.thumbnail ? { url: allTargetItems[0].thumbnail } : undefined,
+        };
+
+        setForm((prev: any) => ({
+            ...prev,
+            materials: prev.materials.map((m: Material, idx: number) => {
+                if (idx === editingMaterialIndex) return updatedEditingMaterial;
+                if (idx === targetGroupIndex) return updatedTargetMaterial;
+                return m;
+            }),
+        }));
+
+        setEditingMaterial(updatedEditingMaterial);
+    };
+
+    const handleFlatItemRemove = (groupIndex: number, itemLocalIndex: number) => {
+        const material = form.materials[groupIndex];
+        if (!material) return;
+        const isVideo = material.type === "video" || (material.type === "bulk" && isVideoBulkType(material));
+        const isPhoto = !isVideo && isPhotoMaterialType(material.type);
+
+        if (isPhoto) {
+            const items = buildPhotoItems(material).filter((_, idx) => idx !== itemLocalIndex);
+            const primary = items[0];
+            setForm((prev: any) => ({
+                ...prev,
+                materials: prev.materials.map((m: Material, idx: number) => {
+                    if (idx !== groupIndex) return m;
+                    return { ...m, items, url: primary?.url || "", mimeType: primary?.mimeType, originalName: primary?.originalName, size: primary?.size };
+                }),
+            }));
+        } else if (isVideo) {
+            const items = buildVideoItems(material).filter((_, idx) => idx !== itemLocalIndex);
+            const primary = items[0];
+            setForm((prev: any) => ({
+                ...prev,
+                materials: prev.materials.map((m: Material, idx: number) => {
+                    if (idx !== groupIndex) return m;
+                    return { ...m, items, url: primary?.url || "", mimeType: primary?.mimeType, originalName: primary?.originalName, size: primary?.size, thumbnail: primary?.thumbnail ? { url: primary.thumbnail } : undefined };
+                }),
+            }));
+        }
+    };
+
+    const handleFlatItemMoveToGroup = (fromGroupIndex: number, itemLocalIndex: number, toGroupIndex: number, toItemIndex?: number) => {
+
+        const fromMaterial = form.materials[fromGroupIndex];
+        const toMaterial = form.materials[toGroupIndex];
+
+
+        if (!fromMaterial || !toMaterial) {
+
+            return;
+        }
+
+        const isFromVideo = fromMaterial.type === "video" || (fromMaterial.type === "bulk" && isVideoBulkType(fromMaterial));
+        const isFromPhoto = !isFromVideo && isPhotoMaterialType(fromMaterial.type);
+
+
+        if (isFromVideo) {
+            const fromItems = buildVideoItems(fromMaterial);
+
+            const itemToMove = fromItems[itemLocalIndex];
+
+            if (!itemToMove) return;
+            const remainingFrom = fromItems.filter((_, idx) => idx !== itemLocalIndex);
+            const toItems = buildVideoItems(toMaterial);
+
+            const insertIdx = toItemIndex !== undefined && toItemIndex <= toItems.length ? toItemIndex : toItems.length;
+            const newToItems = [...toItems.slice(0, insertIdx), itemToMove, ...toItems.slice(insertIdx)];
+
+            const primaryFrom = remainingFrom[0];
+            const primaryTo = newToItems[0];
+            setForm((prev: any) => ({
+                ...prev,
+                materials: prev.materials.map((m: Material, idx: number) => {
+                    if (idx === fromGroupIndex) return { ...m, items: remainingFrom, url: primaryFrom?.url || "", mimeType: primaryFrom?.mimeType, originalName: primaryFrom?.originalName, size: primaryFrom?.size, thumbnail: primaryFrom?.thumbnail ? { url: primaryFrom.thumbnail } : undefined };
+                    if (idx === toGroupIndex) return { ...m, items: newToItems, url: primaryTo?.url || "", mimeType: primaryTo?.mimeType, originalName: primaryTo?.originalName, size: primaryTo?.size, thumbnail: primaryTo?.thumbnail ? { url: primaryTo.thumbnail } : undefined };
+                    return m;
+                }),
+            }));
+
+        } else if (isFromPhoto) {
+            const fromItems = buildPhotoItems(fromMaterial);
+            const itemToMove = fromItems[itemLocalIndex];
+            if (!itemToMove) return;
+            const remainingFrom = fromItems.filter((_, idx) => idx !== itemLocalIndex);
+            const toItems = buildPhotoItems(toMaterial);
+            const insertIdx = toItemIndex !== undefined && toItemIndex <= toItems.length ? toItemIndex : toItems.length;
+            const newToItems = [...toItems.slice(0, insertIdx), itemToMove, ...toItems.slice(insertIdx)];
+            const primaryFrom = remainingFrom[0];
+            const primaryTo = newToItems[0];
+            setForm((prev: any) => ({
+                ...prev,
+                materials: prev.materials.map((m: Material, idx: number) => {
+                    if (idx === fromGroupIndex) return { ...m, items: remainingFrom, url: primaryFrom?.url || "", mimeType: primaryFrom?.mimeType, originalName: primaryFrom?.originalName, size: primaryFrom?.size };
+                    if (idx === toGroupIndex) return { ...m, items: newToItems, url: primaryTo?.url || "", mimeType: primaryTo?.mimeType, originalName: primaryTo?.originalName, size: primaryTo?.size };
+                    return m;
+                }),
+            }));
+        }
+    };
+
+    const handleFlatDragEnd = (event: any) => {
+        const { active, over } = event;
+        const activeId = String(active.id);
+        const overId = String(over?.id || 'null');
+
+
+        if (!over || active.id === over.id) {
+
+            return;
+        }
+
+        const activeMatch = activeId.match(/^group-(\d+)-item-(\d+)$/);
+        if (!activeMatch) {
+
+            return;
+        }
+
+        const fromGroupIdx = parseInt(activeMatch[1]);
+        const fromItemIdx = parseInt(activeMatch[2]);
+
+
+        // Check if dropped on a group container (cross-group drop)
+        const overGroupMatch = overId.match(/^group-(\d+)$/);
+        if (overGroupMatch) {
+            const toGroupIdx = parseInt(overGroupMatch[1]);
+
+            if (fromGroupIdx !== toGroupIdx) {
+                handleFlatItemMoveToGroup(fromGroupIdx, fromItemIdx, toGroupIdx);
+            }
+            setActiveDragItem(null);
+            return;
+        }
+
+        const overItemMatch = overId.match(/^group-(\d+)-item-(\d+)$/);
+        if (overItemMatch) {
+            const toGroupIdx = parseInt(overItemMatch[1]);
+            const toItemIdx = parseInt(overItemMatch[2]);
+
+
+            if (fromGroupIdx === toGroupIdx) {
+                const material = form.materials[fromGroupIdx];
+                if (!material) return;
+                const isVideo = material.type === "video" || (material.type === "bulk" && isVideoBulkType(material));
+                const isPhoto = !isVideo && isPhotoMaterialType(material.type);
+
+                if (isPhoto) {
+                    const items = arrayMove(buildPhotoItems(material), fromItemIdx, toItemIdx);
+                    const primary = items[0];
+                    setForm((prev: any) => ({
+                        ...prev,
+                        materials: prev.materials.map((m: Material, idx: number) => {
+                            if (idx !== fromGroupIdx) return m;
+                            return { ...m, items, url: primary?.url || "", mimeType: primary?.mimeType, originalName: primary?.originalName, size: primary?.size };
+                        }),
+                    }));
+                } else if (isVideo) {
+                    const items = arrayMove(buildVideoItems(material), fromItemIdx, toItemIdx);
+                    const primary = items[0];
+                    setForm((prev: any) => ({
+                        ...prev,
+                        materials: prev.materials.map((m: Material, idx: number) => {
+                            if (idx !== fromGroupIdx) return m;
+                            return { ...m, items, url: primary?.url || "", mimeType: primary?.mimeType, originalName: primary?.originalName, size: primary?.size, thumbnail: primary?.thumbnail ? { url: primary.thumbnail } : undefined };
+                        }),
+                    }));
+                }
+            } else {
+                handleFlatItemMoveToGroup(fromGroupIdx, fromItemIdx, toGroupIdx, toItemIdx);
+            }
+            return;
+        }
+
+        const overGroupMatch2 = overId.match(/^group-(\d+)$/);
+        if (overGroupMatch2) {
+            const toGroupIdx = parseInt(overGroupMatch2[1]);
+            if (fromGroupIdx === toGroupIdx) {
+                const material = form.materials[fromGroupIdx];
+                if (!material) return;
+                const isVideo = material.type === "video" || (material.type === "bulk" && isVideoBulkType(material));
+
+                if (isVideo) {
+                    const items = buildVideoItems(material);
+                    if (fromItemIdx < items.length - 1) {
+                        const reordered = arrayMove(items, fromItemIdx, items.length - 1);
+                        const primary = reordered[0];
+                        setForm((prev: any) => ({
+                            ...prev,
+                            materials: prev.materials.map((m: Material, idx: number) => {
+                                if (idx !== fromGroupIdx) return m;
+                                return { ...m, items: reordered, url: primary?.url || "", mimeType: primary?.mimeType, originalName: primary?.originalName, size: primary?.size, thumbnail: primary?.thumbnail ? { url: primary.thumbnail } : undefined };
+                            }),
+                        }));
+                    }
+                } else if (isPhotoMaterialType(material.type)) {
+                    const items = buildPhotoItems(material);
+                    if (fromItemIdx < items.length - 1) {
+                        const reordered = arrayMove(items, fromItemIdx, items.length - 1);
+                        const primary = reordered[0];
+                        setForm((prev: any) => ({
+                            ...prev,
+                            materials: prev.materials.map((m: Material, idx: number) => {
+                                if (idx !== fromGroupIdx) return m;
+                                return { ...m, items: reordered, url: primary?.url || "", mimeType: primary?.mimeType, originalName: primary?.originalName, size: primary?.size };
+                            }),
+                        }));
+                    }
+                }
+            } else {
+                handleFlatItemMoveToGroup(fromGroupIdx, fromItemIdx, toGroupIdx);
+            }
+        }
     };
 
     const handleBeforeAfterUpload = async (e: React.ChangeEvent<HTMLInputElement>, which: 'before' | 'after') => {
@@ -1918,7 +2418,6 @@ const EditProject: React.FC = () => {
         try {
             ctx.drawImage(img, sx, sy, cropNatW, cropNatH, 0, 0, outW, outH);
             const dataUrl = canvas.toDataURL(form.mainCover.mimeType || 'image/jpeg', 0.9);
-            console.log("[Crop] Canvas export SUCCESS, croppedUrl length:", dataUrl.length);
             setCroppedPreview(dataUrl);
             setForm((prev: any) => ({ ...prev, mainCover: { ...prev.mainCover, croppedUrl: dataUrl, crop: { center: cropCenter, zoom } } }));
         } catch (err) {
@@ -2068,7 +2567,6 @@ const EditProject: React.FC = () => {
     // Read cover image dimensions from the rendered <img> element (no fetch needed)
     const handleCoverImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
         const imgEl = e.currentTarget;
-        console.log("[CoverImg] onLoad fired, natural:", imgEl.naturalWidth, "x", imgEl.naturalHeight, "src:", imgEl.src?.substring(0, 60));
         if (imgEl.naturalWidth && imgEl.naturalHeight) {
             setMainCoverMeta({ width: imgEl.naturalWidth, height: imgEl.naturalHeight });
             // Also try to fetch the image as a blob via proxy for untainted canvas operations
@@ -2082,14 +2580,12 @@ const EditProject: React.FC = () => {
                         const img = new Image();
                         img.onload = () => {
                             loadedImgRef.current = img;
-                            console.log("[CoverImg] Proxy-loaded image set for untainted canvas");
                         };
                         img.src = objectUrl;
                     })
                     .catch(() => {
                         // Proxy also blocked — use the DOM element (canvas crop won't work, CSS preview still works)
                         loadedImgRef.current = imgEl;
-                        console.log("[CoverImg] Proxy fetch failed, using DOM element (canvas crop disabled)");
                     });
             } else {
                 loadedImgRef.current = imgEl;
@@ -2097,10 +2593,9 @@ const EditProject: React.FC = () => {
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!id) return;
-        
         setSaveStatus("saving");
 
         try {
@@ -2113,9 +2608,7 @@ const EditProject: React.FC = () => {
                 resourceType: "image" | "video",
                 fallbackFileName: string,
             ) => {
-                console.log("[uploadAssetIfNeeded]", { url: asset?.url?.substring(0, 50), hasFile: !!asset?._file, fileSize: asset?._file?.size, resourceType });
                 if (!asset?.url || !needsUpload(asset.url)) {
-                    console.log("[uploadAssetIfNeeded] SKIP - no upload needed");
                     return asset;
                 }
 
@@ -2187,7 +2680,6 @@ const EditProject: React.FC = () => {
             }
 
             if (clone.mainCover) {
-                console.log("[Submit] clone.mainCover keys:", Object.keys(clone.mainCover), "crop:", clone.mainCover.crop, "croppedUrl:", clone.mainCover.croppedUrl ? "present" : "absent");
                 if (clone.mainCover.croppedUrl) {
                     // Canvas crop succeeded (data URL) — upload the cropped image
                     const coverUploadSource = clone.mainCover.croppedUrl;
@@ -2207,7 +2699,6 @@ const EditProject: React.FC = () => {
                     // Canvas crop failed (CORS) — send crop params for server-side cropping
                     // Keep the original URL and crop metadata, backend will crop
                     delete clone.mainCover.croppedUrl;
-                    console.log("[Submit] Canvas crop failed, sending crop params:", clone.mainCover.crop);
                 } else {
                     // No crop at all
                     delete clone.mainCover.croppedUrl;
@@ -2226,6 +2717,13 @@ const EditProject: React.FC = () => {
                         delete copy._id;
 
                         if (copy.type === "bulk" && isVideoBulkType(copy)) {
+                            console.log('[handleSubmit] BULK VIDEO path for material', materialIndex, {
+                                type: copy.type,
+                                url: copy.url?.substring(0, 40),
+                                thumbnail: copy.thumbnail,
+                                itemsCount: copy.items?.length,
+                                itemsThumbnails: copy.items?.map((it: any) => ({ url: it?.url?.substring(0, 40), thumbnail: it?.thumbnail })),
+                            });
                             let normalizedVideoItems = buildVideoItems(copy).map((item) => ({
                                 url: item.url,
                                 mimeType: item.mimeType,
@@ -2235,7 +2733,7 @@ const EditProject: React.FC = () => {
                                 type: "video" as const,
                                 _file: (item as any)._file,
                             }));
-                            console.log("[EditProject] bulk video items:", normalizedVideoItems.map(i => ({ url: i.url?.substring(0,30), hasFile: !!i._file, size: i._file?.size })));
+                            console.log("[handleSubmit] bulk video items after buildVideoItems:", normalizedVideoItems.map(i => ({ url: i.url?.substring(0,40), thumbnail: i.thumbnail?.substring(0, 80) })));
 
                             normalizedVideoItems = await runWithConcurrency(
                                 normalizedVideoItems, 3,
@@ -2246,12 +2744,17 @@ const EditProject: React.FC = () => {
                                         item.originalName || `project-video-${materialIndex + 1}-${itemIndex + 1}.mp4`,
                                     );
                                     let uploadedThumb = item.thumbnail;
-                                    if (item.thumbnail && needsUpload(item.thumbnail)) {
+                                    const needsUploadThumb = item.thumbnail && needsUpload(item.thumbnail);
+                                    console.log('[handleSubmit] bulk item thumbnail check:', { itemIndex, thumbnail: item.thumbnail?.substring(0, 80), needsUpload: needsUploadThumb });
+                                    if (needsUploadThumb && item.thumbnail) {
                                         const thumbResult = await uploadThumbnailToR2(item.thumbnail, {
                                             resourceType: "image",
                                             fileName: `video-thumb-${materialIndex + 1}-${itemIndex + 1}.jpg`,
                                         });
                                         uploadedThumb = thumbResult.url;
+                                        console.log('[handleSubmit] bulk item thumbnail UPLOADED:', { uploadedThumb: uploadedThumb?.substring(0, 80) });
+                                    } else {
+                                        console.log('[handleSubmit] bulk item thumbnail KEPT as-is:', { uploadedThumb: uploadedThumb?.substring(0, 80) });
                                     }
                                     return {
                                         ...item,
@@ -2262,6 +2765,7 @@ const EditProject: React.FC = () => {
                                 },
                             );
 
+                            console.log('[handleSubmit] bulk final normalizedVideoItems:', normalizedVideoItems.map(i => ({ url: i.url?.substring(0, 40), thumbnail: i.thumbnail?.substring(0, 80) })));
                             const primaryVideo = normalizedVideoItems[0];
                             copy.url = primaryVideo?.url || copy.url;
                             copy.mimeType = primaryVideo?.mimeType || copy.mimeType;
@@ -2326,6 +2830,9 @@ const EditProject: React.FC = () => {
                                 copy.originalName = uploadedVideo.originalName || copy.originalName;
                                 copy.size = uploadedVideo.size || copy.size;
 
+                                if (!copy.thumbnail && videoItems[0]?.thumbnail) {
+                                    copy.thumbnail = videoItems[0].thumbnail;
+                                }
                                 const thumbAsset = typeof copy.thumbnail === 'string' ? { url: copy.thumbnail } : copy.thumbnail;
                                 if (thumbAsset?.url) {
                                     const uploadedThumb = await uploadAssetIfNeeded(
@@ -2417,6 +2924,14 @@ const EditProject: React.FC = () => {
 
                         processedMaterials.push(copy);
                 }
+                console.log('[handleSubmit] FINAL processedMaterials:', processedMaterials.map((m: any, i: number) => ({
+                    idx: i,
+                    type: m.type,
+                    url: m.url?.substring(0, 40),
+                    thumbnail: typeof m.thumbnail === 'string' ? m.thumbnail?.substring(0, 80) : m.thumbnail,
+                    itemsCount: m.items?.length,
+                    itemsThumbnails: m.items?.map((it: any) => ({ url: it?.url?.substring(0, 30), thumbnail: it?.thumbnail?.substring(0, 80) })),
+                })));
                 clone.materials = processedMaterials;
 
                 clone.materials = clone.materials.map((material: any, index: number) => {
@@ -2508,7 +3023,6 @@ if (Array.isArray(clone.cast)) {
                 parentProject: getOptionValue(clone.parentProject) || undefined,
                 company: getOptionValue(clone.company) || undefined,
             };
-            console.log("[Submit] Final mainCover sent to backend:", JSON.stringify(submitData.mainCover));
 
             update.mutate(
                 { id, data: submitData as any },
@@ -2569,11 +3083,6 @@ if (Array.isArray(clone.cast)) {
         del.mutate(id, {
             onSuccess: () => navigate("/projects"),
         });
-    };
-
-    const formatRichText = (content?: string) => {
-        if (!content) return "";
-        return /<\/?[a-z][\s\S]*>/i.test(content) ? content : content.replace(/\n/g, "<br />");
     };
 
     if (isLoading) {
@@ -3260,344 +3769,161 @@ if (Array.isArray(clone.cast)) {
                                     </button>
                                 </div>
 
-                                <Reorder.Group axis="y" values={form.materials} onReorder={handleMaterialsReorder} className="space-y-3">
-                                    <AnimatePresence initial={false}>
-                                        {form.materials.map((material: Material, idx: number) => (
-                                            <Reorder.Item
-                                                key={material._id || `material-${idx}`}
-                                                value={material}
-                                                initial={{ opacity: 0, y: -10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                exit={{ opacity: 0, scale: 0.95 }}
-                                                transition={{ duration: 0.2, ease: "easeOut" }}
-                                                className="border border-light-200 dark:border-dark-700 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow hover:bg-light-50 dark:hover:bg-dark-800/30"
-                                                whileDrag={{ scale: 1.02, boxShadow: "0 8px 25px rgba(0,0,0,0.15)", zIndex: 50 }}
-                                            >
-                                            <div className="w-full grid grid-cols-12 gap-4 items-start">
-                                                    <div className="col-span-12 sm:col-span-1 flex sm:justify-center">
-                                                        <span
-                                                            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing"
-                                                            title={tr("drag_to_reorder", "Drag to reorder")}
-                                                            aria-label={tr("drag_material", "Drag material to reorder")}
-                                                        >
-                                                            <GripVertical className="w-4 h-4" />
-                                                        </span>
-                                                    </div>
+                                <DndContext sensors={photoSensors} collisionDetection={materialsCollisionDetection}
+                                    onDragStart={(event) => {
+                                        const { active } = event;
+                                        const data = active.data.current as any;
+                                        if (!data) return;
 
-                                                    <div className="col-span-12 sm:col-span-2">
-                                                        <div className="aspect-square w-full overflow-hidden rounded-lg bg-black/5">
-                                                            {material.type === "before_after" ? (
-                                                                <BeforeAfterSlider
-                                                                    beforeUrl={material.before?.url}
-                                                                    afterUrl={material.after?.url}
-                                                                    beforeLabel={localizedToString(material.before?.label) || tr("before_label", "Before")}
-                                                                    afterLabel={localizedToString(material.after?.label) || tr("after_label", "After")}
-                                                                    className="w-full h-full"
-                                                                    mediaClassName="w-full h-full"
-                                                                    showSlider={false}
-                                                                />
-                                                            ) : material.type === "photo" ? (
-                                                                (() => {
-                                                                    const previewItems = buildPhotoItems(material);
-
-                                                                    if (!previewItems.length) {
-                                                                        return (
-                                                                            <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
-                                                                                <ImageIcon className="w-6 h-6 opacity-40" />
-                                                                            </div>
-                                                                        );
-                                                                    }
-
-                                                                    if (previewItems.length === 1) {
-                                                                        return <img src={previewItems[0].url} alt={localizedToString(material.caption) || ''} className="w-full h-full object-cover" />;
-                                                                    }
-
-                                                                    return (
-                                                                        <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
-                                                                            {previewItems.slice(0, 4).map((item, itemIdx) => (
-                                                                                <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
-                                                                                    <img src={item.url} alt={localizedToString(material.caption) || `Photo ${itemIdx + 1}`} className="w-full h-full object-cover" />
-                                                                                    {itemIdx === 3 && previewItems.length > 4 && (
-                                                                                        <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
-                                                                                            +{previewItems.length - 4}
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    );
-                                                                })()
-                                                            ) : material.type === "bulk" && isVideoBulkType(material) ? (
-                                                                (() => {
-                                                                    const videoItems = buildVideoItems(material);
-                                                                    if (!videoItems.length) {
-                                                                        return (
-                                                                            <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
-                                                                                <Video className="w-6 h-6 opacity-40" />
-                                                                            </div>
-                                                                        );
-                                                                    }
-                                                                    if (videoItems.length === 1) {
-                                                                        return videoItems[0].thumbnail
-                                                                            ? <img src={videoItems[0].thumbnail} alt={localizedToString(material.caption) || ''} className="w-full h-full object-cover" />
-                                                                            : <video src={videoItems[0].url} className="w-full h-full object-cover" muted preload="metadata" />;
-                                                                    }
-                                                                    return (
-                                                                        <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
-                                                                            {videoItems.slice(0, 4).map((item, itemIdx) => (
-                                                                                <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
-                                                                                    {item.thumbnail ? (
-                                                                                        <img src={item.thumbnail} alt={item.originalName || `Video ${itemIdx + 1}`} className="w-full h-full object-cover" />
-                                                                                    ) : (
-                                                                                        <video src={item.url} className="w-full h-full object-cover" muted preload="metadata" />
-                                                                                    )}
-                                                                                    {itemIdx === 3 && videoItems.length > 4 && (
-                                                                                        <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
-                                                                                            +{videoItems.length - 4}
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    );
-                                                                })()
-                                                            ) : material.type === "bulk" ? (
-                                                                (() => {
-                                                                    const photoItems = buildPhotoItems(material);
-                                                                    if (!photoItems.length) {
-                                                                        return (
-                                                                            <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
-                                                                                <ImageIcon className="w-6 h-6 opacity-40" />
-                                                                            </div>
-                                                                        );
-                                                                    }
-                                                                    if (photoItems.length === 1) {
-                                                                        return <img src={photoItems[0].url} alt={localizedToString(material.caption) || ''} className="w-full h-full object-cover" />;
-                                                                    }
-                                                                    return (
-                                                                        <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
-                                                                            {photoItems.slice(0, 4).map((item, itemIdx) => (
-                                                                                <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
-                                                                                    <img src={item.url} alt={localizedToString(material.caption) || `Photo ${itemIdx + 1}`} className="w-full h-full object-cover" />
-                                                                                    {itemIdx === 3 && photoItems.length > 4 && (
-                                                                                        <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
-                                                                                            +{photoItems.length - 4}
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    );
-                                                                })()
-                                                            ) : material.type === "video" && material.url ? (
-                                                                (() => {
-                                                                    const videoItems = buildVideoItems(material);
-                                                                    if (videoItems.length > 1) {
-                                                                        return (
-                                                                            <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full">
-                                                                                {videoItems.slice(0, 4).map((item, itemIdx) => (
-                                                                                    <div key={`preview-${item.originalName || itemIdx}`} className="relative w-full h-full">
-                                                                                        {item.thumbnail ? (
-                                                                                            <img src={item.thumbnail} alt={item.originalName || `Video ${itemIdx + 1}`} className="w-full h-full object-cover" />
-                                                                                        ) : (
-                                                                                            <video src={item.url} className="w-full h-full object-cover" muted preload="metadata" />
-                                                                                        )}
-                                                                                        {itemIdx === 3 && videoItems.length > 4 && (
-                                                                                            <div className="absolute inset-0 bg-black/45 text-white text-xs font-medium flex items-center justify-center">
-                                                                                                +{videoItems.length - 4}
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        );
-                                                                    }
-                                                                    return <video src={material.url} controls className="w-full h-full object-cover" />;
-                                                                })()
-                                                            ) : material.type === "text" ? (
-                                                                <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
-                                                                    <FileText className="w-6 h-6 opacity-40" />
-                                                                </div>
-                                                            ) : material.type === "html" ? (
-                                                                <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
-                                                                    <Code className="w-6 h-6 opacity-40" />
-                                                                </div>
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center text-light-400 dark:text-dark-500">
-                                                                    <ImageIcon className="w-6 h-6 opacity-40" />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="col-span-12 sm:col-span-7">
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex items-center gap-3 min-w-0">
-                                                                <span className="inline-flex items-center gap-2 px-2 py-1 rounded text-xs font-semibold bg-light-100 dark:bg-dark-800 text-danger-400">
-                                                                    {material.type === "photo" && <ImageIcon className="w-4 h-4" />}
-                                                                    {material.type === "video" && <Video className="w-4 h-4" />}
-                                                                    {material.type === "bulk" && isVideoBulkType(material) && <Video className="w-4 h-4" />}
-                                                                    {material.type === "bulk" && !isVideoBulkType(material) && <ImageIcon className="w-4 h-4" />}
-                                                                    {material.type === "before_after" && <Camera className="w-4 h-4" />}
-                                                                    {material.type === "text" && <FileText className="w-4 h-4" />}
-                                                                    {material.type === "html" && <Code className="w-4 h-4" />}
-                                                                    <span className="uppercase">
-                                                                        {(() => {
-                                                                            if (material.type === "video") {
-                                                                                const videoCount = buildVideoItems(material).length;
-                                                                                return videoCount > 1 ? `${videoCount} videos` : "VIDEO";
-                                                                            }
-                                                                            if (material.type === "bulk" && isVideoBulkType(material)) {
-                                                                                const videoCount = buildVideoItems(material).length;
-                                                                                return `${videoCount} videos`;
-                                                                            }
-                                                                            return material.type;
-                                                                        })()}
-                                                                    </span>
-                                                                    <span className="font-mono ml-1">#{material.order}</span>
-                                                                </span>
-
-                                                                <div className="truncate">
-                                                                    {localizedToString(material.caption) && <div className="text-sm font-medium text-light-900 dark:text-dark-50 truncate">{localizedToString(material.caption)}</div>}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        {material.type === "photo" && (
-                                                            (() => {
-                                                                const photoItems = buildPhotoItems(material);
-                                                                const primarySize = photoItems[0]?.size || material.size;
-
-                                                                return (
-                                                                    <div className="mt-2 text-xs text-light-500 dark:text-dark-400">
-                                                                        {photoItems.length > 0
-                                                                            ? `${photoItems.length} ${photoItems.length === 1 ? tr("photo", "photo") : tr("photos", "photos")} ${tr("grouped", "grouped")}`
-                                                                            : (material.originalName ? `${tr("file_label", "File:")} ${material.originalName}` : tr("uploaded_image", "Uploaded image"))}
-                                                                        {primarySize ? ` • ${((primarySize || 0) / 1024).toFixed(1)}KB` : ""}
-                                                                    </div>
-                                                                );
-                                                            })()
-                                                        )}
-
-                                                        {(material.type === "video" || material.type === "bulk") && (() => {
-                                                            const videoItems = buildVideoItems(material);
-                                                            return (
-                                                                <div className="mt-2 text-xs text-light-500 dark:text-dark-400">
-                                                                    {videoItems.length > 1
-                                                                        ? `${videoItems.length} ${tr("videos", "videos")} ${tr("grouped", "grouped")}`
-                                                                        : (material.originalName ? `${tr("file_label", "File:")} ${material.originalName}` : tr("uploaded_video", "Uploaded video"))}
-                                                                    {material.size ? ` • ${((material.size || 0) / 1024).toFixed(1)}KB` : ""}
-                                                                </div>
-                                                            );
-                                                        })()}
-
-                                                        {localizedToString(material.description) && (
-                                                            <div className="mt-2 text-xs text-light-600 dark:text-dark-300 max-h-16 overflow-auto break-words">
-                                                                {localizedToString(material.description)}
-                                                            </div>
-                                                        )}
-
-                                                        {localizedToString(material.textContent) && (
-                                                            <div className="mt-2">
-                                                                <div
-                                                                    className="p-3 bg-light-100 dark:bg-dark-800 rounded-md text-sm text-light-700 dark:text-dark-300 max-h-28 overflow-auto break-words"
-                                                                    dangerouslySetInnerHTML={{ __html: formatRichText(localizedToString(material.textContent)) }}
-                                                                >
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {localizedToString(material.htmlContent) && (
-                                                            <div className="mt-2">
-                                                                <div className="p-3 bg-light-100 dark:bg-dark-800 rounded-md text-sm text-light-700 dark:text-dark-300 max-h-28 overflow-auto">
-                                                                    <pre className="whitespace-pre-wrap text-xs break-words">{localizedToString(material.htmlContent)}</pre>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="col-span-12 sm:col-span-2 sm:ml-auto flex items-center justify-end gap-2">
-                                                        {(material.type === "photo" || (material.type === "bulk" && !isVideoBulkType(material))) && (() => {
-                                                            const photoItems = buildPhotoItems(material);
-                                                            const hasMultiple = photoItems.length > 1;
-                                                            return (
-                                                                <div className="relative" ref={coverPickerMaterialIdx === idx ? coverPickerRef : undefined}>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            if (hasMultiple) {
-                                                                                setCoverPickerMaterialIdx(coverPickerMaterialIdx === idx ? null : idx);
-                                                                            } else if (photoItems[0]?.url) {
-                                                                                setForm((prev: any) => ({
-                                                                                    ...prev,
-                                                                                    mainCover: {
-                                                                                        url: photoItems[0].url,
-                                                                                        mimeType: photoItems[0].mimeType || "image/jpeg",
-                                                                                        originalName: photoItems[0].originalName || "cover-from-material",
-                                                                                        size: photoItems[0].size || 0,
-                                                                                    },
-                                                                                }));
-                                                                                showAlert(tr("imported_to_cover", "Photo imported as main cover"), "success");
-                                                                            }
-                                                                        }}
-                                                                        title={tr("import_to_cover", "Import to Main Cover")}
-                                                                        aria-label={tr("import_to_cover", "Import to Main Cover")}
-                                                                        className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors"
-                                                                    >
-                                                                        <ImageIcon className="w-4 h-4" />
-                                                                    </button>
-                                                                    {coverPickerMaterialIdx === idx && hasMultiple && (
-                                                                        <div className="absolute right-0 top-full mt-1 z-50 w-72 max-h-80 overflow-auto rounded-xl border border-light-200 dark:border-dark-700 bg-white dark:bg-dark-900 shadow-xl p-2">
-                                                                            <div className="text-xs font-semibold text-light-500 dark:text-dark-400 px-2 mb-2">{tr("choose_photo", "Choose a photo")}</div>
-                                                                            <div className="grid grid-cols-3 gap-2">
-                                                                                {photoItems.map((item, pIdx) => (
-                                                                                    <button
-                                                                                        key={pIdx}
-                                                                                        type="button"
-                                                                                        onClick={() => {
-                                                                                            setForm((prev: any) => ({
-                                                                                                ...prev,
-                                                                                                mainCover: {
-                                                                                                    url: item.url,
-                                                                                                    mimeType: item.mimeType || "image/jpeg",
-                                                                                                    originalName: item.originalName || "cover-from-material",
-                                                                                                    size: item.size || 0,
-                                                                                                },
-                                                                                            }));
-                                                                                            setCoverPickerMaterialIdx(null);
-                                                                                            showAlert(tr("imported_to_cover", "Photo imported as main cover"), "success");
-                                                                                        }}
-                                                                                        className="relative aspect-square rounded-lg overflow-hidden border border-light-200 dark:border-dark-700 hover:border-primary-500 transition-colors group"
-                                                                                    >
-                                                                                        <img src={item.url} alt={item.originalName || `Photo ${pIdx + 1}`} className="w-full h-full object-cover" />
-                                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                                                                            <ImageIcon className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
-                                                                                        </div>
-                                                                                    </button>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                        <button type="button" onClick={() => handleEditMaterial(material, idx)} title={tr("edit", "Edit")} aria-label={tr("edit_material", "Edit material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 hover:bg-light-100 dark:hover:bg-dark-800 text-light-600 dark:text-dark-400 transition-colors">
-                                                            <Edit className="w-4 h-4" />
-                                                        </button>
-                                                        <button type="button" onClick={() => handleDeleteMaterial(idx)} title={tr("delete", "Delete")} aria-label={tr("delete_material", "Delete material")} className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-danger-200 dark:border-danger-900/40 bg-white/70 dark:bg-dark-900/50 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors">
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
+                                        setActiveDragItem({ id: String(active.id), url: data.url, isVideo: data.isVideo, thumbnail: data.thumbnail, label: data.label });
+                                    }}
+                                    onDragEnd={(event) => { setActiveDragItem(null); handleFlatDragEnd(event); }}
+                                >
+                                    <DragOverlay dropAnimation={null}>
+                                        {activeDragItem ? (
+                                            <div className="shrink-0 w-24 h-24 rounded-lg overflow-hidden border-2 border-primary-400 shadow-2xl opacity-90 pointer-events-none">
+                                                {activeDragItem.isVideo ? (
+                                                    activeDragItem.thumbnail ? (
+                                                        <img src={activeDragItem.thumbnail} alt={activeDragItem.label} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <video src={activeDragItem.url} className="w-full h-full object-cover" muted preload="metadata" />
+                                                    )
+                                                ) : (
+                                                    <img src={activeDragItem.url} alt={activeDragItem.label} className="w-full h-full object-cover" />
+                                                )}
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                                                <div className="absolute bottom-0 left-0 right-0 p-1.5">
+                                                    <div className="text-[10px] text-white font-medium truncate drop-shadow">{activeDragItem.label}</div>
+                                                </div>
                                             </div>
-                                            </Reorder.Item>
-                                        ))}
-                                    </AnimatePresence>
+                                        ) : null}
+                                    </DragOverlay>
+                                    <div className="space-y-4">
+                                        {form.materials.map((material: Material, idx: number) => {
+                                            const isVideo = material.type === "video" || (material.type === "bulk" && isVideoBulkType(material));
+                                            const isPhoto = !isVideo && isPhotoMaterialType(material.type);
+                                            const isBa = material.type === "before_after";
+                                            const isText = material.type === "text";
+                                            const isHtml = material.type === "html";
+
+                                            let items: { id: string; url: string; isVideo: boolean; thumbnail?: string; label: string }[] = [];
+
+                                            if (isPhoto) {
+                                                items = buildPhotoItems(material).map((it, i) => ({
+                                                    id: `group-${idx}-item-${i}`,
+                                                    url: it.url,
+                                                    isVideo: false,
+                                                    label: it.originalName || `Photo ${i + 1}`,
+                                                }));
+                                            } else if (isVideo) {
+                                                items = buildVideoItems(material).map((it, i) => ({
+                                                    id: `group-${idx}-item-${i}`,
+                                                    url: it.url,
+                                                    isVideo: true,
+                                                    thumbnail: typeof it.thumbnail === "string" ? it.thumbnail : (it.thumbnail && typeof it.thumbnail === "object" ? (it.thumbnail as any).url : undefined),
+                                                    label: it.originalName || `Video ${i + 1}`,
+                                                }));
+
+                                            }
+
+                                            const otherGroups = form.materials
+                                                .map((m: Material, gIdx: number) => ({ material: m, gIdx }))
+                                                .filter(({ material: mat, gIdx }: { material: Material; gIdx: number }) => gIdx !== idx && ((isPhoto && isPhotoMaterialType(mat.type)) || (isVideo && (mat.type === "video" || (mat.type === "bulk" && isVideoBulkType(mat))))));
+
+                                            return (
+                                                <div key={material._id || `mat-${idx}`} className="border border-light-200 dark:border-dark-700 rounded-xl overflow-hidden">
+                                                    <div className="flex items-center justify-between px-4 py-3 bg-light-50 dark:bg-dark-800/50 border-b border-light-200 dark:border-dark-700">
+                                                        <div className="flex items-center gap-3 min-w-0">
+                                                            <span className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing" title={tr("drag_to_reorder", "Drag to reorder")}>
+                                                                <GripVertical className="w-3.5 h-3.5" />
+                                                            </span>
+                                                            {isPhoto && <ImageIcon className="w-4 h-4 text-light-500 shrink-0" />}
+                                                            {isVideo && <Video className="w-4 h-4 text-light-500 shrink-0" />}
+                                                            {isBa && <Camera className="w-4 h-4 text-light-500 shrink-0" />}
+                                                            {isText && <FileText className="w-4 h-4 text-light-500 shrink-0" />}
+                                                            {isHtml && <Code className="w-4 h-4 text-light-500 shrink-0" />}
+                                                            <span className="text-sm font-semibold text-light-900 dark:text-dark-50">
+                                                                {localizedToString(material.caption) || `${material.type.toUpperCase()} #${material.order}`}
+                                                            </span>
+                                                            <span className="text-xs text-light-500 dark:text-dark-400">
+                                                                {items.length > 0 && `${items.length} ${items.length === 1 ? "item" : "items"}`}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            <button type="button" onClick={() => handleEditMaterial(material, idx)} className="p-1.5 rounded-lg hover:bg-light-100 dark:hover:bg-dark-700 text-light-600 dark:text-dark-400 transition-colors" title={tr("edit", "Edit")}>
+                                                                <Edit className="w-4 h-4" />
+                                                            </button>
+                                                            <button type="button" onClick={() => handleDeleteMaterial(idx)} className="p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-danger-500 transition-colors" title={tr("delete", "Delete")}>
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <DroppableGroupContent groupId={`group-${idx}`} className="p-3">
+                                                        {isBa ? (
+                                                            <div className="flex gap-4">
+                                                                {material.before?.url && (
+                                                                    <div className="relative w-32 h-32 shrink-0 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
+                                                                        <img src={material.before.url} alt="Before" className="w-full h-full object-cover" />
+                                                                        <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-medium">Before</div>
+                                                                    </div>
+                                                                )}
+                                                                {material.after?.url && (
+                                                                    <div className="relative w-32 h-32 shrink-0 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
+                                                                        <img src={material.after.url} alt="After" className="w-full h-full object-cover" />
+                                                                        <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-medium">After</div>
+                                                                    </div>
+                                                                )}
+                                                                {!material.before?.url && !material.after?.url && (
+                                                                    <div className="text-xs text-light-500 dark:text-dark-400 py-4">No images uploaded yet</div>
+                                                                )}
+                                                            </div>
+                                                        ) : isText ? (
+                                                            <div className="text-xs text-light-600 dark:text-dark-300 max-h-20 overflow-auto break-words">
+                                                                {localizedToString(material.textContent) || <span className="text-light-400 dark:text-dark-500 italic">No text content</span>}
+                                                            </div>
+                                                        ) : isHtml ? (
+                                                            <div className="text-xs text-light-600 dark:text-dark-300 max-h-20 overflow-auto break-words">
+                                                                {localizedToString(material.htmlContent) || <span className="text-light-400 dark:text-dark-500 italic">No HTML content</span>}
+                                                            </div>
+                                                        ) : items.length > 0 ? (
+                                                            <SortableContext items={items.map((it) => it.id)} strategy={horizontalListSortingStrategy}>
+                                                                <div className="flex gap-2 pb-1">
+                                                                    {items.map((item) => (
+                                                                        <DraggableItemThumb
+                                                                            key={item.id}
+                                                                            id={item.id}
+                                                                            url={item.url}
+                                                                            isVideo={item.isVideo}
+                                                                            thumbnail={item.thumbnail}
+                                                                            label={item.label}
+                                                                            onRemove={() => handleFlatItemRemove(idx, items.indexOf(item))}
+                                                                            otherGroups={otherGroups.map((g: { material: Material; gIdx: number }) => ({
+                                                                                label: localizedToString(g.material.caption) || `Group ${g.gIdx + 1}`,
+                                                                                index: g.gIdx,
+                                                                            }))}
+                                                                            onMoveToGroup={(toIdx) => handleFlatItemMoveToGroup(idx, items.indexOf(item), toIdx)}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </SortableContext>
+                                                        ) : (
+                                                            <div className="flex items-center justify-center h-24 text-light-400 dark:text-dark-500">
+                                                                {isPhoto ? <ImageIcon className="w-8 h-8 opacity-30" /> : <Video className="w-8 h-8 opacity-30" />}
+                                                            </div>
+                                                        )}
+                                                    </DroppableGroupContent>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
                                     {form.materials.length === 0 && (
                                         <div className="text-center py-8 text-light-500 dark:text-dark-400">
                                             {tr("no_materials_yet", "No materials yet...")}
                                         </div>
                                     )}
-                                </Reorder.Group>
+                                </DndContext>
                             </div>
                         </div>
                     )}
@@ -4097,6 +4423,10 @@ if (Array.isArray(clone.cast)) {
                                         const groupedPhotoItems = buildPhotoItems(editingMaterial);
                                         if (groupedPhotoItems.length === 0) return null;
 
+                                        const otherPhotoGroups = form.materials
+                                            .map((m: Material, idx: number) => ({ material: m, idx }))
+                                            .filter(({ material: m, idx: i }: { material: Material; idx: number }) => i !== editingMaterialIndex && isPhotoMaterialType(m.type));
+
                                         return (
                                             <div className="mt-3">
                                                 <div className="text-xs text-light-500 dark:text-dark-400 mb-2">
@@ -4115,7 +4445,18 @@ if (Array.isArray(clone.cast)) {
                                                     <SortableContext items={groupedPhotoItems.map((it, i) => `${it.originalName || it.url}-${i}`)} strategy={verticalListSortingStrategy}>
                                                         <div className="space-y-2">
                                                             {groupedPhotoItems.map((item, itemIndex) => (
-                                                                <SortablePhotoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemovePhotoItem} removeLabel={tr("remove_photo", "Remove photo")} />
+                                                                <SortablePhotoItem
+                                                                    key={`${item.originalName || item.url}-${itemIndex}`}
+                                                                    item={item}
+                                                                    index={itemIndex}
+                                                                    onRemove={handleRemovePhotoItem}
+                                                                    removeLabel={tr("remove_photo", "Remove photo")}
+                                                                    otherGroups={otherPhotoGroups.map((g: { material: Material; idx: number }) => ({
+                                                                        label: localizedToString(g.material.caption) || `Group ${g.idx + 1}`,
+                                                                        index: g.idx,
+                                                                    }))}
+                                                                    onMoveToGroup={handleMovePhotoToGroup}
+                                                                />
                                                             ))}
                                                         </div>
                                                     </SortableContext>
@@ -4130,6 +4471,10 @@ if (Array.isArray(clone.cast)) {
                                         if (!isVideoType) return null;
                                         const videoItems = buildVideoItems(editingMaterial);
                                         if (videoItems.length === 0) return null;
+
+                                        const otherVideoGroups = form.materials
+                                            .map((m: Material, idx: number) => ({ material: m, idx }))
+                                            .filter(({ material: m, idx: i }: { material: Material; idx: number }) => i !== editingMaterialIndex && (m.type === "video" || (m.type === "bulk" && isVideoBulkType(m))));
 
                                         return (
                                             <div className="mt-3">
@@ -4151,7 +4496,24 @@ if (Array.isArray(clone.cast)) {
                                                     <SortableContext items={videoItems.map((it, i) => `${it.originalName || it.url}-${i}`)} strategy={verticalListSortingStrategy}>
                                                         <div className="space-y-2">
                                                             {videoItems.map((item, itemIndex) => (
-                                                                <SortableVideoItem key={`${item.originalName || item.url}-${itemIndex}`} item={item} index={itemIndex} onRemove={handleRemoveVideoItem} onThumbnailUpload={handleVideoItemThumbnailUpload} onRemoveThumbnail={handleRemoveVideoItemThumbnail} onFrameSelect={handleVideoItemFrameSelect} onFrameSelectForCover={handleCaptureFrameForCover} removeLabel="Remove video" materialCaption={localizedToString(editingMaterial?.caption)} materialDescription={localizedToString(editingMaterial?.description)} />
+                                                                <SortableVideoItem
+                                                                    key={`${item.originalName || item.url}-${itemIndex}`}
+                                                                    item={item}
+                                                                    index={itemIndex}
+                                                                    onRemove={handleRemoveVideoItem}
+                                                                    onThumbnailUpload={handleVideoItemThumbnailUpload}
+                                                                    onRemoveThumbnail={handleRemoveVideoItemThumbnail}
+                                                                    onFrameSelect={handleVideoItemFrameSelect}
+                                                                    onFrameSelectForCover={handleCaptureFrameForCover}
+                                                                    removeLabel="Remove video"
+                                                                    materialCaption={localizedToString(editingMaterial?.caption)}
+                                                                    materialDescription={localizedToString(editingMaterial?.description)}
+                                                                    otherGroups={otherVideoGroups.map((g: { material: Material; idx: number }) => ({
+                                                                        label: localizedToString(g.material.caption) || `Group ${g.idx + 1}`,
+                                                                        index: g.idx,
+                                                                    }))}
+                                                                    onMoveToGroup={handleMoveVideoToGroup}
+                                                                />
                                                             ))}
                                                         </div>
                                                     </SortableContext>

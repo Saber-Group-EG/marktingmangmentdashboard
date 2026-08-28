@@ -437,7 +437,7 @@ const ProjectsPage: React.FC = () => {
             ) : (
                 <DndProvider backend={HTML5Backend}>
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-6">
-                    {filtered.map((project: any) => (
+                    {filtered.map((project: any, index: number) => (
                         <SortableProjectCard
                             key={getProjectId(project)}
                             project={project}
@@ -448,6 +448,9 @@ const ProjectsPage: React.FC = () => {
                             onCardClick={() => navigate(`/projects/${getProjectId(project)}/edit`)}
                         >
                             <div className="group relative flex h-full flex-col overflow-hidden rounded-3xl card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                                <div className="absolute top-2 left-2 z-20 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white shadow-md" style={{ backgroundColor: '#1e40af' }}>
+                                    {index + 1}
+                                </div>
                                 <div className="absolute top-0 right-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-gradient-to-br blur-3xl from-secdark-300/20 to-secdark-700/10" />
 
                                 {(project.mainCover?.croppedUrl || project.mainCover?.url) ? (

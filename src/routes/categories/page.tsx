@@ -2,7 +2,7 @@ import { useState, KeyboardEvent, useEffect } from "react";
 import { Plus, Edit2, Trash2, Check, X, Loader2, Layers, Package as PackageIcon, FileSignature, Target, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
-import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from "@/hooks/queries";
+import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, useProjectCounts } from "@/hooks/queries";
 import { getCategories, getCategoryDisplayName } from "@/api/requests/categoriesService";
 import type { Category, CategoryType } from "@/api/requests/categoriesService";
 
@@ -11,11 +11,12 @@ type CategorySectionProps = {
     title: string;
     subtitle: string;
     Icon: typeof Layers;
+    usageCounts?: Record<string, number>;
 };
 
 const PAGE_SIZE = 10;
 
-const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) => {
+const CategorySection = ({ type, title, subtitle, Icon, usageCounts }: CategorySectionProps) => {
     const { t, lang } = useLang();
     const tr = (key: string, fallback: string) => {
         const value = t(key);
@@ -326,9 +327,20 @@ const CategorySection = ({ type, title, subtitle, Icon }: CategorySectionProps) 
                                                 />
                                             </div>
                                         ) : (
-                                            <span className="text-light-900 dark:text-dark-50 break-words text-sm font-semibold">
-                                                {getCategoryDisplayName(category, lang)}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-light-900 dark:text-dark-50 break-words text-sm font-semibold">
+                                                    {getCategoryDisplayName(category, lang)}
+                                                </span>
+                                                {usageCounts && (
+                                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                                        (usageCounts[category._id] || 0) > 0
+                                                            ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
+                                                            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                                    }`}>
+                                                        {usageCounts[category._id] || 0}
+                                                    </span>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                     <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
@@ -468,6 +480,8 @@ const CategoriesPage = () => {
         return !value || value === key ? fallback : value;
     };
 
+    const { categoryCounts } = useProjectCounts();
+
     const sections: CategorySectionProps[] = [
         {
             type: "item",
@@ -492,6 +506,7 @@ const CategoriesPage = () => {
             title: tr("projects_categories", "Project Categories"),
             subtitle: tr("projects_categories_sub", "Used when organizing projects."),
             Icon: Target,
+            usageCounts: categoryCounts,
         },
     ];
 
