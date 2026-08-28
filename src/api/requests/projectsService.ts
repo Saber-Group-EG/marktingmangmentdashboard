@@ -194,13 +194,10 @@ export const deleteProject = async (id: string) => {
 };
 
 export const reorderProjects = async (orderedIds: string[]): Promise<any> => {
-  for (let i = 0; i < orderedIds.length; i++) {
-    await axiosInstance.put(
-      `${PROJECTS_ENDPOINT}/${orderedIds[i]}`,
-      { order: i },
-      { headers: { "x-silent": "1" } },
-    );
-  }
+  await axiosInstance.put(
+    `${PROJECTS_ENDPOINT}/reorder`,
+    orderedIds.map((id, i) => ({ id, order: i })),
+  );
   return { success: true, orderedIds };
 };
 

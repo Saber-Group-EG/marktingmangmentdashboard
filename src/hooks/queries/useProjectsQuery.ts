@@ -145,15 +145,8 @@ export const useReorderProjects = () => {
     const qc = useQueryClient();
     return useMutation({
         mutationFn: (orderedIds: string[]) => reorderProjects(orderedIds),
-        onSuccess: (_res, orderedIds) => {
-            qc.setQueriesData<Project[]>({ queryKey: projectsKeys.lists() }, (current) => {
-                if (!Array.isArray(current)) return current;
-                const idSet = new Set(orderedIds);
-                const byId = new Map(current.map((p: any) => [(p?.id || p?._id) as string, p]));
-                const reordered = orderedIds.map((id) => byId.get(id)).filter(Boolean) as Project[];
-                const rest = current.filter((p: any) => !idSet.has(p?.id || p?._id));
-                return [...reordered, ...rest];
-            });
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: projectsKeys.lists() });
         },
         onError: () => {
             qc.invalidateQueries({ queryKey: projectsKeys.lists() });

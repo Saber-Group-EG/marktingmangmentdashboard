@@ -2616,7 +2616,7 @@ if (Array.isArray(clone.cast)) {
                         <div className="flex items-start justify-between gap-4">
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
-                                    <Link to={`/projects/${id}`} className="text-light-500 dark:text-secdark-500 hover:text-light-600 dark:hover:text-secdark-400 transition-colors">
+                                    <Link to={`/projects`} className="text-light-500 dark:text-secdark-500 hover:text-light-600 dark:hover:text-secdark-400 transition-colors">
                                         <ArrowLeft className="w-5 h-5" />
                                     </Link>
                                     <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs uppercase tracking-wider text-light-400 dark:text-dark-300">

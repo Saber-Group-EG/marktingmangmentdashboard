@@ -18,6 +18,7 @@ interface SortableProjectCardProps {
     onMove: (dragId: string, hoverId: string) => void;
     onDragStart: () => void;
     onDrop: () => void;
+    onCardClick: () => void;
     children: React.ReactNode;
 }
 
@@ -27,10 +28,12 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
     onMove,
     onDragStart,
     onDrop,
+    onCardClick,
     children,
 }) => {
     const ref = useRef<HTMLDivElement>(null);
     const id = getProjectId(project);
+    const dragInitiatorRef = useRef<EventTarget | null>(null);
 
     const [{ isDragging }, drag] = useDrag({
         type: PROJECT_CARD_TYPE,
@@ -38,6 +41,11 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
             dragIdRef.current = id;
             onDragStart();
             return { id };
+        },
+        canDrag: () => {
+            if (!dragInitiatorRef.current) return false;
+            const target = dragInitiatorRef.current as HTMLElement;
+            return target.hasAttribute('data-drag-area') || target.closest('[data-drag-area]') !== null;
         },
         collect: (monitor) => ({ isDragging: monitor.isDragging() }),
         end: () => {
@@ -75,7 +83,9 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
             initial={false}
             animate={{ opacity: isDragging ? 0.4 : 1, scale: isDragging ? 0.97 : 1 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="relative cursor-grab active:cursor-grabbing"
+            onPointerDown={(e) => { dragInitiatorRef.current = e.target; }}
+            onClick={onCardClick}
+            className="cursor-pointer"
             style={{ touchAction: "none" }}
         >
             {children}
@@ -435,6 +445,7 @@ const ProjectsPage: React.FC = () => {
                             onMove={handleMove}
                             onDragStart={handleDragStart}
                             onDrop={handleDrop}
+                            onCardClick={() => navigate(`/projects/${getProjectId(project)}/edit`)}
                         >
                             <div className="group relative flex h-full flex-col overflow-hidden rounded-3xl card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                                 <div className="absolute top-0 right-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-gradient-to-br blur-3xl from-secdark-300/20 to-secdark-700/10" />
@@ -444,7 +455,8 @@ const ProjectsPage: React.FC = () => {
                                         <img
                                             src={project.mainCover.croppedUrl || project.mainCover.url}
                                             alt={localizedText(project.localizedName || project.name)}
-                                            className="w-full h-full object-cover object-center"
+                                            className="w-full h-full object-cover object-center cursor-grab active:cursor-grabbing"
+                                            data-drag-area
                                         />
                                         <div className="absolute top-3 right-3">
                                             <button
@@ -489,18 +501,18 @@ const ProjectsPage: React.FC = () => {
                                                 />
                                             </button>
                                         </div>
-                                        <ImageIcon size={32} className="text-light-300 dark:text-dark-600" />
+                                        <ImageIcon size={32} className="text-light-300 dark:text-dark-600 cursor-grab active:cursor-grabbing" data-drag-area />
                                     </div>
                                 )}
 
                                 <div className="relative z-10 mb-4 flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2 min-w-0">
-                                        <GripVertical size={16} className="text-light-400 dark:text-dark-500 shrink-0" />
+                                        <GripVertical size={16} className="text-light-400 dark:text-dark-500 shrink-0 cursor-grab active:cursor-grabbing" data-drag-area onClick={(e) => e.stopPropagation()} />
                                         <h3 className="text-lg font-extrabold text-light-900 dark:text-dark-50 truncate">{localizedText(project.localizedName || project.name) || tr("untitled", "Untitled")}</h3>
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => handleDelete(project)}
+                                        onClick={(e) => { e.stopPropagation(); handleDelete(project); }}
                                         disabled={deletingId === getProjectId(project)}
                                         title={tr("delete", "Delete")}
                                         aria-label={`${tr("delete_confirm", "Delete")} ${localizedText(project.localizedName || project.name) || tr("project", "project")}`}
@@ -520,8 +532,8 @@ const ProjectsPage: React.FC = () => {
                                 </div>
 
                                 <div className="relative z-10 mt-auto flex gap-2">
-                                    <Link to={`/projects/${project.id}`} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("view", "View")}</Link>
-                                    <Link to={`/projects/${project.id}/edit`} className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("edit", "Edit")}</Link>
+                                    <Link to={`/projects/${project.id}`} onClick={(e) => e.stopPropagation()} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("view", "View")}</Link>
+                                    <Link to={`/projects/${project.id}/edit`} onClick={(e) => e.stopPropagation()} className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("edit", "Edit")}</Link>
                                 </div>
                             </div>
                         </SortableProjectCard>
