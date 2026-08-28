@@ -949,12 +949,13 @@ const EditProject: React.FC = () => {
             .map((material, index) => ({ ...material, order: index + 1 }));
     };
 
-    const formInitializedRef = useRef(false);
+    const formInitializedRef = useRef<string | null>(null);
 
     useEffect(() => {
         if (!project) return;
-        if (formInitializedRef.current) return;
-        formInitializedRef.current = true;
+        if (formInitializedRef.current === id) return;
+        formInitializedRef.current = id || null;
+        localStorage.removeItem(`${EDIT_STORAGE_KEY_PREFIX}${id}`);
 
         const rawCast = project.cast || [];
         const mappedCast = (Array.isArray(rawCast) ? rawCast : []).map((c: any, idx: number) => {
@@ -1111,7 +1112,7 @@ const EditProject: React.FC = () => {
         if (!tag) return;
         const alreadyAdded = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === tag.en.toLowerCase());
         if (!alreadyAdded) {
-            setForm({ ...form, tags: [...form.tags, tag.ar ? tag : tag.en] });
+            setForm({ ...form, tags: [...form.tags, { en: tag.en, ar: tag.ar || "" }] });
         }
     };
 

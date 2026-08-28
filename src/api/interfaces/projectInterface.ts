@@ -15,7 +15,7 @@ export interface Project {
   client?: any;
   // Optional arrays used throughout the UI
   categories?: string[];
-  tags?: string[];
+  tags?: { en: string; ar: string }[];
   types?: string[];
   // Media/materials associated with the project
   material?: Material[];

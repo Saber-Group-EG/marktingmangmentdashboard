@@ -963,7 +963,7 @@ const AddProject: React.FC = () => {
         if (!tag) return;
         const alreadyAdded = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === tag.en.toLowerCase());
         if (!alreadyAdded) {
-            setForm({ ...form, tags: [...form.tags, tag.ar ? tag : tag.en] });
+            setForm({ ...form, tags: [...form.tags, { en: tag.en, ar: tag.ar || "" }] });
         }
     };
 
