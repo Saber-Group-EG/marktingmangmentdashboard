@@ -6,7 +6,7 @@ const PROJECTS_ENDPOINT = "/projects";
 export interface ProjectTaxonomyOption {
   _id?: string;
   id?: string;
-  name: string;
+  name: string | { en?: string; ar?: string };
   title?: string;
   socialLinks?: { platform: string; url: string; _id?: string }[];
   photo?: any;
@@ -41,8 +41,20 @@ const normalizeTaxonomyOption = (item: any): ProjectTaxonomyOption | null => {
 
   const id = String(item._id || item.id || "").trim();
   const rawName = item.name || item.title || item.label || item.value || id || "";
-  const name = (rawName && typeof rawName === "object" ? rawName.en || rawName.ar || "" : String(rawName)).trim();
-  if (!name) return null;
+  let name: string | { en?: string; ar?: string };
+  if (rawName && typeof rawName === "object") {
+    const en = String(rawName.en || "").trim();
+    const ar = String(rawName.ar || "").trim();
+    if (en || ar) {
+      name = { en, ar };
+    } else {
+      name = "";
+    }
+  } else {
+    name = String(rawName || "").trim();
+  }
+  if (typeof name === "string" && !name) return null;
+  if (typeof name === "object" && !name.en && !name.ar) return null;
 
   return {
     _id: id || undefined,

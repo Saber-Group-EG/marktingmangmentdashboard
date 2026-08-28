@@ -3174,26 +3174,32 @@ const handleShootedAtChange = (date: Date | null) => {
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("project_types", "Project Types")}</label>
                                         <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("types_hint", "The technical terms that describe the work done in the project")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
-                                            {form.types.map((type: any, idx: number) => (
-                                                <span key={getOptionValue(type) || `${getOptionLabel(type)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
-                                                    #{getOptionLabel(type)}
-                                                    {type && typeof type === "object" && type.ar && type.ar.trim() ? (
-                                                        <span className="opacity-70"> / #{type.ar}</span>
-                                                    ) : null}
-                                                    <button type="button" onClick={() => handleRemoveType(type)} className="hover:text-light-500 dark:hover:text-secdark-500">
-                                                        <X className="w-3 h-3" />
-                                                    </button>
-                                                </span>
-                                            ))}
+                                            {form.types.map((type: any, idx: number) => {
+                                                const typeName = type?.name;
+                                                const typeEn = typeName && typeof typeName === "object" ? typeName.en : (type?.en || getOptionLabel(type));
+                                                const typeAr = typeName && typeof typeName === "object" ? typeName.ar : (type?.ar || "");
+                                                return (
+                                                    <span key={getOptionValue(type) || `${typeEn}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                        {typeEn}{typeAr ? ` / ${typeAr}` : ""}
+                                                        <button type="button" onClick={() => handleRemoveType(type)} className="hover:text-light-500 dark:hover:text-secdark-500">
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
                                         <Autocomplete
                                             key={typeAutocompleteKey}
                                             options={projectTypes}
                                             getOptionLabel={(opt) => {
-                                                const label = getOptionLabel(opt);
-                                                const name = opt?.name;
-                                                const ar = name && typeof name === "object" ? (name as any).ar : undefined;
-                                                return ar ? `${label} / ${ar}` : label;
+                                                const name = (opt as any)?.name;
+                                                if (name && typeof name === "object") {
+                                                    const en = name.en || "";
+                                                    const ar = name.ar || "";
+                                                    if (en && ar) return `${en} / ${ar}`;
+                                                    return en || ar;
+                                                }
+                                                return getOptionLabel(opt);
                                             }}
                                             isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
                                             value={null}
@@ -3202,6 +3208,16 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     handleSelectExistingType(String(projectTypes.indexOf(val)));
                                                     setTypeAutocompleteKey((k) => k + 1);
                                                 }
+                                            }}
+                                            renderOption={(props, option) => {
+                                                const name = (option as any)?.name;
+                                                const en = name && typeof name === "object" ? name.en || "" : getOptionLabel(option);
+                                                const ar = name && typeof name === "object" ? name.ar || "" : "";
+                                                return (
+                                                    <li {...props} key={option._id || en}>
+                                                        {en}{ar ? ` / ${ar}` : ""}
+                                                    </li>
+                                                );
                                             }}
                                             renderInput={(params) => (
                                                 <TextField {...params} placeholder={tr("select_existing_type", "Search existing types...")} size="small" />
