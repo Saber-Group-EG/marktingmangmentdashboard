@@ -73,7 +73,7 @@ const uniqueTaxonomyOptions = (items: ProjectTaxonomyOption[]): ProjectTaxonomyO
   const unique: ProjectTaxonomyOption[] = [];
 
   items.forEach((item) => {
-    const key = (item._id || item.id || item.name).toLowerCase();
+    const key = (item._id || item.id || (typeof item.name === 'string' ? item.name : item.name?.en || item.name?.ar || '')).toLowerCase();
     if (!key || seen.has(key)) return;
     seen.add(key);
     unique.push(item);
@@ -196,10 +196,13 @@ export const deleteProject = async (id: string) => {
 export const reorderProjects = async (orderedIds: string[]): Promise<any> => {
   await axiosInstance.put(
     `${PROJECTS_ENDPOINT}/reorder`,
-    orderedIds.map((id, i) => ({ id, order: i })),
+    { items: orderedIds },
+    { headers: { "x-silent": "1" } },
   );
   return { success: true, orderedIds };
 };
+
+
 
 export const getProjectCategories = async (): Promise<ProjectTaxonomyOption[]> => {
   try {

@@ -3,7 +3,7 @@ import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageI
 import { motion } from "framer-motion";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate} from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
 import { useProjects, useProjectCast, useReorderProjects, useDeleteProject, useProjectCompanies, useTogglePublishProject } from "@/hooks/queries";
 import { showConfirm, showAlert } from "@/utils/swal";
@@ -531,10 +531,7 @@ const ProjectsPage: React.FC = () => {
                                     <div className="text-xs text-light-500 dark:text-dark-500 mt-3">{tr("cast_client", "Cast/Client: ")}{getClientOrCastName(project)}</div>
                                 </div>
 
-                                <div className="relative z-10 mt-auto flex gap-2">
-                                    <Link to={`/projects/${project.id}`} onClick={(e) => e.stopPropagation()} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("view", "View")}</Link>
-                                    <Link to={`/projects/${project.id}/edit`} onClick={(e) => e.stopPropagation()} className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-2 text-sm">{tr("edit", "Edit")}</Link>
-                                </div>
+                                
                             </div>
                         </SortableProjectCard>
                     ))}
