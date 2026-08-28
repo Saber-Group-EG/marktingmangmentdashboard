@@ -194,9 +194,9 @@ export const deleteProject = async (id: string) => {
 };
 
 export const reorderProjects = async (orderedIds: string[]): Promise<any> => {
-  await axiosInstance.put(
+  await axiosInstance.patch(
     `${PROJECTS_ENDPOINT}/reorder`,
-    { items: orderedIds },
+    { items: orderedIds.map((id, i) => ({ id, order: i })) },
     { headers: { "x-silent": "1" } },
   );
   return { success: true, orderedIds };
