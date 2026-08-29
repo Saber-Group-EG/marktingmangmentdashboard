@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageIcon } from "lucide-react";
-import { motion } from "framer-motion";
+import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageIcon, Save, RotateCcw } from "lucide-react";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { motion } from "framer-motion";
 import { useNavigate} from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
 import { useProjects, useProjectCast, useReorderProjects, useDeleteProject, useProjectCompanies, useTogglePublishProject } from "@/hooks/queries";
@@ -15,8 +15,7 @@ const getProjectId = (p: any): string => p?.id || p?._id || "";
 interface SortableProjectCardProps {
     project: any;
     dragIdRef: React.RefObject<string | null>;
-    onMove: (dragId: string, hoverId: string) => void;
-    onDragStart: () => void;
+    dropTargetRef: React.RefObject<string | null>;
     onDrop: () => void;
     onCardClick: () => void;
     children: React.ReactNode;
@@ -25,8 +24,7 @@ interface SortableProjectCardProps {
 const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
     project,
     dragIdRef,
-    onMove,
-    onDragStart,
+    dropTargetRef,
     onDrop,
     onCardClick,
     children,
@@ -39,7 +37,6 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
         type: PROJECT_CARD_TYPE,
         item: () => {
             dragIdRef.current = id;
-            onDragStart();
             return { id };
         },
         canDrag: () => {
@@ -51,26 +48,14 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
         end: () => {
             onDrop();
             dragIdRef.current = null;
+            dropTargetRef.current = null;
         },
     });
 
     const [, drop] = useDrop({
         accept: PROJECT_CARD_TYPE,
-        hover: (item: any, monitor) => {
-            if (!ref.current) return;
-            void item; // To satisfy TypeScript that item is used
-            const offset = monitor.getClientOffset();
-            if (!offset) return;
-
-            const rect = ref.current.getBoundingClientRect();
-            if (offset.x < rect.left || offset.x > rect.right || offset.y < rect.top || offset.y > rect.bottom) {
-                return;
-            }
-
-            const dragId = dragIdRef.current;
-            if (!dragId || dragId === id) return;
-
-            onMove(dragId, id);
+        hover: () => {
+            dropTargetRef.current = id;
         },
     });
 
@@ -81,8 +66,11 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
             ref={ref}
             layout
             initial={false}
-            animate={{ opacity: isDragging ? 0.4 : 1, scale: isDragging ? 0.97 : 1 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            animate={{
+                opacity: isDragging ? 0 : 1,
+                scale: isDragging ? 0.95 : 1,
+            }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             onPointerDown={(e) => { dragInitiatorRef.current = e.target; }}
             onClick={onCardClick}
             className="cursor-pointer"
@@ -106,7 +94,7 @@ const ProjectsPage: React.FC = () => {
     const { data: projects = [], isLoading, error, refetch } = useProjects();
     const { data: projectCast = [] } = useProjectCast();
     const { data: allProjectCompanies = [] } = useProjectCompanies();
-    const { mutate: reorderProjects } = useReorderProjects();
+    const { mutate: reorderProjects, isPending: isReordering } = useReorderProjects();
     const deleteProject = useDeleteProject();
     const togglePublish = useTogglePublishProject();
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -162,6 +150,8 @@ const ProjectsPage: React.FC = () => {
 
     const [orderedProjects, setOrderedProjects] = useState<any[]>([]);
     const orderedProjectsRef = useRef<any[]>([]);
+    const [hasUnsavedOrderChanges, setHasUnsavedOrderChanges] = useState(false);
+    const originalOrderRef = useRef<string[]>([]);
 
     useEffect(() => {
         const sorted = [...projects].sort(
@@ -171,6 +161,9 @@ const ProjectsPage: React.FC = () => {
             if (prev.length === sorted.length && prev.every((p: any, i: number) => getProjectId(p) === getProjectId(sorted[i]))) return prev;
             return sorted;
         });
+        if (!originalOrderRef.current.length) {
+            originalOrderRef.current = sorted.map((p: any) => getProjectId(p));
+        }
     }, [projects]);
 
     useEffect(() => {
@@ -210,46 +203,58 @@ const ProjectsPage: React.FC = () => {
         );
     };
 
-    const lastSwapRef = useRef<{ dragId: string; hoverId: string } | null>(null);
-    const orderChangedRef = useRef(false);
+    const handleDrop = useCallback(() => {
+        const dragId = dragSourceIdRef.current;
+        const hoverId = dropTargetRef.current;
 
-    const handleMove = useCallback((dragId: string, hoverId: string) => {
-        if (lastSwapRef.current && lastSwapRef.current.dragId === dragId && lastSwapRef.current.hoverId === hoverId) return;
-        lastSwapRef.current = { dragId, hoverId };
+        if (!dragId || !hoverId || dragId === hoverId) return;
 
         setOrderedProjects((prev) => {
             const dragIndex = prev.findIndex((p: any) => getProjectId(p) === dragId);
             const hoverIndex = prev.findIndex((p: any) => getProjectId(p) === hoverId);
             if (dragIndex < 0 || hoverIndex < 0 || dragIndex === hoverIndex) return prev;
 
-            orderChangedRef.current = true;
-
             const next = [...prev];
             const [moved] = next.splice(dragIndex, 1);
             next.splice(hoverIndex, 0, moved);
+
+            const orderedIds = next.map((p: any) => getProjectId(p));
+            const hasChanged = orderedIds.length !== originalOrderRef.current.length ||
+                orderedIds.some((id, i) => id !== originalOrderRef.current[i]);
+            setHasUnsavedOrderChanges(hasChanged);
+
             return next;
         });
     }, []);
 
-    const handleDragStart = useCallback(() => {
-        orderChangedRef.current = false;
-        lastSwapRef.current = null;
-    }, []);
-
-    const handleDrop = useCallback(() => {
-        if (!orderChangedRef.current) return;
-        orderChangedRef.current = false;
-        lastSwapRef.current = null;
-
+    const handleSaveOrder = useCallback(() => {
         const orderedIds = orderedProjectsRef.current.map((p: any) => getProjectId(p)).filter(Boolean);
-        if (orderedIds.length) {
-            reorderProjects(orderedIds, {
-                onError: () => refetch(),
-            });
-        }
+        if (!orderedIds.length) return;
+        reorderProjects(orderedIds, {
+            onSuccess: () => {
+                originalOrderRef.current = orderedIds;
+                setHasUnsavedOrderChanges(false);
+            },
+            onError: () => refetch(),
+        });
     }, [reorderProjects, refetch]);
 
+    const handleRevertOrder = useCallback(() => {
+        setOrderedProjects((prev) => {
+            const sorted = [...prev].sort(
+                (a: any, b: any) => {
+                    const aIdx = originalOrderRef.current.indexOf(getProjectId(a));
+                    const bIdx = originalOrderRef.current.indexOf(getProjectId(b));
+                    return (aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx) - (bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx);
+                }
+            );
+            return sorted;
+        });
+        setHasUnsavedOrderChanges(false);
+    }, []);
+
     const dragSourceIdRef = useRef<string | null>(null);
+    const dropTargetRef = useRef<string | null>(null);
 
     const getClientOrCastName = (project: any): string => {
         const clientName =
@@ -328,6 +333,28 @@ const ProjectsPage: React.FC = () => {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
+                            {hasUnsavedOrderChanges && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveOrder}
+                                        disabled={isReordering}
+                                        className="btn-primary flex items-center gap-2"
+                                    >
+                                        {isReordering ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                        <span>{tr("save_order", "Save Order")}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleRevertOrder}
+                                        disabled={isReordering}
+                                        className="btn-ghost flex items-center gap-2"
+                                    >
+                                        <RotateCcw size={16} />
+                                        <span>{tr("cancel", "Cancel")}</span>
+                                    </button>
+                                </>
+                            )}
                             <button type="button" onClick={() => refetch()} className="btn-ghost flex items-center gap-2" title={tr("refresh", "Refresh")}>
                                 <RefreshCw size={16} />
                             </button>
@@ -442,8 +469,7 @@ const ProjectsPage: React.FC = () => {
                             key={getProjectId(project)}
                             project={project}
                             dragIdRef={dragSourceIdRef}
-                            onMove={handleMove}
-                            onDragStart={handleDragStart}
+                            dropTargetRef={dropTargetRef}
                             onDrop={handleDrop}
                             onCardClick={() => navigate(`/projects/${getProjectId(project)}/edit`)}
                         >
