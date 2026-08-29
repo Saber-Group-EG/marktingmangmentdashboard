@@ -3889,14 +3889,16 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     });
                                                     return (
                                                         <div key={catId} className="rounded-xl border border-light-200/80 dark:border-dark-700/80 overflow-hidden">
-                                                            <button
-                                                                type="button"
+                                                            <div
+                                                                role="button"
+                                                                tabIndex={0}
                                                                 onClick={() => setCollapsedCategories(prev => {
                                                                     const next = new Set(prev);
                                                                     if (next.has(catId)) next.delete(catId); else next.add(catId);
                                                                     return next;
                                                                 })}
-                                                                className="w-full flex items-center justify-between px-4 py-3 bg-light-50/80 dark:bg-dark-800/60 hover:bg-light-100 dark:hover:bg-dark-800 transition-colors"
+                                                                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCollapsedCategories(prev => { const next = new Set(prev); if (next.has(catId)) next.delete(catId); else next.add(catId); return next; }); } }}
+                                                                className="w-full flex items-center justify-between px-4 py-3 bg-light-50/80 dark:bg-dark-800/60 hover:bg-light-100 dark:hover:bg-dark-800 transition-colors cursor-pointer"
                                                             >
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-sm font-semibold text-light-900 dark:text-dark-50">
