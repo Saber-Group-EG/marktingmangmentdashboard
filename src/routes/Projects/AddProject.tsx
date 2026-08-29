@@ -2840,8 +2840,8 @@ const handleShootedAtChange = (date: Date | null) => {
                                             item.originalName || `project-video-${materialIndex + 1}-${itemIndex + 1}.mp4`,
                                         );
                                         let uploadedThumb = item.thumbnail;
-                                        if (item.thumbnail && isDataUrl(item.thumbnail)) {
-                                            const thumbResult = await uploadDataUrlToR2Cached(item.thumbnail, {
+                                        if (item.thumbnail && needsUpload(item.thumbnail)) {
+                                            const thumbResult = await uploadThumbnailToR2(item.thumbnail, {
                                                 resourceType: "image",
                                                 fileName: `video-thumb-${materialIndex + 1}-${itemIndex + 1}.jpg`,
                                             });
