@@ -624,8 +624,8 @@ const AddProject: React.FC = () => {
     const [newType, setNewType] = useState("");
     const [newTypeAr, setNewTypeAr] = useState("");
     const [catAutocompleteKey, setCatAutocompleteKey] = useState(0);
-    const [newSubcategory, setNewSubcategory] = useState("");
-    const [newSubcategoryAr, setNewSubcategoryAr] = useState("");
+    const [newSubcategory, setNewSubcategory] = useState<Record<string, string>>({});
+    const [newSubcategoryAr, setNewSubcategoryAr] = useState<Record<string, string>>({});
     const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
     const [subcatKeysByParent, setSubcatKeysByParent] = useState<Record<string, number>>({});
     const [typeAutocompleteKey, setTypeAutocompleteKey] = useState(0);
@@ -1168,24 +1168,29 @@ const AddProject: React.FC = () => {
 
     const handleAddTag = () => {
         const enInput = newTag.trim();
-        if (!enInput) return;
         const arInput = newTagAr.trim();
-        const enParts = enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+        if (!enInput && !arInput) return;
+        const enParts = enInput ? enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
         const arParts = arInput ? arInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
         setValidationErrors((prev) => ({ ...prev, tags: undefined }));
         const newEnTags: string[] = [];
         const newArTags: string[] = [];
-        for (let i = 0; i < enParts.length; i++) {
-            const en = enParts[i];
+        const maxLen = Math.max(enParts.length, arParts.length);
+        for (let i = 0; i < maxLen; i++) {
+            const en = enParts[i] || "";
             const ar = arParts[i] || "";
-            if (!en) continue;
-            const exists = form.tagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
-            const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
-            if (exists || alreadyAdded) continue;
-            newEnTags.push(en);
-            newArTags.push(ar);
+            if (en) {
+                const exists = form.tagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
+                const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
+                if (!exists && !alreadyAdded) newEnTags.push(en);
+            }
+            if (ar) {
+                const exists = form.tagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
+                const alreadyAdded = newArTags.some((t) => t.toLowerCase() === ar.toLowerCase());
+                if (!exists && !alreadyAdded) newArTags.push(ar);
+            }
         }
-        if (newEnTags.length > 0) {
+        if (newEnTags.length > 0 || newArTags.length > 0) {
             setForm({ ...form, tagsEn: [...form.tagsEn, ...newEnTags], tagsAr: [...form.tagsAr, ...newArTags] });
         }
         setNewTag("");
@@ -1215,8 +1220,8 @@ const AddProject: React.FC = () => {
     const createSubcategoryMutation = useCreateSubcategory();
 
     const handleAddSubcategory = (parentId: string) => {
-        const en = (newSubcategory || "").trim();
-        const ar = (newSubcategoryAr || "").trim();
+        const en = (newSubcategory[parentId] || "").trim();
+        const ar = (newSubcategoryAr[parentId] || "").trim();
         if (!en || !ar) {
             setValidationErrors((prev) => ({ ...prev, subcategories: "Both EN and AR names are required" }));
             return;
@@ -1230,8 +1235,8 @@ const AddProject: React.FC = () => {
             {
                 onSuccess: (created) => {
                     setForm({ ...form, subcategories: [...form.subcategories, created] });
-                    setNewSubcategory("");
-                    setNewSubcategoryAr("");
+                    setNewSubcategory((prev) => ({ ...prev, [parentId]: "" }));
+                    setNewSubcategoryAr((prev) => ({ ...prev, [parentId]: "" }));
                     setValidationErrors((prev) => ({ ...prev, subcategories: undefined }));
                 },
                 onError: (e: any) => {
@@ -3680,7 +3685,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_tag_hint", "en1,en2,en3...")}
+                                                    placeholder={tr("add_tag_hint", "New tag (EN)...")}
                                                 />
                                                 <TranslateButton onClick={tagEnToAr.translate} isTranslating={tagEnToAr.isTranslating} disabled={!newTag.trim()} />
                                             </div>
@@ -3693,14 +3698,14 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_tag_ar_hint", "ar1,ar2,ar3...")}
+                                                    placeholder={tr("add_tag_ar_hint", "اسم الوسم (AR)...")}
                                                 />
                                                 <TranslateButton onClick={tagArToEn.translate} isTranslating={tagArToEn.isTranslating} disabled={!newTagAr.trim()} label="Translate" />
                                             </div>
                                             {validationErrors.tags && (
                                                 <p className="text-xs text-danger-500">{validationErrors.tags}</p>
                                             )}
-                                            <button type="button" onClick={handleAddTag} className="btn-secondary">{tr("add", "Add")}</button>
+                                            <button type="button" onClick={handleAddTag} className="w-full py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors disabled:opacity-50">{tr("add_tag", "Add Tag")}</button>
                                         </div>
                                     </div>
 
@@ -3770,7 +3775,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_type_hint", "en1,en2,en3...")}
+                                                    placeholder={tr("add_type_hint", "New type (EN)...")}
                                                 />
                                                 <TranslateButton onClick={typeEnToAr.translate} isTranslating={typeEnToAr.isTranslating} disabled={!newType.trim()} />
                                             </div>
@@ -3783,14 +3788,14 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_type_ar_hint", "ar1,ar2,ar3...")}
+                                                    placeholder={tr("add_type_ar_hint", "نوع المشروع (AR)...")}
                                                 />
                                                 <TranslateButton onClick={typeArToEn.translate} isTranslating={typeArToEn.isTranslating} disabled={!newTypeAr.trim()} label="Translate" />
                                             </div>
                                             {validationErrors.types && (
                                                 <p className="text-xs text-danger-500">{validationErrors.types}</p>
                                             )}
-                                            <button type="button" onClick={handleAddType} className="btn-secondary">{tr("add", "Add")}</button>
+                                            <button type="button" onClick={handleAddType} className="w-full py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors disabled:opacity-50">{tr("add_type", "Add Type")}</button>
                                         </div>
                                     </div>
                                 </div>
@@ -3910,7 +3915,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                                     </button>
                                                                 </div>
                                                                 <svg className={`w-4 h-4 text-light-400 dark:text-dark-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                                            </button>
+                                                            </div>
                                                             {isExpanded && (
                                                                 <div className="px-4 py-3 space-y-3 bg-white dark:bg-dark-900/40">
                                                                     {catSubs.length > 0 && (
@@ -3956,20 +3961,20 @@ const handleShootedAtChange = (date: Date | null) => {
                                                                         <div className="flex gap-2 items-center">
                                                                             <input
                                                                                 type="text"
-                                                                                value={newSubcategory}
-                                                                                onChange={(e) => setNewSubcategory(e.target.value)}
+                                                                                value={newSubcategory[catId] || ""}
+                                                                                onChange={(e) => setNewSubcategory((prev) => ({ ...prev, [catId]: e.target.value }))}
                                                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSubcategory(catId))}
                                                                                 data-enter-add
                                                                                 className="input w-full"
-                                                                                placeholder={tr("add_subsector_hint", "Sub sector name (EN)...")}
+                                                                                placeholder={tr("add_subsector_hint", "New sub sector (EN)...")}
                                                                             />
                                                                         </div>
                                                                         <div className="flex gap-2 items-center">
                                                                             <input
                                                                                 type="text"
                                                                                 dir="rtl"
-                                                                                value={newSubcategoryAr}
-                                                                                onChange={(e) => setNewSubcategoryAr(e.target.value)}
+                                                                                value={newSubcategoryAr[catId] || ""}
+                                                                                onChange={(e) => setNewSubcategoryAr((prev) => ({ ...prev, [catId]: e.target.value }))}
                                                                                 onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSubcategory(catId))}
                                                                                 data-enter-add
                                                                                 className="input w-full"
@@ -3979,8 +3984,8 @@ const handleShootedAtChange = (date: Date | null) => {
                                                                         {validationErrors.subcategories && (
                                                                             <p className="text-xs text-danger-500">{validationErrors.subcategories}</p>
                                                                         )}
-                                                                        <button type="button" onClick={() => handleAddSubcategory(catId)} disabled={createSubcategoryMutation.isPending} className="btn-secondary disabled:opacity-50">
-                                                                            {createSubcategoryMutation.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <Plus size={14} className="inline mr-1" />}
+                                                                        <button type="button" onClick={() => handleAddSubcategory(catId)} disabled={createSubcategoryMutation.isPending} className="w-full py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors disabled:opacity-50">
+                                                                            {createSubcategoryMutation.isPending ? <Loader2 size={16} className="animate-spin inline mr-2" /> : <Plus size={16} className="inline mr-2" />}
                                                                             {tr("add_subsector", "Add Sub Sector")}
                                                                         </button>
                                                                     </div>
