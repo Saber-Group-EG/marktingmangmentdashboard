@@ -1443,7 +1443,7 @@ const EditProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = form.categories.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
+            const exists = (form.categories || []).some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newCats.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
             if (exists || alreadyAdded) continue;
             newCats.push({ en, ar });
@@ -1475,13 +1475,13 @@ const EditProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = form.types.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            const exists = (form.types || []).some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newTypes.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
             if (exists || alreadyAdded) continue;
             newTypes.push({ en, ar });
         }
         if (newTypes.length > 0) {
-            setForm({ ...form, types: [...form.types, ...newTypes] });
+            setForm({ ...form, types: [...(form.types || []), ...newTypes] });
         }
         setNewType("");
         setNewTypeAr("");
@@ -1491,8 +1491,8 @@ const EditProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectCategories[idx];
         if (!selected) return;
-        if (!form.categories.some((c: any) => isSameOption(c, selected))) {
-            setForm({ ...form, categories: [...form.categories, selected] });
+        if (!(form.categories || []).some((c: any) => isSameOption(c, selected))) {
+            setForm({ ...form, categories: [...(form.categories || []), selected] });
         }
     };
 
@@ -1500,8 +1500,8 @@ const EditProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectSubcategories[idx];
         if (!selected) return;
-        if (!form.subcategories.some((s: any) => isSameOption(s, selected))) {
-            setForm({ ...form, subcategories: [...form.subcategories, selected] });
+        if (!(form.subcategories || []).some((s: any) => isSameOption(s, selected))) {
+            setForm({ ...form, subcategories: [...(form.subcategories || []), selected] });
         }
     };
 
@@ -1509,8 +1509,8 @@ const EditProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectTypes[idx];
         if (!selected) return;
-        if (!form.types.some((t: any) => isSameOption(t, selected))) {
-            setForm({ ...form, types: [...form.types, selected] });
+        if (!(form.types || []).some((t: any) => isSameOption(t, selected))) {
+            setForm({ ...form, types: [...(form.types || []), selected] });
         }
     };
 

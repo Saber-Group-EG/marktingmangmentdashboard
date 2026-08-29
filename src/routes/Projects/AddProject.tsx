@@ -1323,8 +1323,8 @@ const AddProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectCategories[idx];
         if (!selected) return;
-        if (!form.categories.some((c: any) => isSameOption(c, selected))) {
-            setForm({ ...form, categories: [...form.categories, selected] });
+        if (!(form.categories || []).some((c: any) => isSameOption(c, selected))) {
+            setForm({ ...form, categories: [...(form.categories || []), selected] });
         }
     };
 
@@ -1332,8 +1332,8 @@ const AddProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectSubcategories[idx];
         if (!selected) return;
-        if (!form.subcategories.some((s: any) => isSameOption(s, selected))) {
-            setForm({ ...form, subcategories: [...form.subcategories, selected] });
+        if (!(form.subcategories || []).some((s: any) => isSameOption(s, selected))) {
+            setForm({ ...form, subcategories: [...(form.subcategories || []), selected] });
         }
     };
 
@@ -1341,8 +1341,8 @@ const AddProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectTypes[idx];
         if (!selected) return;
-        if (!form.types.some((t: any) => isSameOption(t, selected))) {
-            setForm({ ...form, types: [...form.types, selected] });
+        if (!(form.types || []).some((t: any) => isSameOption(t, selected))) {
+            setForm({ ...form, types: [...(form.types || []), selected] });
         }
     };
 
