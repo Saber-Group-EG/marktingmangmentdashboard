@@ -56,6 +56,24 @@ const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
         setIsDragging(false);
     };
 
+    if (!hasBothImages) {
+        return (
+            <div className={className}>
+                <div className={`relative overflow-hidden bg-light-100 dark:bg-dark-700 ${mediaClassName}`}>
+                    {beforeUrl ? (
+                        <img src={beforeUrl} alt={beforeLabel} className="w-full h-full object-cover" />
+                    ) : afterUrl ? (
+                        <img src={afterUrl} alt={afterLabel} className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-xs text-light-500 dark:text-dark-400">
+                            No images
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className={className}>
             <div
@@ -66,53 +84,42 @@ const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
                 onPointerLeave={handleDragEnd}
                 onPointerCancel={handleDragEnd}
             >
-                <div className="absolute inset-0">
-                    {beforeUrl ? (
-                        <img src={beforeUrl} alt={beforeLabel} className="w-full h-full object-cover" />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-light-500 dark:text-dark-400">
-                            No {beforeLabel} image
-                        </div>
-                    )}
+                <img
+                    src={afterUrl}
+                    alt={afterLabel}
+                    className="absolute inset-0 h-full w-full object-cover"
+                />
+
+                <img
+                    src={beforeUrl}
+                    alt={beforeLabel}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}
+                />
+
+                <div
+                    className="absolute inset-y-0 z-10 cursor-ew-resize"
+                    style={{ left: `calc(${position}% - 1px)` }}
+                    onPointerDown={handleDragStart}
+                >
+                    <div className="h-full w-0.5 bg-white/90 shadow" />
+                    <div
+                        className="absolute top-1/2 left-1/2 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/70 bg-white text-sm font-bold text-gray-700 shadow-lg select-none"
+                        style={{ touchAction: "none" }}
+                    >
+                        &#8596;
+                    </div>
                 </div>
 
-                <div className="absolute inset-0 overflow-hidden" style={{ width: `${position}%` }}>
-                    {afterUrl ? (
-                        <img src={afterUrl} alt={afterLabel} className="w-full h-full object-cover" />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-light-500 dark:text-dark-400">
-                            No {afterLabel} image
-                        </div>
-                    )}
+                <div className="absolute top-3 left-3 z-10 rounded bg-black/70 px-3 py-1.5 text-xs font-medium text-white">
+                    {beforeLabel}
                 </div>
-
-                {hasBothImages && (
-                    <>
-                        <div
-                            className="absolute inset-y-0 z-10"
-                            style={{ left: `calc(${position}% - 1px)` }}
-                            onPointerDown={handleDragStart}
-                        >
-                            <div className="h-full w-0.5 bg-white/90 shadow" />
-                            <div
-                                className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-black/55 text-white text-xs flex items-center justify-center cursor-ew-resize select-none"
-                                style={{ touchAction: "none" }}
-                            >
-                                ||
-                            </div>
-                        </div>
-
-                        <div className="absolute top-2 left-2 z-10 rounded bg-black/70 px-2 py-1 text-xs text-white">
-                            {beforeLabel}
-                        </div>
-                        <div className="absolute top-2 right-2 z-10 rounded bg-black/70 px-2 py-1 text-xs text-white">
-                            {afterLabel}
-                        </div>
-                    </>
-                )}
+                <div className="absolute top-3 right-3 z-10 rounded bg-black/70 px-3 py-1.5 text-xs font-medium text-white">
+                    {afterLabel}
+                </div>
             </div>
 
-            {showSlider && hasBothImages && (
+            {showSlider && (
                 <div className="mt-2 px-1">
                     <input
                         type="range"
@@ -123,11 +130,6 @@ const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
                         className="w-full accent-light-500 dark:accent-secdark-500"
                         aria-label="Before and after slider"
                     />
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-light-500 dark:text-dark-400">
-                        <span>{beforeLabel}</span>
-                        <span>{position}% after</span>
-                        <span>{afterLabel}</span>
-                    </div>
                 </div>
             )}
         </div>
