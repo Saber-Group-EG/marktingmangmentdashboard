@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useProjectCompanies, useCreateProjectCompany, projectsKeys } from "@/hooks/queries";
+import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useSubcategories, useProjectCompanies, useCreateProjectCompany, projectsKeys, useCreateSubcategory } from "@/hooks/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
@@ -24,7 +24,7 @@ import {
     Plus, X, ArrowLeft, CheckCircle, AlertCircle,
     Trash2, Edit, MapPin, Users, Layers, Loader2,
     Image as ImageIcon, Video, Code, Upload, GripVertical,
-    Camera, User, FileText, Info, Copy
+    Camera, User, FileText, Info, Copy, Target
 } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -574,6 +574,8 @@ const AddProject: React.FC = () => {
     // Replace useProjectCategories with useCategories
     const { data: projectCategoriesResponse } = useCategories({ type: "project" });
     const projectCategories = projectCategoriesResponse?.categories || [];
+    const { data: projectSubcategoriesResponse } = useSubcategories({});
+    const projectSubcategories = projectSubcategoriesResponse?.subcategories || [];
     const { data: projectTypes = [] } = useProjectTypes();
     const { data: projectCast = []} = useProjectCast();
     const { data: projectCompanies = [] } = useProjectCompanies();
@@ -588,6 +590,8 @@ const AddProject: React.FC = () => {
                 if (parsed.publishAt) {
                     parsed.publishAt = new Date(parsed.publishAt);
                 }
+                if (!Array.isArray(parsed.categories)) parsed.categories = [];
+                if (!Array.isArray(parsed.subcategories)) parsed.subcategories = [];
                 return parsed;
             }
         } catch {
@@ -599,6 +603,7 @@ const AddProject: React.FC = () => {
             location: { ar: "", en: "" },
             published: false,
             categories: [] as string[],
+            subcategories: [] as string[],
             tagsEn: [] as string[],
             tagsAr: [] as string[],
             types: [] as string[],    
@@ -619,14 +624,18 @@ const AddProject: React.FC = () => {
     const [newType, setNewType] = useState("");
     const [newTypeAr, setNewTypeAr] = useState("");
     const [catAutocompleteKey, setCatAutocompleteKey] = useState(0);
+    const [newSubcategory, setNewSubcategory] = useState("");
+    const [newSubcategoryAr, setNewSubcategoryAr] = useState("");
+    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+    const [subcatKeysByParent, setSubcatKeysByParent] = useState<Record<string, number>>({});
     const [typeAutocompleteKey, setTypeAutocompleteKey] = useState(0);
     const [tagAutocompleteKey, setTagAutocompleteKey] = useState(0);
-    const [validationErrors, setValidationErrors] = useState<{ tags?: string; categories?: string; types?: string }>({});
+    const [validationErrors, setValidationErrors] = useState<{ tags?: string; categories?: string; subcategories?: string; types?: string }>({});
     const [newCompanyEn, setNewCompanyEn] = useState("");
     const [newCompanyAr, setNewCompanyAr] = useState("");
     const [newCompanyField, setNewCompanyField] = useState("");
     const [newCompanyLogo, setNewCompanyLogo] = useState("");
-    const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
+    const [activeTab, setActiveTab] = useState<"basic" | "sectors" | "materials" | "cast" | "media">("basic");
 
     // Persist form draft to localStorage (strip heavy media to avoid quota issues)
     useEffect(() => {
@@ -974,6 +983,7 @@ const AddProject: React.FC = () => {
         order: (allProjects?.length || 0) + 1,
         published: false,
         categories: [] as string[],
+        subcategories: [] as string[],
         tagsEn: [] as string[],
         tagsAr: [] as string[],
         types: [] as string[],
@@ -1198,6 +1208,39 @@ const AddProject: React.FC = () => {
         setForm({ ...form, categories: form.categories.filter((c: any) => !isSameOption(c, cat)) });
     };
 
+    const handleRemoveSubcategory = (sub: any) => {
+        setForm({ ...form, subcategories: form.subcategories.filter((s: any) => !isSameOption(s, sub)) });
+    };
+
+    const createSubcategoryMutation = useCreateSubcategory();
+
+    const handleAddSubcategory = (parentId: string) => {
+        const en = (newSubcategory || "").trim();
+        const ar = (newSubcategoryAr || "").trim();
+        if (!en || !ar) {
+            setValidationErrors((prev) => ({ ...prev, subcategories: "Both EN and AR names are required" }));
+            return;
+        }
+        if (!parentId) {
+            setValidationErrors((prev) => ({ ...prev, subcategories: "Please select a sector first" }));
+            return;
+        }
+        createSubcategoryMutation.mutate(
+            { name: { en, ar }, parentCategory: parentId },
+            {
+                onSuccess: (created) => {
+                    setForm({ ...form, subcategories: [...form.subcategories, created] });
+                    setNewSubcategory("");
+                    setNewSubcategoryAr("");
+                    setValidationErrors((prev) => ({ ...prev, subcategories: undefined }));
+                },
+                onError: (e: any) => {
+                    setValidationErrors((prev) => ({ ...prev, subcategories: e?.response?.data?.message || "Failed to create subsector" }));
+                },
+            },
+        );
+    };
+
     const handleRemoveType = (type: any) => {
         setForm({ ...form, types: form.types.filter((t: any) => !isSameOption(t, type)) });
     };
@@ -1272,6 +1315,15 @@ const AddProject: React.FC = () => {
         if (!selected) return;
         if (!form.categories.some((c: any) => isSameOption(c, selected))) {
             setForm({ ...form, categories: [...form.categories, selected] });
+        }
+    };
+
+    const handleSelectExistingSubcategory = (value: string) => {
+        const idx = Number(value);
+        const selected = projectSubcategories[idx];
+        if (!selected) return;
+        if (!form.subcategories.some((s: any) => isSameOption(s, selected))) {
+            setForm({ ...form, subcategories: [...form.subcategories, selected] });
         }
     };
 
@@ -2682,28 +2734,33 @@ const handleShootedAtChange = (date: Date | null) => {
         // upload full main cover (original image before crop)
         if (clone.mainCover) {
             const fullCoverSource = form.mainCover?.url || clone.mainCover.url;
-            const uploadedFullCover = await uploadAssetIfNeeded(
-                { url: fullCoverSource, mimeType: clone.mainCover.mimeType, originalName: clone.mainCover.originalName, size: clone.mainCover.size },
-                "image",
-                clone.mainCover.originalName || `full-main-cover-${Date.now()}.jpg`,
-            );
-            clone.fullMainCover = uploadedFullCover;
+            if (isDataUrl(fullCoverSource)) {
+                const uploadedFullCover = await uploadDataUrlToR2(fullCoverSource, {
+                    resourceType: "image",
+                    fileName: clone.mainCover.originalName || `full-main-cover-${Date.now()}.jpg`,
+                });
+                clone.fullMainCover = { ...clone.mainCover, ...uploadedFullCover };
+            } else {
+                clone.fullMainCover = { url: fullCoverSource, mimeType: clone.mainCover.mimeType, originalName: clone.mainCover.originalName, size: clone.mainCover.size };
+            }
         }
 
         // upload main cover if needed
         if (clone.mainCover) {
             const coverUploadSource = clone.mainCover.croppedUrl || clone.mainCover.url;
-            const uploadedMainCover = await uploadAssetIfNeeded(
-                { ...clone.mainCover, url: coverUploadSource },
-                "image",
-                clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
-            );
-
-            clone.mainCover = {
-                ...clone.mainCover,
-                ...uploadedMainCover,
-                url: uploadedMainCover.url,
-            };
+            if (isDataUrl(coverUploadSource)) {
+                const uploadedMainCover = await uploadDataUrlToR2(coverUploadSource, {
+                    resourceType: "image",
+                    fileName: clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
+                });
+                clone.mainCover = {
+                    ...clone.mainCover,
+                    ...uploadedMainCover,
+                    url: uploadedMainCover.url,
+                };
+            } else {
+                clone.mainCover = { ...clone.mainCover, url: coverUploadSource };
+            }
 
             // remove cropping preview data that backend validation may reject
             delete clone.mainCover.croppedUrl;
@@ -2759,6 +2816,7 @@ const handleShootedAtChange = (date: Date | null) => {
                             copy.originalName = normalizedVideoItems[0]?.originalName || copy.originalName;
                             copy.size = normalizedVideoItems[0]?.size || copy.size;
                             copy.type = normalizedVideoItems.length > 1 ? "bulk" : "video";
+                            copy.thumbnail = "";
                         } else if (copy.type === "video" && copy.url) {
                             // Check if material has multiple video items (type was "video" but had bulk items)
                             const videoItems = buildVideoItems(copy);
@@ -2820,14 +2878,15 @@ const handleShootedAtChange = (date: Date | null) => {
                                 if (!copy.thumbnail && videoItems[0]?.thumbnail) {
                                     copy.thumbnail = videoItems[0].thumbnail;
                                 }
-                                const thumbAsset = typeof copy.thumbnail === 'string' ? { url: copy.thumbnail } : copy.thumbnail;
-                                if (thumbAsset?.url) {
-                                    const uploadedThumb = await uploadAssetIfNeeded(
-                                        thumbAsset,
-                                        "image",
-                                        thumbAsset.originalName || `project-video-thumb-${materialIndex + 1}.jpg`,
-                                    );
+                                const rawThumb = typeof copy.thumbnail === 'string' ? copy.thumbnail : copy.thumbnail?.url;
+                                if (rawThumb && isDataUrl(rawThumb)) {
+                                    const uploadedThumb = await uploadDataUrlToR2(rawThumb, {
+                                        resourceType: "image",
+                                        fileName: `project-video-thumb-${materialIndex + 1}.jpg`,
+                                    });
                                     copy.thumbnail = uploadedThumb.url;
+                                } else {
+                                    copy.thumbnail = "";
                                 }
                             }
                     } else if (isPhotoMaterialType(copy.type)) {
@@ -2927,7 +2986,7 @@ const handleShootedAtChange = (date: Date | null) => {
                     return {
                         ...material,
                         items: Array.isArray(material.items) ? material.items : [],
-                        thumbnail: getThumbUrl(material.thumbnail),
+                        thumbnail: "",
                         order: index + 1,
                     };
                 }
@@ -2935,7 +2994,7 @@ const handleShootedAtChange = (date: Date | null) => {
                 const { items, thumbnail, ...rest } = material || {};
                 return {
                     ...rest,
-                    thumbnail: getThumbUrl(thumbnail),
+                    thumbnail: "",
                     order: index + 1,
                 };
             });
@@ -2995,6 +3054,7 @@ const handleShootedAtChange = (date: Date | null) => {
             publishedAt: clone.publishAt ? new Date(clone.publishAt).toISOString() : undefined,
             shootedAt: clone.shootedAt ? new Date(clone.shootedAt).toISOString() : undefined,
             categories: await resolveTaxonomyIds(clone.categories, "category"),
+            subcategories: clone.subcategories ? clone.subcategories.map((s: any) => getOptionValue(s)).filter(Boolean) : [],
             tagsEn: clone.tagsEn || [],
             tagsAr: clone.tagsAr || [],
             types: await resolveTaxonomyIds(clone.types, "type"),
@@ -3044,7 +3104,7 @@ const handleShootedAtChange = (date: Date | null) => {
 
         e.preventDefault();
 
-        const order: Array<"basic" | "materials" | "cast" | "media"> = ["basic", "materials", "cast", "media"];
+        const order: Array<"basic" | "sectors" | "materials" | "cast" | "media"> = ["basic", "sectors", "materials", "cast", "media"];
         const idx = order.indexOf(activeTab);
         if (idx === -1) return;
 
@@ -3153,6 +3213,10 @@ const handleShootedAtChange = (date: Date | null) => {
                                 <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Sectors")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.categories.length}</div>
                             </div>
+                            <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
+                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("subcategories_label", "Sub Sectors")}</div>
+                                <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.subcategories.length}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3171,6 +3235,17 @@ const handleShootedAtChange = (date: Date | null) => {
                     >
                         <Info className="w-4 h-4 inline mr-2" />
                         {tr("basic_info", "Basic Info")}
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("sectors")}
+                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                            activeTab === "sectors"
+                                ? "text-light-500 dark:text-secdark-500 border-b-2 border-light-500 dark:border-secdark-500"
+                                : "text-light-600 dark:text-dark-400 hover:text-light-700 dark:hover:text-dark-300"
+                        }`}
+                    >
+                        <Target className="w-4 h-4 inline mr-2" />
+                        {tr("sectors_tab", "Sectors")} ({form.categories.length})
                     </button>
                     <button
                         onClick={() => setActiveTab("materials")}
@@ -3550,82 +3625,6 @@ const handleShootedAtChange = (date: Date | null) => {
                                     </div>
 
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            {tr("categories_label", "Sectors")}
-                                        </label>
-                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("categories_hint", "The field or industry that the project or client belongs to")}</p>
-                                        <div className="flex flex-wrap gap-2 mb-2">
-                                            {form.categories.map((cat: any, idx: number) => (
-                                                <span key={getOptionValue(cat) || `${getOptionLabel(cat)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
-                                                    #{getOptionLabel(cat)}
-                                                    {cat && typeof cat === "object" && cat.ar && cat.ar.trim() ? (
-                                                        <span className="opacity-70"> / #{cat.ar}</span>
-                                                    ) : null}
-                                                    <button type="button" onClick={() => handleRemoveCategory(cat)} className="hover:text-light-500 dark:hover:text-secdark-500">
-                                                        <X className="w-3 h-3" />
-                                                    </button>
-                                                </span>
-                                            ))}
-                                        </div>
-                                        <Autocomplete
-                                            key={catAutocompleteKey}
-                                            options={projectCategories}
-                                            getOptionLabel={(opt) => {
-                                                const label = getOptionLabel(opt);
-                                                const name = opt?.name;
-                                                const ar = name && typeof name === "object" ? (name as any).ar : undefined;
-                                                return ar ? `${label} / ${ar}` : label;
-                                            }}
-                                            isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
-                                            value={null}
-                                            onChange={(_e, val) => {
-                                                if (val) {
-                                                    handleSelectExistingCategory(String(projectCategories.indexOf(val)));
-                                                    setCatAutocompleteKey((k) => k + 1);
-                                                }
-                                            }}
-                                            renderInput={(params) => (
-                                                <TextField {...params} placeholder={tr("select_existing_category", "Search existing sectors...")} size="small" />
-                                            )}
-                                            sx={taxonomyAutocompleteSx}
-                                            slotProps={taxonomyAutocompleteSlotProps}
-                                            size="small"
-                                            className="mb-2"
-                                        />
-                                        <div className="space-y-2">
-                                            <div className="flex gap-2 items-center">
-                                                <input
-                                                    type="text"
-                                                    value={newCategory}
-                                                    onChange={(e) => setNewCategory(e.target.value)}
-                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
-                                                    data-enter-add
-                                                    className="input w-full"
-                                                    placeholder={tr("add_category_hint", "en1,en2,en3...")}
-                                                />
-                                                <TranslateButton onClick={catEnToAr.translate} isTranslating={catEnToAr.isTranslating} disabled={!newCategory.trim()} />
-                                            </div>
-                                            <div className="flex gap-2 items-center">
-                                                <input
-                                                    type="text"
-                                                    dir="rtl"
-                                                    value={newCategoryAr}
-                                                    onChange={(e) => setNewCategoryAr(e.target.value)}
-                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
-                                                    data-enter-add
-                                                    className="input w-full"
-                                                    placeholder={tr("add_category_ar_hint", "ar1,ar2,ar3...")}
-                                                />
-                                                <TranslateButton onClick={catArToEn.translate} isTranslating={catArToEn.isTranslating} disabled={!newCategoryAr.trim()} label="Translate" />
-                                            </div>
-                                            {validationErrors.categories && (
-                                                <p className="text-xs text-danger-500">{validationErrors.categories}</p>
-                                            )}
-                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">{tr("add", "Add")}</button>
-                                        </div>
-                                    </div>
-
-                                    <div>
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("tags_label", "Tags")}</label>
                                         <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("tags_hint", "Keywords related to the project that make it easier to search")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
@@ -3794,6 +3793,205 @@ const handleShootedAtChange = (date: Date | null) => {
                                             <button type="button" onClick={handleAddType} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Sectors Tab */}
+                    {activeTab === "sectors" && (
+                        <div className="space-y-6">
+                            <div className="card p-6">
+                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("sectors_tab", "Sectors")}</h2>
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                            {tr("categories_label", "Sectors")}
+                                        </label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("categories_hint", "The field or industry that the project or client belongs to")}</p>
+                                        <Autocomplete
+                                            key={catAutocompleteKey}
+                                            options={projectCategories}
+                                            getOptionLabel={(opt) => {
+                                                const label = getOptionLabel(opt);
+                                                const name = opt?.name;
+                                                const ar = name && typeof name === "object" ? (name as any).ar : undefined;
+                                                return ar ? `${label} / ${ar}` : label;
+                                            }}
+                                            isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
+                                            value={null}
+                                            onChange={(_e, val) => {
+                                                if (val) {
+                                                    handleSelectExistingCategory(String(projectCategories.indexOf(val)));
+                                                    setCatAutocompleteKey((k) => k + 1);
+                                                }
+                                            }}
+                                            renderInput={(params) => (
+                                                <TextField {...params} placeholder={tr("select_existing_category", "Search existing sectors...")} size="small" />
+                                            )}
+                                            sx={taxonomyAutocompleteSx}
+                                            slotProps={taxonomyAutocompleteSlotProps}
+                                            size="small"
+                                            className="mb-2"
+                                        />
+                                        <div className="space-y-2">
+                                            <div className="flex gap-2 items-center">
+                                                <input
+                                                    type="text"
+                                                    value={newCategory}
+                                                    onChange={(e) => setNewCategory(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_category_hint", "en1,en2,en3...")}
+                                                />
+                                                <TranslateButton onClick={catEnToAr.translate} isTranslating={catEnToAr.isTranslating} disabled={!newCategory.trim()} />
+                                            </div>
+                                            <div className="flex gap-2 items-center">
+                                                <input
+                                                    type="text"
+                                                    dir="rtl"
+                                                    value={newCategoryAr}
+                                                    onChange={(e) => setNewCategoryAr(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_category_ar_hint", "ar1,ar2,ar3...")}
+                                                />
+                                                <TranslateButton onClick={catArToEn.translate} isTranslating={catArToEn.isTranslating} disabled={!newCategoryAr.trim()} label="Translate" />
+                                            </div>
+                                            {validationErrors.categories && (
+                                                <p className="text-xs text-danger-500">{validationErrors.categories}</p>
+                                            )}
+                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">{tr("add", "Add")}</button>
+                                        </div>
+                                    </div>
+
+                                    {form.categories.length > 0 && (
+                                        <div className="border-t border-light-200 dark:border-dark-700 pt-4">
+                                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-light-500 dark:text-dark-400 mb-3">{tr("sub_sectors_by_category", "Sub Sectors by Category")}</p>
+                                            <div className="space-y-4">
+                                                {form.categories.map((cat: any, catIdx: number) => {
+                                                    const catId = getOptionValue(cat) || `cat-${catIdx}`;
+                                                    const isExpanded = expandedCategories.has(catId);
+                                                    const catSubs = form.subcategories.filter((s: any) => {
+                                                        const subParent = s?.parentCategory || s?.parent || "";
+                                                        return subParent === catId || String(subParent) === String(catId);
+                                                    });
+                                                    const availableSubcats = projectSubcategories.filter((s: any) => {
+                                                        const subParent = s?.parentCategory || s?.parent || "";
+                                                        return (subParent === catId || String(subParent) === String(catId)) && !catSubs.some((cs: any) => getOptionValue(cs) === getOptionValue(s));
+                                                    });
+                                                    return (
+                                                        <div key={catId} className="rounded-xl border border-light-200/80 dark:border-dark-700/80 overflow-hidden">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setExpandedCategories(prev => {
+                                                                    const next = new Set(prev);
+                                                                    if (next.has(catId)) next.delete(catId); else next.add(catId);
+                                                                    return next;
+                                                                })}
+                                                                className="w-full flex items-center justify-between px-4 py-3 bg-light-50/80 dark:bg-dark-800/60 hover:bg-light-100 dark:hover:bg-dark-800 transition-colors"
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-semibold text-light-900 dark:text-dark-50">
+                                                                        #{getOptionLabel(cat)}
+                                                                        {cat && typeof cat === "object" && cat.ar && cat.ar.trim() ? (
+                                                                            <span className="opacity-70"> / #{cat.ar}</span>
+                                                                        ) : null}
+                                                                    </span>
+                                                                    {catSubs.length > 0 && (
+                                                                        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-xs font-medium">
+                                                                            {catSubs.length}
+                                                                        </span>
+                                                                    )}
+                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleRemoveCategory(cat); }} className="text-light-400 hover:text-danger-500 dark:text-dark-500 dark:hover:text-danger-400">
+                                                                        <X className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                                <svg className={`w-4 h-4 text-light-400 dark:text-dark-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                            </button>
+                                                            {isExpanded && (
+                                                                <div className="px-4 py-3 space-y-3 bg-white dark:bg-dark-900/40">
+                                                                    {catSubs.length > 0 && (
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            {catSubs.map((sub: any, subIdx: number) => (
+                                                                                <span key={getOptionValue(sub) || `${subIdx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                                                    #{getOptionLabel(sub)}
+                                                                                    {sub && typeof sub === "object" && sub.ar && sub.ar.trim() ? (
+                                                                                        <span className="opacity-70"> / #{sub.ar}</span>
+                                                                                    ) : null}
+                                                                                    <button type="button" onClick={() => handleRemoveSubcategory(sub)} className="hover:text-light-500 dark:hover:text-secdark-500">
+                                                                                        <X className="w-3 h-3" />
+                                                                                    </button>
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                    <Autocomplete
+                                                                        key={subcatKeysByParent[catId] || 0}
+                                                                        options={availableSubcats}
+                                                                        getOptionLabel={(opt) => {
+                                                                            const label = getOptionLabel(opt);
+                                                                            const name = opt?.name;
+                                                                            const ar = name && typeof name === "object" ? (name as any).ar : undefined;
+                                                                            return ar ? `${label} / ${ar}` : label;
+                                                                        }}
+                                                                        isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
+                                                                        value={null}
+                                                                        onChange={(_e, val) => {
+                                                                            if (val) {
+                                                                                handleSelectExistingSubcategory(String(projectSubcategories.indexOf(val)));
+                                                                                setSubcatKeysByParent(prev => ({ ...prev, [catId]: (prev[catId] || 0) + 1 }));
+                                                                            }
+                                                                        }}
+                                                                        renderInput={(params) => (
+                                                                            <TextField {...params} placeholder={tr("select_existing_subcategory", "Search existing sub sectors...")} size="small" />
+                                                                        )}
+                                                                        sx={taxonomyAutocompleteSx}
+                                                                        slotProps={taxonomyAutocompleteSlotProps}
+                                                                        size="small"
+                                                                    />
+                                                                    <div className="space-y-2">
+                                                                        <div className="flex gap-2 items-center">
+                                                                            <input
+                                                                                type="text"
+                                                                                value={newSubcategory}
+                                                                                onChange={(e) => setNewSubcategory(e.target.value)}
+                                                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSubcategory(catId))}
+                                                                                data-enter-add
+                                                                                className="input w-full"
+                                                                                placeholder={tr("add_subsector_hint", "Sub sector name (EN)...")}
+                                                                            />
+                                                                        </div>
+                                                                        <div className="flex gap-2 items-center">
+                                                                            <input
+                                                                                type="text"
+                                                                                dir="rtl"
+                                                                                value={newSubcategoryAr}
+                                                                                onChange={(e) => setNewSubcategoryAr(e.target.value)}
+                                                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSubcategory(catId))}
+                                                                                data-enter-add
+                                                                                className="input w-full"
+                                                                                placeholder={tr("add_subsector_ar_hint", "اسم الفئة الفرعية (AR)...")}
+                                                                            />
+                                                                        </div>
+                                                                        {validationErrors.subcategories && (
+                                                                            <p className="text-xs text-danger-500">{validationErrors.subcategories}</p>
+                                                                        )}
+                                                                        <button type="button" onClick={() => handleAddSubcategory(catId)} disabled={createSubcategoryMutation.isPending} className="btn-secondary disabled:opacity-50">
+                                                                            {createSubcategoryMutation.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <Plus size={14} className="inline mr-1" />}
+                                                                            {tr("add_subsector", "Add Sub Sector")}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -4314,7 +4512,7 @@ const handleShootedAtChange = (date: Date | null) => {
    <button
     type="button"
     onClick={() => {
-        const order: Array<"basic" | "materials" | "cast" | "media"> = ["basic", "materials", "cast", "media"];
+        const order: Array<"basic" | "sectors" | "materials" | "cast" | "media"> = ["basic", "sectors", "materials", "cast", "media"];
         const idx = order.indexOf(activeTab);
         const next = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : "media";
         setActiveTab(next); // TypeScript now knows next is of the correct type

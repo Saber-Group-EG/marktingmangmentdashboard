@@ -21,6 +21,7 @@ import ContractPage from "./routes/contracts/page";
 import ReportsPage from "./routes/reports/page";
 import ProfilePage from "./routes/profile/page.tsx";
 import CategoriesPage from "./routes/categories/page";
+import SubcategoriesPage from "./routes/subcategories/page";
 import CastPage from "./routes/cast/page";
 import ProjectCompaniesPage from "./routes/projectCompanies/page";
 import ProjectsPage from "./routes/Projects/page";
@@ -59,6 +60,7 @@ function App() {
                     { path: "packages", element: <PackagesPage /> },
                     { path: "packages/add", element: <AddPackagePage /> },
                     { path: "categories", element: <CategoriesPage /> },
+                    { path: "subcategories", element: <SubcategoriesPage /> },
                     { path: "cast", element: <CastPage /> },
                     { path: "project-companies", element: <ProjectCompaniesPage /> },
                     { path: "projects", element: <ProjectsPage /> },

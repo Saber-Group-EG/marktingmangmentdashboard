@@ -42,6 +42,9 @@ export * from "./useContractTermsQuery";
 // Categories
 export * from "./useCategoriesQuery";
 
+// Subcategories
+export * from "./useSubcategoriesQuery";
+
 // Cast
 export * from "./useCastQuery";
 

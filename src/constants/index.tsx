@@ -135,6 +135,11 @@ export const navbarLinks = [
                 path: "/categories",
             },
             {
+                label: "Subcategories",
+                icon: Tag,
+                path: "/subcategories",
+            },
+            {
                 label: "Cast",
                 icon: Users,
                 path: "/cast",
