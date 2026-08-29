@@ -649,6 +649,8 @@ const AddProject: React.FC = () => {
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
     const [editingMaterialIndex, setEditingMaterialIndex] = useState<number | null>(null);
     const [activeDragItem, setActiveDragItem] = useState<{ id: string; url: string; isVideo: boolean; thumbnail?: string; label: string } | null>(null);
+    const crossGroupDragTargetRef = useRef<{ toGroupIdx: number; toItemIdx: number } | null>(null);
+    const draggedItemIdRef = useRef<string | null>(null);
 
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
     const [castModalMode, setCastModalMode] = useState<"add" | "edit">("add");
@@ -1957,18 +1959,64 @@ const AddProject: React.FC = () => {
         }
     };
 
+    const clearDropIndicators = () => {
+        document.querySelectorAll("[data-drop-gap]").forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            htmlEl.style.marginLeft = "";
+            htmlEl.style.marginRight = "";
+            htmlEl.removeAttribute("data-drop-gap");
+        });
+    };
+
+    const applyDropIndicator = (toGroupIdx: number, toItemIdx: number) => {
+        const groupContainer = document.querySelector(`[data-group-container="${toGroupIdx}"]`);
+        if (!groupContainer) return;
+        const itemEls = groupContainer.querySelectorAll("[data-sortable-item]");
+        const targetEl = itemEls[toItemIdx] as HTMLElement | undefined;
+        if (targetEl) {
+            targetEl.style.marginLeft = "100px";
+            targetEl.style.transition = "margin 150ms ease";
+            targetEl.setAttribute("data-drop-gap", "true");
+        } else if (itemEls.length > 0) {
+            const lastEl = itemEls[itemEls.length - 1] as HTMLElement;
+            lastEl.style.marginRight = "100px";
+            lastEl.style.transition = "margin 150ms ease";
+            lastEl.setAttribute("data-drop-gap", "true");
+        }
+    };
+
     const handleFlatDragEnd = (event: any) => {
         const { active, over } = event;
-        if (!over || active.id === over.id) return;
+        if (!over || active.id === over.id) {
+            clearDropIndicators();
+            crossGroupDragTargetRef.current = null;
+            return;
+        }
 
         const activeId = String(active.id);
         const overId = String(over.id);
 
         const activeMatch = activeId.match(/^group-(\d+)-item-(\d+)$/);
-        if (!activeMatch) return;
+        if (!activeMatch) {
+            clearDropIndicators();
+            crossGroupDragTargetRef.current = null;
+            return;
+        }
 
         const fromGroupIdx = parseInt(activeMatch[1]);
         const fromItemIdx = parseInt(activeMatch[2]);
+
+        const placeholderMatch = overId.match(/^cross-group-placeholder-(\d+)$/);
+        if (placeholderMatch && crossGroupDragTargetRef.current) {
+            const toGroupIdx = crossGroupDragTargetRef.current.toGroupIdx;
+            const toItemIdx = crossGroupDragTargetRef.current.toItemIdx;
+            if (fromGroupIdx !== toGroupIdx) {
+                handleFlatItemMoveToGroup(fromGroupIdx, fromItemIdx, toGroupIdx, toItemIdx);
+            }
+            clearDropIndicators();
+            crossGroupDragTargetRef.current = null;
+            return;
+        }
 
         const overItemMatch = overId.match(/^group-(\d+)-item-(\d+)$/);
         if (overItemMatch) {
@@ -2046,6 +2094,8 @@ const AddProject: React.FC = () => {
                 handleFlatItemMoveToGroup(fromGroupIdx, fromItemIdx, toGroupIdx);
             }
         }
+        clearDropIndicators();
+        crossGroupDragTargetRef.current = null;
     };
 
     const handleBeforeAfterUpload = async (e: React.ChangeEvent<HTMLInputElement>, which: 'before' | 'after') => {
@@ -3742,9 +3792,61 @@ const handleShootedAtChange = (date: Date | null) => {
                                         const { active } = event;
                                         const data = active.data.current as any;
                                         if (!data) return;
+                                        crossGroupDragTargetRef.current = null;
+                                        draggedItemIdRef.current = String(active.id);
                                         setActiveDragItem({ id: String(active.id), url: data.url, isVideo: data.isVideo, thumbnail: data.thumbnail, label: data.label });
                                     }}
-                                    onDragEnd={(event) => { setActiveDragItem(null); handleFlatDragEnd(event); }}
+                                    onDragOver={(event) => {
+                                        const { active, over } = event;
+                                        const activeId = String(active.id);
+                                        const overId = over ? String(over.id) : "";
+
+                                        const activeMatch = activeId.match(/^group-(\d+)-item-(\d+)$/);
+                                        if (!activeMatch) {
+                                            if (crossGroupDragTargetRef.current !== null) {
+                                                clearDropIndicators();
+                                                crossGroupDragTargetRef.current = null;
+                                            }
+                                            return;
+                                        }
+
+                                        const fromGroupIdx = parseInt(activeMatch[1]);
+                                        let next: { toGroupIdx: number; toItemIdx: number } | null = null;
+
+                                        const overItemMatch = overId.match(/^group-(\d+)-item-(\d+)$/);
+                                        if (overItemMatch) {
+                                            const toGroupIdx = parseInt(overItemMatch[1]);
+                                            const toItemIdx = parseInt(overItemMatch[2]);
+                                            if (fromGroupIdx !== toGroupIdx) {
+                                                next = { toGroupIdx, toItemIdx };
+                                            }
+                                        } else {
+                                            const overGroupMatch = overId.match(/^group-(\d+)$/);
+                                            if (overGroupMatch) {
+                                                const toGroupIdx = parseInt(overGroupMatch[1]);
+                                                if (fromGroupIdx !== toGroupIdx) {
+                                                    const toMaterial = form.materials[toGroupIdx];
+                                                    if (toMaterial) {
+                                                        const isToVideo = toMaterial.type === "video" || (toMaterial.type === "bulk" && isVideoBulkType(toMaterial));
+                                                        const toItems = isToVideo ? buildVideoItems(toMaterial) : buildPhotoItems(toMaterial);
+                                                        next = { toGroupIdx, toItemIdx: toItems.length };
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        const prev = crossGroupDragTargetRef.current;
+                                        const changed = (next === null) !== (prev === null) || (next !== null && prev !== null && (next.toGroupIdx !== prev.toGroupIdx || next.toItemIdx !== prev.toItemIdx));
+
+                                        if (changed) {
+                                            clearDropIndicators();
+                                            crossGroupDragTargetRef.current = next;
+                                            if (next) {
+                                                applyDropIndicator(next.toGroupIdx, next.toItemIdx);
+                                            }
+                                        }
+                                    }}
+                                    onDragEnd={(event) => { crossGroupDragTargetRef.current = null; draggedItemIdRef.current = null; setActiveDragItem(null); handleFlatDragEnd(event); requestAnimationFrame(() => clearDropIndicators()); }}
                                 >
                                     <DragOverlay dropAnimation={null}>
                                         {activeDragItem ? (
@@ -3791,10 +3893,6 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     label: it.originalName || `Video ${i + 1}`,
                                                 }));
                                             }
-
-                                            const otherGroups = form.materials
-                                                .map((m: Material, gIdx: number) => ({ material: m, gIdx }))
-                                                .filter(({ material: mat, gIdx }: { material: Material; gIdx: number }) => gIdx !== idx && ((isPhoto && isPhotoMaterialType(mat.type)) || (isVideo && (mat.type === "video" || (mat.type === "bulk" && isVideoBulkType(mat))))));
 
                                             return (
                                                 <div key={material._id || `mat-${idx}`} className="border border-light-200 dark:border-dark-700 rounded-xl overflow-hidden">
@@ -3854,22 +3952,18 @@ const handleShootedAtChange = (date: Date | null) => {
                                                             </div>
                                                         ) : items.length > 0 ? (
                                                             <SortableContext items={items.map((it) => it.id)} strategy={horizontalListSortingStrategy}>
-                                                                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                                                                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin" data-group-container={idx}>
                                                                     {items.map((item) => (
-                                                                        <DraggableItemThumb
-                                                                            key={item.id}
-                                                                            id={item.id}
-                                                                            url={item.url}
-                                                                            isVideo={item.isVideo}
-                                                                            thumbnail={item.thumbnail}
-                                                                            label={item.label}
-                                                                            onRemove={() => handleFlatItemRemove(idx, items.indexOf(item))}
-                                                                            otherGroups={otherGroups.map((g: { material: Material; gIdx: number }) => ({
-                                                                                label: localizedToString(g.material.caption) || `Group ${g.gIdx + 1}`,
-                                                                                index: g.gIdx,
-                                                                            }))}
-                                                                            onMoveToGroup={(toIdx) => handleFlatItemMoveToGroup(idx, items.indexOf(item), toIdx)}
-                                                                        />
+                                                                        <div key={item.id} data-sortable-item>
+                                                                            <DraggableItemThumb
+                                                                                id={item.id}
+                                                                                url={item.url}
+                                                                                isVideo={item.isVideo}
+                                                                                thumbnail={item.thumbnail}
+                                                                                label={item.label}
+                                                                                onRemove={() => handleFlatItemRemove(idx, items.indexOf(item))}
+                                                                            />
+                                                                        </div>
                                                                     ))}
                                                                 </div>
                                                             </SortableContext>
