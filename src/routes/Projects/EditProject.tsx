@@ -178,6 +178,25 @@ const DraggableItemThumb: React.FC<{
     );
 };
 
+const SortableMaterialGroup: React.FC<{
+    id: string;
+    children: (dragHandleProps: { listeners?: Record<string, any>; attributes?: Record<string, any> }) => React.ReactNode;
+}> = ({ id, children }) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    const style: React.CSSProperties = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 50 : undefined,
+        opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+        <div ref={setNodeRef} style={style}>
+            {children({ listeners, attributes })}
+        </div>
+    );
+};
+
 const EDIT_STORAGE_KEY_PREFIX = "editproject_draft_";
 
 type PhotoItem = { url: string; mimeType?: string; size?: number; originalName?: string; type?: string };
@@ -1974,15 +1993,28 @@ const EditProject: React.FC = () => {
         const activeId = String(active.id);
         const overId = String(over?.id || 'null');
 
-
         if (!over || active.id === over.id) {
+            return;
+        }
 
+        const groupMatch = activeId.match(/^mat-group-(\d+)$/);
+        if (groupMatch) {
+            const overGroupMatch = overId.match(/^mat-group-(\d+)$/);
+            if (overGroupMatch) {
+                const fromIdx = parseInt(groupMatch[1]);
+                const toIdx = parseInt(overGroupMatch[1]);
+                if (fromIdx !== toIdx) {
+                    setForm((prev: any) => ({
+                        ...prev,
+                        materials: arrayMove(prev.materials, fromIdx, toIdx),
+                    }));
+                }
+            }
             return;
         }
 
         const activeMatch = activeId.match(/^group-(\d+)-item-(\d+)$/);
         if (!activeMatch) {
-
             return;
         }
 
@@ -3804,6 +3836,8 @@ if (Array.isArray(clone.cast)) {
                                 <DndContext sensors={photoSensors} collisionDetection={materialsCollisionDetection}
                                     onDragStart={(event) => {
                                         const { active } = event;
+                                        const activeId = String(active.id);
+                                        if (activeId.startsWith("mat-group-")) return;
                                         const data = active.data.current as any;
                                         if (!data) return;
 
@@ -3815,6 +3849,10 @@ if (Array.isArray(clone.cast)) {
                                         const { active, over } = event;
                                         const activeId = String(active.id);
                                         const overId = over ? String(over.id) : "";
+
+                                        if (activeId.startsWith("mat-group-") || overId.startsWith("mat-group-")) {
+                                            return;
+                                        }
 
                                         const activeMatch = activeId.match(/^group-(\d+)-item-(\d+)$/);
                                         if (!activeMatch) {
@@ -3882,6 +3920,7 @@ if (Array.isArray(clone.cast)) {
                                             </div>
                                         ) : null}
                                     </DragOverlay>
+                                    <SortableContext items={form.materials.map((_: Material, i: number) => `mat-group-${i}`)} strategy={verticalListSortingStrategy}>
                                     <div className="space-y-4">
                                         {form.materials.map((material: Material, idx: number) => {
                                             const isVideo = material.type === "video" || (material.type === "bulk" && isVideoBulkType(material));
@@ -3911,10 +3950,12 @@ if (Array.isArray(clone.cast)) {
                                             }
 
                                             return (
-                                                <div key={material._id || `mat-${idx}`} className="border border-light-200 dark:border-dark-700 rounded-xl overflow-hidden">
+                                                <SortableMaterialGroup key={material._id || `mat-${idx}`} id={`mat-group-${idx}`}>
+                                                {({ listeners, attributes }) => (
+                                                <div className="border border-light-200 dark:border-dark-700 rounded-xl overflow-hidden">
                                                     <div className="flex items-center justify-between px-4 py-3 bg-light-50 dark:bg-dark-800/50 border-b border-light-200 dark:border-dark-700">
                                                         <div className="flex items-center gap-3 min-w-0">
-                                                            <span className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing" title={tr("drag_to_reorder", "Drag to reorder")}>
+                                                            <span {...listeners} {...attributes} className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing" title={tr("drag_to_reorder", "Drag to reorder")}>
                                                                 <GripVertical className="w-3.5 h-3.5" />
                                                             </span>
                                                             {isPhoto && <ImageIcon className="w-4 h-4 text-light-500 shrink-0" />}
@@ -3979,9 +4020,12 @@ if (Array.isArray(clone.cast)) {
                                                         )}
                                                     </DroppableGroupContent>
                                                 </div>
+                                                )}
+                                                </SortableMaterialGroup>
                                             );
                                         })}
                                     </div>
+                                    </SortableContext>
 
                                     {form.materials.length === 0 && (
                                         <div className="text-center py-8 text-light-500 dark:text-dark-400">
