@@ -612,6 +612,9 @@ const EditProject: React.FC = () => {
                 const parsed = JSON.parse(draft);
                 if (!Array.isArray(parsed.categories)) parsed.categories = [];
                 if (!Array.isArray(parsed.subcategories)) parsed.subcategories = [];
+                if (!Array.isArray(parsed.tagsEn)) parsed.tagsEn = [];
+                if (!Array.isArray(parsed.tagsAr)) parsed.tagsAr = [];
+                if (!Array.isArray(parsed.types)) parsed.types = [];
                 return parsed;
             }
         } catch {
@@ -1344,22 +1347,24 @@ const EditProject: React.FC = () => {
         const newEnTags: string[] = [];
         const newArTags: string[] = [];
         const maxLen = Math.max(enParts.length, arParts.length);
+        const currentTagsEn = form.tagsEn || [];
+        const currentTagsAr = form.tagsAr || [];
         for (let i = 0; i < maxLen; i++) {
             const en = enParts[i] || "";
             const ar = arParts[i] || "";
             if (en) {
-                const exists = form.tagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
+                const exists = currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
                 const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
                 if (!exists && !alreadyAdded) newEnTags.push(en);
             }
             if (ar) {
-                const exists = form.tagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
+                const exists = currentTagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
                 const alreadyAdded = newArTags.some((t) => t.toLowerCase() === ar.toLowerCase());
                 if (!exists && !alreadyAdded) newArTags.push(ar);
             }
         }
         if (newEnTags.length > 0 || newArTags.length > 0) {
-            setForm({ ...form, tagsEn: [...form.tagsEn, ...newEnTags], tagsAr: [...form.tagsAr, ...newArTags] });
+            setForm({ ...form, tagsEn: [...currentTagsEn, ...newEnTags], tagsAr: [...currentTagsAr, ...newArTags] });
         }
         setNewTag("");
         setNewTagAr("");

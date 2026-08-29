@@ -592,6 +592,9 @@ const AddProject: React.FC = () => {
                 }
                 if (!Array.isArray(parsed.categories)) parsed.categories = [];
                 if (!Array.isArray(parsed.subcategories)) parsed.subcategories = [];
+                if (!Array.isArray(parsed.tagsEn)) parsed.tagsEn = [];
+                if (!Array.isArray(parsed.tagsAr)) parsed.tagsAr = [];
+                if (!Array.isArray(parsed.types)) parsed.types = [];
                 return parsed;
             }
         } catch {
@@ -1154,14 +1157,14 @@ const AddProject: React.FC = () => {
     const handleSelectExistingTag = (tag: { label: string; lang: "en" | "ar" }) => {
         if (!tag) return;
         if (tag.lang === "en") {
-            const alreadyAdded = form.tagsEn.some((t: string) => t.toLowerCase() === tag.label.toLowerCase());
+            const alreadyAdded = (form.tagsEn || []).some((t: string) => t.toLowerCase() === tag.label.toLowerCase());
             if (!alreadyAdded) {
-                setForm({ ...form, tagsEn: [...form.tagsEn, tag.label] });
+                setForm({ ...form, tagsEn: [...(form.tagsEn || []), tag.label] });
             }
         } else {
-            const alreadyAdded = form.tagsAr.some((t: string) => t.toLowerCase() === tag.label.toLowerCase());
+            const alreadyAdded = (form.tagsAr || []).some((t: string) => t.toLowerCase() === tag.label.toLowerCase());
             if (!alreadyAdded) {
-                setForm({ ...form, tagsAr: [...form.tagsAr, tag.label] });
+                setForm({ ...form, tagsAr: [...(form.tagsAr || []), tag.label] });
             }
         }
     };
@@ -1176,22 +1179,24 @@ const AddProject: React.FC = () => {
         const newEnTags: string[] = [];
         const newArTags: string[] = [];
         const maxLen = Math.max(enParts.length, arParts.length);
+        const currentTagsEn = form.tagsEn || [];
+        const currentTagsAr = form.tagsAr || [];
         for (let i = 0; i < maxLen; i++) {
             const en = enParts[i] || "";
             const ar = arParts[i] || "";
             if (en) {
-                const exists = form.tagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
+                const exists = currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
                 const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
                 if (!exists && !alreadyAdded) newEnTags.push(en);
             }
             if (ar) {
-                const exists = form.tagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
+                const exists = currentTagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
                 const alreadyAdded = newArTags.some((t) => t.toLowerCase() === ar.toLowerCase());
                 if (!exists && !alreadyAdded) newArTags.push(ar);
             }
         }
         if (newEnTags.length > 0 || newArTags.length > 0) {
-            setForm({ ...form, tagsEn: [...form.tagsEn, ...newEnTags], tagsAr: [...form.tagsAr, ...newArTags] });
+            setForm({ ...form, tagsEn: [...currentTagsEn, ...newEnTags], tagsAr: [...currentTagsAr, ...newArTags] });
         }
         setNewTag("");
         setNewTagAr("");
@@ -1270,7 +1275,7 @@ const AddProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = form.categories.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
+            const exists = (form.categories || []).some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newCats.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
             if (exists || alreadyAdded) continue;
             newCats.push({ en, ar });
@@ -1302,13 +1307,13 @@ const AddProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = form.types.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            const exists = (form.types || []).some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newTypes.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
             if (exists || alreadyAdded) continue;
             newTypes.push({ en, ar });
         }
         if (newTypes.length > 0) {
-            setForm({ ...form, types: [...form.types, ...newTypes] });
+            setForm({ ...form, types: [...(form.types || []), ...newTypes] });
         }
         setNewType("");
         setNewTypeAr("");
@@ -3650,7 +3655,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                 </span>
                                             ))}
                                         </div>
-                                        <Autocomplete
+                                        {/* <Autocomplete
                                             key={tagAutocompleteKey}
                                             options={existingTags}
                                             getOptionLabel={(opt) => opt.label}
@@ -3675,7 +3680,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                             slotProps={taxonomyAutocompleteSlotProps}
                                             size="small"
                                             className="mb-2"
-                                        />
+                                        /> */}
                                         <div className="space-y-2">
                                             <div className="flex gap-2 items-center">
                                                 <input
