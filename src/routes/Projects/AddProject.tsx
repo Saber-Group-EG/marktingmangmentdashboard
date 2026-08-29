@@ -626,7 +626,7 @@ const AddProject: React.FC = () => {
     const [catAutocompleteKey, setCatAutocompleteKey] = useState(0);
     const [newSubcategory, setNewSubcategory] = useState("");
     const [newSubcategoryAr, setNewSubcategoryAr] = useState("");
-    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+    const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
     const [subcatKeysByParent, setSubcatKeysByParent] = useState<Record<string, number>>({});
     const [typeAutocompleteKey, setTypeAutocompleteKey] = useState(0);
     const [tagAutocompleteKey, setTagAutocompleteKey] = useState(0);
@@ -3873,7 +3873,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                             <div className="space-y-4">
                                                 {form.categories.map((cat: any, catIdx: number) => {
                                                     const catId = getOptionValue(cat) || `cat-${catIdx}`;
-                                                    const isExpanded = expandedCategories.has(catId);
+                                                    const isExpanded = !collapsedCategories.has(catId);
                                                     const catSubs = form.subcategories.filter((s: any) => {
                                                         const subParent = s?.parentCategory || s?.parent || "";
                                                         return subParent === catId || String(subParent) === String(catId);
@@ -3886,7 +3886,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                         <div key={catId} className="rounded-xl border border-light-200/80 dark:border-dark-700/80 overflow-hidden">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setExpandedCategories(prev => {
+                                                                onClick={() => setCollapsedCategories(prev => {
                                                                     const next = new Set(prev);
                                                                     if (next.has(catId)) next.delete(catId); else next.add(catId);
                                                                     return next;
