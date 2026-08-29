@@ -6,6 +6,7 @@ import { useLang } from "@/hooks/useLang";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 
+import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
@@ -574,7 +575,8 @@ const EditProject: React.FC = () => {
             published: false,
             shootedAt: null as Date | null,
             categories: [] as string[],
-            tags: [] as string[],
+            tagsEn: [] as string[],
+            tagsAr: [] as string[],
             types: [] as string[],
             materials: [] as Material[],
             cast: [] as Cast[],
@@ -598,7 +600,8 @@ const EditProject: React.FC = () => {
             published: false,
             shootedAt: null as Date | null,
             categories: [] as string[],
-            tags: [] as string[],
+            tagsEn: [] as string[],
+            tagsAr: [] as string[],
             types: [] as string[],
             materials: [] as Material[],
             cast: [] as Cast[],
@@ -764,37 +767,6 @@ const EditProject: React.FC = () => {
         const name = opt.name;
         if (name && typeof name === "object") return name.en || name.ar || name || "";
         return getOptionLabel(opt);
-    };
-
-    const makeLocalizedName = (en: string, ar: string): { en: string; ar: string } => ({ en: en.trim(), ar: ar.trim() });
-
-    const normalizeArrayField = (arr: any[] = []): { en: string; ar: string }[] => {
-        const seen = new Set<string>();
-        const result: { en: string; ar: string }[] = [];
-        for (const item of arr || []) {
-            let en = "";
-            let ar = "";
-            if (typeof item === "string") {
-                en = item.trim();
-            } else if (item && typeof item === "object") {
-                const name = item.name;
-                if (name && typeof name === "object") {
-                    en = String(name.en || "").trim();
-                    ar = String(name.ar || "").trim();
-                } else if (item.en !== undefined || item.ar !== undefined) {
-                    en = String(item.en || "").trim();
-                    ar = String(item.ar || "").trim();
-                } else {
-                    en = getOptionLabel(item).trim();
-                }
-            }
-            if (!en) continue;
-            const key = `${en.toLowerCase()}__${ar.toLowerCase()}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            result.push({ en, ar });
-        }
-        return result;
     };
 
     const resolveTaxonomyIds = async (items: any[], kind: "category" | "type"): Promise<string[]> => {
@@ -1270,7 +1242,8 @@ const EditProject: React.FC = () => {
             published: project.published || false,
             shootedAt: (project as any).shootedAt ? new Date((project as any).shootedAt) : null,
             categories: project.categories || [],
-            tags: project.tags || [],
+            tagsEn: project.tagsEn || [],
+            tagsAr: project.tagsAr || [],
             types: project.types || [],
             materials: normalizeProjectMaterials(project.material || []),
             cast: mappedCast,
@@ -1298,74 +1271,76 @@ const EditProject: React.FC = () => {
 
     // Tag Management
     const existingTags = React.useMemo(() => {
-        const tagSet = new Set<string>();
+        const seen = new Set<string>();
+        const tags: { label: string; lang: "en" | "ar" }[] = [];
         (allProjects || []).forEach((p: any) => {
-            (p.tags || []).forEach((t: any) => {
-                const label = getOptionLabel(t);
-                if (label) tagSet.add(label.toLowerCase());
+            (p.tagsEn || []).forEach((t: string) => {
+                if (t && !seen.has(`en:${t.toLowerCase()}`)) {
+                    seen.add(`en:${t.toLowerCase()}`);
+                    tags.push({ label: t, lang: "en" });
+                }
+            });
+            (p.tagsAr || []).forEach((t: string) => {
+                if (t && !seen.has(`ar:${t.toLowerCase()}`)) {
+                    seen.add(`ar:${t.toLowerCase()}`);
+                    tags.push({ label: t, lang: "ar" });
+                }
             });
         });
-        const tags: { en: string; ar: string }[] = [];
-        tagSet.forEach((label) => {
-            (allProjects || []).forEach((p: any) => {
-                (p.tags || []).forEach((t: any) => {
-                    const l = getOptionLabel(t);
-                    if (l && l.toLowerCase() === label) {
-                        const existing = tags.find((x) => x.en.toLowerCase() === label);
-                        if (!existing) {
-                            tags.push(typeof t === "object" && t.en ? { en: t.en, ar: t.ar || "" } : { en: l, ar: "" });
-                        }
-                    }
-                });
-            });
-        });
-        return tags.sort((a, b) => a.en.localeCompare(b.en));
+        return tags.sort((a, b) => a.label.localeCompare(b.label));
     }, [allProjects]);
 
-    const handleSelectExistingTag = (enValue: string) => {
-        if (!enValue) return;
-        const tag = existingTags.find((t) => t.en === enValue);
+    const handleSelectExistingTag = (tag: { label: string; lang: "en" | "ar" }) => {
         if (!tag) return;
-        const alreadyAdded = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === tag.en.toLowerCase());
-        if (!alreadyAdded) {
-            setForm({ ...form, tags: [...form.tags, { en: tag.en, ar: tag.ar || "" }] });
+        if (tag.lang === "en") {
+            const alreadyAdded = form.tagsEn.some((t: string) => t.toLowerCase() === tag.label.toLowerCase());
+            if (!alreadyAdded) {
+                setForm({ ...form, tagsEn: [...form.tagsEn, tag.label] });
+            }
+        } else {
+            const alreadyAdded = form.tagsAr.some((t: string) => t.toLowerCase() === tag.label.toLowerCase());
+            if (!alreadyAdded) {
+                setForm({ ...form, tagsAr: [...form.tagsAr, tag.label] });
+            }
         }
     };
 
     const handleAddTag = () => {
         const enInput = newTag.trim();
-        const arInput = newTagAr.trim();
         if (!enInput) return;
+        const arInput = newTagAr.trim();
         const enParts = enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
         const arParts = arInput ? arInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
-        if (arParts.length === 0) {
-            setValidationErrors((prev) => ({ ...prev, tags: "Arabic translations are required for all tags" }));
-            return;
-        }
-        if (enParts.length !== arParts.length) {
-            setValidationErrors((prev) => ({ ...prev, tags: `Count mismatch: ${enParts.length} EN items but ${arParts.length} AR items` }));
-            return;
-        }
         setValidationErrors((prev) => ({ ...prev, tags: undefined }));
-        const newTags: any[] = [];
+        const newEnTags: string[] = [];
+        const newArTags: string[] = [];
         for (let i = 0; i < enParts.length; i++) {
             const en = enParts[i];
-            const ar = arParts[i];
-            if (!en || !ar) continue;
-            const exists = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
-            const alreadyAdded = newTags.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            const ar = arParts[i] || "";
+            if (!en) continue;
+            const exists = form.tagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
+            const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
             if (exists || alreadyAdded) continue;
-            newTags.push(makeLocalizedName(en, ar));
+            newEnTags.push(en);
+            newArTags.push(ar);
         }
-        if (newTags.length > 0) {
-            setForm({ ...form, tags: [...form.tags, ...newTags] });
+        if (newEnTags.length > 0) {
+            setForm({ ...form, tagsEn: [...form.tagsEn, ...newEnTags], tagsAr: [...form.tagsAr, ...newArTags] });
         }
         setNewTag("");
         setNewTagAr("");
     };
 
-    const handleRemoveTag = (tag: any) => {
-        setForm({ ...form, tags: form.tags.filter((t: any) => !isSameOption(t, tag)) });
+    const handleRemoveTag = (index: number) => {
+        const newTagsEn = [...form.tagsEn];
+        newTagsEn.splice(index, 1);
+        setForm({ ...form, tagsEn: newTagsEn });
+    };
+
+    const handleRemoveTagAr = (index: number) => {
+        const newTagsAr = [...form.tagsAr];
+        newTagsAr.splice(index, 1);
+        setForm({ ...form, tagsAr: newTagsAr });
     };
 
     const handleRemoveCategory = (cat: any) => {
@@ -3059,7 +3034,8 @@ if (Array.isArray(clone.cast)) {
                 published: clone.published,
                 shootedAt: clone.shootedAt ? new Date(clone.shootedAt).toISOString() : undefined,
                 categories: await resolveTaxonomyIds(clone.categories, "category"),
-                tags: normalizeArrayField(clone.tags),
+                tagsEn: clone.tagsEn || [],
+                tagsAr: clone.tagsAr || [],
                 types: await resolveTaxonomyIds(clone.types, "type"),
                 material: clone.materials,
                 cast: clone.cast,
@@ -3643,13 +3619,18 @@ if (Array.isArray(clone.cast)) {
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("tags_label", "Tags")}</label>
                                         <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("tags_hint", "Keywords related to the project that make it easier to search")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
-                                            {form.tags.map((tag: any, idx: number) => (
-                                                <span key={getOptionValue(tag) || `${getOptionLabel(tag)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
-                                                    #{getOptionLabel(tag)}
-                                                    {tag && typeof tag === "object" && tag.ar && tag.ar.trim() ? (
-                                                        <span className="opacity-70"> / #{tag.ar}</span>
-                                                    ) : null}
-                                                    <button type="button" onClick={() => handleRemoveTag(tag)}>
+                                            {(form.tagsEn || []).map((tag: string, idx: number) => (
+                                                <span key={`en-${tag}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                    #{tag}
+                                                    <button type="button" onClick={() => handleRemoveTag(idx)}>
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                            {(form.tagsAr || []).map((tag: string, idx: number) => (
+                                                <span key={`ar-${tag}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm" dir="rtl">
+                                                    #{tag}
+                                                    <button type="button" onClick={() => handleRemoveTagAr(idx)}>
                                                         <X className="w-3 h-3" />
                                                     </button>
                                                 </span>
@@ -3658,15 +3639,21 @@ if (Array.isArray(clone.cast)) {
                                         <Autocomplete
                                             key={tagAutocompleteKey}
                                             options={existingTags}
-                                            getOptionLabel={(opt) => opt.ar ? `${opt.en} / ${opt.ar}` : opt.en}
-                                            isOptionEqualToValue={(opt, val) => opt.en === val.en}
+                                            getOptionLabel={(opt) => opt.label}
+                                            isOptionEqualToValue={(opt, val) => opt.label === val.label && opt.lang === val.lang}
                                             value={null}
                                             onChange={(_e, val) => {
                                                 if (val) {
-                                                    handleSelectExistingTag(val.en);
+                                                    handleSelectExistingTag(val);
                                                     setTagAutocompleteKey((k) => k + 1);
                                                 }
                                             }}
+                                            renderOption={(props, opt) => (
+                                                <li {...props} key={`${opt.lang}-${opt.label}`}>
+                                                    {opt.lang === "ar" ? <span dir="rtl">{opt.label}</span> : <span>{opt.label}</span>}
+                                                    <span className="ml-2 text-xs opacity-50">({opt.lang})</span>
+                                                </li>
+                                            )}
                                             renderInput={(params) => (
                                                 <TextField {...params} placeholder={tr("select_existing_tag", "Search existing tags...")} size="small" />
                                             )}
@@ -3954,23 +3941,12 @@ if (Array.isArray(clone.cast)) {
 
                                                     <DroppableGroupContent groupId={`group-${idx}`} className="p-3">
                                                         {isBa ? (
-                                                            <div className="flex gap-4">
-                                                                {material.before?.url && (
-                                                                    <div className="relative w-32 h-32 shrink-0 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                                                        <img src={material.before.url} alt="Before" className="w-full h-full object-cover" />
-                                                                        <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-medium">Before</div>
-                                                                    </div>
-                                                                )}
-                                                                {material.after?.url && (
-                                                                    <div className="relative w-32 h-32 shrink-0 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                                                        <img src={material.after.url} alt="After" className="w-full h-full object-cover" />
-                                                                        <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-medium">After</div>
-                                                                    </div>
-                                                                )}
-                                                                {!material.before?.url && !material.after?.url && (
-                                                                    <div className="text-xs text-light-500 dark:text-dark-400 py-4">No images uploaded yet</div>
-                                                                )}
-                                                            </div>
+                                                            <BeforeAfterSlider
+                                                                beforeUrl={material.before?.url}
+                                                                afterUrl={material.after?.url}
+                                                                beforeLabel={tr("before", "Before")}
+                                                                afterLabel={tr("after", "After")}
+                                                            />
                                                         ) : isText ? (
                                                             <div className="text-xs text-light-600 dark:text-dark-300 max-h-20 overflow-auto break-words">
                                                                 {localizedToString(material.textContent) || <span className="text-light-400 dark:text-dark-500 italic">No text content</span>}

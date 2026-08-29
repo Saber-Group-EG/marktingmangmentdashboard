@@ -889,11 +889,17 @@ const ProjectDetails: React.FC = () => {
                         <div>
                             <h3 className="text-sm font-medium text-light-700 dark:text-dark-300 mb-3">{tr("tags_label", "Tags")}</h3>
                             <div className="flex flex-wrap gap-2">
-                                {p.tags?.map((tag: any, idx: number) => (
-                                    <span key={getOptionKey(tag, idx)} className="px-3 py-1.5 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-lg text-sm">
-                                        #<BilingualText value={tag?.name || tag} size="sm" />
+                                {(p.tagsEn || []).map((tag: string, idx: number) => (
+                                    <span key={`en-${tag}-${idx}`} className="px-3 py-1.5 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-lg text-sm">
+                                        #{tag}
                                     </span>
-                                )) || <span className="text-light-400 dark:text-dark-500">{tr("no_tags", "No tags")}</span>}
+                                ))}
+                                {(p.tagsAr || []).map((tag: string, idx: number) => (
+                                    <span key={`ar-${tag}-${idx}`} className="px-3 py-1.5 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-lg text-sm" dir="rtl">
+                                        #{tag}
+                                    </span>
+                                ))}
+                                {(!p.tagsEn?.length && !p.tagsAr?.length) && <span className="text-light-400 dark:text-dark-500">{tr("no_tags", "No tags")}</span>}
                             </div>
                         </div>
                         <div>
@@ -984,7 +990,7 @@ const ProjectDetails: React.FC = () => {
                             <div className="text-xs text-light-600 dark:text-dark-400">{tr("categories_label", "Sectors")}</div>
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
-                            <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{p.tags?.length || 0}</div>
+                            <div className="text-2xl font-bold text-light-500 dark:text-secdark-500">{p.tagsEn?.length || 0}</div>
                             <div className="text-xs text-light-600 dark:text-dark-400">{tr("tags_label", "Tags")}</div>
                         </div>
                         <div className="text-center p-4 bg-light-50 dark:bg-dark-800/50 rounded-lg border border-light-200 dark:border-dark-700">
