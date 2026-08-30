@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useProject, useProjectCast } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
+import { getProxiedCoverUrl } from "@/utils/proxy";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import BilingualText from "@/components/BilingualText";
 // framer-motion removed (no animations on this page)
@@ -777,7 +778,7 @@ const ProjectDetails: React.FC = () => {
 
                                 {(p.mainCover?.croppedUrl || p.mainCover?.url) && (
                                     <div className="hidden sm:block w-20 aspect-[4/5] rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                        <img src={p.mainCover.croppedUrl || p.mainCover.url} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
+                                        <img src={getProxiedCoverUrl(p.mainCover.croppedUrl || p.mainCover.url)} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
                                     </div>
                                 )}
                             </div>

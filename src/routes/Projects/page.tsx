@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageIcon, Save, RotateCcw } from "lucide-react";
+import { getProxiedCoverUrl } from "@/utils/proxy";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { motion } from "framer-motion";
@@ -493,7 +494,7 @@ const ProjectsPage: React.FC = () => {
                                 {(project.mainCover?.croppedUrl || project.mainCover?.url) ? (
                                     <div className="relative z-10 mb-4 -mx-6 -mt-6 overflow-hidden aspect-[4/5]">
                                         <img
-                                            src={project.mainCover.croppedUrl || project.mainCover.url}
+                                            src={getProxiedCoverUrl(project.mainCover.croppedUrl || project.mainCover.url)}
                                             alt={localizedText(project.localizedName || project.name)}
                                             className="w-full h-full object-cover object-center cursor-grab active:cursor-grabbing"
                                             data-drag-area

@@ -13,6 +13,7 @@ import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency } from "@/utils/r2Upload";
 import { compressDataUrl } from "@/utils/imageCompression";
+import { getProxiedCoverUrl } from "@/utils/proxy";
 
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
@@ -130,7 +131,7 @@ const DraggableItemThumb: React.FC<{
                     <video src={url} className="w-full h-full object-cover pointer-events-none" muted preload="metadata" />
                 )
             ) : (
-                <img src={url} alt={label} className="w-full h-full object-cover pointer-events-none" />
+                <img src={getProxiedCoverUrl(url, { width: 400 })} alt={label} className="w-full h-full object-cover pointer-events-none" />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="absolute bottom-0 left-0 right-0 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -222,7 +223,7 @@ const SortablePhotoItem: React.FC<{ item: PhotoItem; index: number; onRemove: (i
     return (
         <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex items-center gap-3 border border-light-200 dark:border-dark-700 rounded-lg p-2 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing touch-none">
             <GripVertical className="w-4 h-4 shrink-0 text-light-400 dark:text-dark-500" />
-            <img src={item.url} alt={item.originalName || `Photo ${index + 1}`} className="shrink-0 w-12 h-12 object-cover rounded pointer-events-none" />
+            <img src={getProxiedCoverUrl(item.url, { width: 400 })} alt={item.originalName || `Photo ${index + 1}`} className="shrink-0 w-12 h-12 object-cover rounded pointer-events-none" />
             <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-light-900 dark:text-dark-50 truncate">{item.originalName || `Photo ${index + 1}`}</div>
                 <div className="text-xs text-light-500 dark:text-dark-400">#{index + 1}</div>
@@ -4373,7 +4374,7 @@ if (Array.isArray(clone.cast)) {
                                                                                 }}
                                                                                 className="relative aspect-square rounded-lg overflow-hidden border border-light-200 dark:border-dark-700 hover:border-primary-500 transition-colors group"
                                                                             >
-                                                                                <img src={item.url} alt={item.originalName || `Photo ${pIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                <img src={getProxiedCoverUrl(item.url, { width: 400 })} alt={item.originalName || `Photo ${pIdx + 1}`} className="w-full h-full object-cover" />
                                                                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                                                                                     <ImageIcon className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
                                                                                 </div>
@@ -4549,7 +4550,7 @@ if (Array.isArray(clone.cast)) {
                                                                             }}
                                                                             className="relative aspect-square rounded-lg overflow-hidden border border-light-200 dark:border-dark-700 hover:border-primary-500 transition-colors group"
                                                                         >
-                                                                            <img src={item.url} alt={item.originalName || `Photo ${pIdx + 1}`} className="w-full h-full object-cover" />
+                                                                            <img src={getProxiedCoverUrl(item.url, { width: 400 })} alt={item.originalName || `Photo ${pIdx + 1}`} className="w-full h-full object-cover" />
                                                                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                                                                                 <ImageIcon className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
                                                                             </div>
