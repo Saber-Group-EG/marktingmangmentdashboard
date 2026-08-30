@@ -2751,6 +2751,8 @@ const handleShootedAtChange = (date: Date | null) => {
                     fileName: clone.mainCover.originalName || `full-main-cover-${Date.now()}.jpg`,
                 });
                 clone.fullMainCover = { ...clone.mainCover, ...uploadedFullCover };
+                delete clone.fullMainCover.croppedUrl;
+                delete clone.fullMainCover.crop;
             } else {
                 clone.fullMainCover = { url: fullCoverSource, mimeType: clone.mainCover.mimeType, originalName: clone.mainCover.originalName, size: clone.mainCover.size };
             }
