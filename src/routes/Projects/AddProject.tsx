@@ -1106,6 +1106,7 @@ const AddProject: React.FC = () => {
             published: source.published || false,
             publishAt: source.publishedAt ? new Date(source.publishedAt) : null,
             categories: source.categories || [],
+            subcategories: source.subcategories || [],
             tagsEn: source.tagsEn || [],
             tagsAr: source.tagsAr || [],
             types: source.types || [],
