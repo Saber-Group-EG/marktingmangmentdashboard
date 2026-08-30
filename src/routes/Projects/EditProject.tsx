@@ -1273,7 +1273,15 @@ const EditProject: React.FC = () => {
             published: project.published || false,
             shootedAt: (project as any).shootedAt ? new Date((project as any).shootedAt) : null,
             categories: project.categories || [],
-            subcategories: (project as any).subcategories || [],
+            subcategories: (() => {
+                const rawSubs = (project as any).subcategories || [];
+                return rawSubs.map((s: any) => {
+                    if (typeof s === "string") {
+                        return projectSubcategories.find((ps: any) => (ps._id || ps.id) === s) || s;
+                    }
+                    return s;
+                });
+            })(),
             tagsEn: project.tagsEn || [],
             tagsAr: project.tagsAr || [],
             types: project.types || [],
@@ -2954,7 +2962,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                                         fileName: `project-video-thumb-${materialIndex + 1}.jpg`,
                                     });
                                     copy.thumbnail = uploadedThumb.url;
-                                } else {
+                                } else if (!rawThumb) {
                                     copy.thumbnail = "";
                                 }
                             }
@@ -3067,7 +3075,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                     const { items, thumbnail, ...rest } = material || {};
                     return {
                         ...rest,
-                        thumbnail: "",
+                        thumbnail: thumbnail || "",
                         order: index + 1,
                     };
                 });

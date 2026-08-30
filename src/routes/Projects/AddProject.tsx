@@ -2895,7 +2895,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                         fileName: `project-video-thumb-${materialIndex + 1}.jpg`,
                                     });
                                     copy.thumbnail = uploadedThumb.url;
-                                } else {
+                                } else if (!rawThumb) {
                                     copy.thumbnail = "";
                                 }
                             }
@@ -3004,7 +3004,7 @@ const handleShootedAtChange = (date: Date | null) => {
                 const { items, thumbnail, ...rest } = material || {};
                 return {
                     ...rest,
-                    thumbnail: "",
+                    thumbnail: thumbnail || "",
                     order: index + 1,
                 };
             });
