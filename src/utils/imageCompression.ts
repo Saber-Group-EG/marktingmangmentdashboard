@@ -125,3 +125,26 @@ export const compressImageFileToMaxBytes = async (file: File, options: CompressI
 
     return file;
 };
+
+export const compressDataUrl = (dataUrl: string, quality = 0.82, maxDimension = 1600): Promise<string> =>
+    new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            let { naturalWidth: w, naturalHeight: h } = img;
+            const longest = Math.max(w, h);
+            if (longest > maxDimension) {
+                const ratio = maxDimension / longest;
+                w = Math.max(1, Math.round(w * ratio));
+                h = Math.max(1, Math.round(h * ratio));
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) { resolve(dataUrl); return; }
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+    });

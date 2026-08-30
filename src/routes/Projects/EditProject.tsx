@@ -12,6 +12,7 @@ import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency } from "@/utils/r2Upload";
+import { compressDataUrl } from "@/utils/imageCompression";
 
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
@@ -2424,7 +2425,7 @@ const EditProject: React.FC = () => {
                 title: "Uploading photo...",
                 label: file.name,
                 task: async () => {
-                    const dataUrl = await readFileAsDataUrl(file);
+                    const dataUrl = await compressDataUrl(await readFileAsDataUrl(file));
         setForm({
                         ...form,
                         mainCover: {
@@ -2810,7 +2811,8 @@ const handleSubmit = async (e: React.FormEvent) => {
             if (clone.mainCover) {
                 const coverUploadSource = clone.mainCover.croppedUrl || clone.mainCover.url;
                 if (isDataUrl(coverUploadSource)) {
-                    const uploadedMainCover = await uploadDataUrlToR2(coverUploadSource, {
+                    const compressedCover = await compressDataUrl(coverUploadSource);
+                    const uploadedMainCover = await uploadDataUrlToR2(compressedCover, {
                         resourceType: "image",
                         fileName: clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
                     });

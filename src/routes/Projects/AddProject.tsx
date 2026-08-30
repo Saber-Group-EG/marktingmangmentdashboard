@@ -11,6 +11,7 @@ import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency } from "@/utils/r2Upload";
+import { compressDataUrl } from "@/utils/imageCompression";
 
 import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
 import { stripHtml } from "@/utils/translateText";
@@ -2416,7 +2417,7 @@ const AddProject: React.FC = () => {
                 title: "Uploading photo...",
                 label: file.name,
                 task: async () => {
-                    const dataUrl = await readFileAsDataUrl(file);
+                    const dataUrl = await compressDataUrl(await readFileAsDataUrl(file));
                     // load image to read natural dimensions
                     const img = new Image();
                     await new Promise<void>((resolve) => {
@@ -2762,7 +2763,8 @@ const handleShootedAtChange = (date: Date | null) => {
         if (clone.mainCover) {
             const coverUploadSource = clone.mainCover.croppedUrl || clone.mainCover.url;
             if (isDataUrl(coverUploadSource)) {
-                const uploadedMainCover = await uploadDataUrlToR2(coverUploadSource, {
+                const compressedCover = await compressDataUrl(coverUploadSource);
+                const uploadedMainCover = await uploadDataUrlToR2(compressedCover, {
                     resourceType: "image",
                     fileName: clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
                 });
