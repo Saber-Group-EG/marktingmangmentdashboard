@@ -1794,6 +1794,7 @@ const AddProject: React.FC = () => {
             location: { ar: "", en: "" },
             published: false,
             categories: [],
+            subcategories: [],
             tagsEn: [],
             tagsAr: [],
             types: [],
