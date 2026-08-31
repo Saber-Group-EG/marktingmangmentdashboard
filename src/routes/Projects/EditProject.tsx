@@ -32,7 +32,7 @@ import {
   FileText, Info, AlertCircle, CheckCircle, Plus,
   Edit, Eye, MapPin,  Users, Layers,
         Image as ImageIcon, Video, Code, Upload, GripVertical,
-  Camera, Calendar, Target
+  Camera, Calendar, Target, Check
 } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -1173,6 +1173,7 @@ const EditProject: React.FC = () => {
 
     useEffect(() => {
         if (!project) return;
+        if (projectSubcategories.length === 0) return;
         if (formInitializedRef.current === id) return;
         formInitializedRef.current = id || null;
         localStorage.removeItem(`${EDIT_STORAGE_KEY_PREFIX}${id}`);
@@ -1278,8 +1279,9 @@ const EditProject: React.FC = () => {
             subcategories: (() => {
                 const rawSubs = (project as any).subcategories || [];
                 return rawSubs.map((s: any) => {
-                    if (typeof s === "string") {
-                        return projectSubcategories.find((ps: any) => (ps._id || ps.id) === s) || s;
+                    const sid = typeof s === "string" ? s : (s?._id || s?.id || "");
+                    if (sid) {
+                        return projectSubcategories.find((ps: any) => (ps._id || ps.id) === sid) || s;
                     }
                     return s;
                 });
@@ -1295,7 +1297,7 @@ const EditProject: React.FC = () => {
             company: companyInitial,
         });
 
-    }, [project, projectCast, allProjects]);
+    }, [project, projectCast, allProjects, projectSubcategories]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -3911,7 +3913,7 @@ if (Array.isArray(clone.cast)) {
                                                     const catId = getOptionValue(cat) || `cat-${catIdx}`;
                                                     const isExpanded = !collapsedCategories.has(catId);
                                                     const availableSubcats = projectSubcategories.filter((s: any) => {
-                                                        return s.parentCategory === catId && !form.subcategories.some((cs: any) => getOptionValue(cs) === getOptionValue(s));
+                                                        return s.parentCategory === catId;
                                                     });
                                                     return (
                                                         <div key={catId} className="rounded-xl border border-light-200/80 dark:border-dark-700/80 overflow-hidden">
@@ -3942,7 +3944,11 @@ if (Array.isArray(clone.cast)) {
                                                             {isExpanded && (
                                                                 <div className="px-4 py-3 space-y-3 bg-white dark:bg-dark-900/40">
                                                                     {(() => {
-                                                                        const selectedSubcats = form.subcategories.filter((s: any) => s.parentCategory === catId);
+                                                                        const selectedSubcats = form.subcategories.filter((s: any) => {
+                                                                            const sid = getOptionValue(s);
+                                                                            const full = projectSubcategories.find((ps: any) => (ps._id || ps.id) === sid);
+                                                                            return full && full.parentCategory === catId;
+                                                                        });
                                                                         return selectedSubcats.length > 0 ? (
                                                                             <div className="flex flex-wrap gap-2">
                                                                                 {selectedSubcats.map((sub: any, subIdx: number) => (
@@ -3971,10 +3977,21 @@ if (Array.isArray(clone.cast)) {
                                                                         isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
                                                                         value={null}
                                                                         onChange={(_e, val) => {
-                                                                            if (val) {
+                                                                            if (val && !form.subcategories.some((cs: any) => getOptionValue(cs) === getOptionValue(val))) {
                                                                                 handleSelectExistingSubcategory(String(projectSubcategories.indexOf(val)));
                                                                                 setSubcatKeysByParent(prev => ({ ...prev, [catId]: (prev[catId] || 0) + 1 }));
                                                                             }
+                                                                        }}
+                                                                        renderOption={(props, option) => {
+                                                                            const isSelected = form.subcategories.some((cs: any) => getOptionValue(cs) === getOptionValue(option));
+                                                                            return (
+                                                                                <li {...props} key={getOptionValue(option)}>
+                                                                                    <div className="flex items-center justify-between w-full">
+                                                                                        <span>{getOptionLabel(option)}{option && typeof option === "object" && ((option as any).ar || (option.name && typeof option.name === "object" && (option.name as any).ar)) ? ` / ${(option as any).ar || (option.name && typeof option.name === "object" ? (option.name as any).ar : "")}` : ""}</span>
+                                                                                        {isSelected && <Check className="w-4 h-4 text-primary-500 ml-2" />}
+                                                                                    </div>
+                                                                                </li>
+                                                                            );
                                                                         }}
                                                                         renderInput={(params) => (
                                                                             <TextField {...params} placeholder={tr("select_existing_subcategory", "Search existing sub sectors...")} size="small" />
