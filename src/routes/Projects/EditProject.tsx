@@ -3903,25 +3903,6 @@ if (Array.isArray(clone.cast)) {
                                         </div>
                                     </div>
 
-                                    {form.subcategories.length > 0 && (
-                                        <div className="border-t border-light-200 dark:border-dark-700 pt-4">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-light-500 dark:text-dark-400 mb-3">{tr("sub_sectors", "Sub Sectors")}</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {form.subcategories.map((sub: any, subIdx: number) => (
-                                                    <span key={getOptionValue(sub) || `${subIdx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
-                                                        #{getOptionLabel(sub)}
-                                                        {sub && typeof sub === "object" && (sub.ar || (sub.name && typeof sub.name === "object" && (sub.name as any).ar)) && (sub.ar || (sub.name && typeof sub.name === "object" && (sub.name as any).ar) || "").trim() ? (
-                                                            <span className="opacity-70"> / #{sub.ar || (sub.name && typeof sub.name === "object" ? (sub.name as any).ar : "")}</span>
-                                                        ) : null}
-                                                        <button type="button" onClick={() => handleRemoveSubcategory(sub)} className="hover:text-light-500 dark:hover:text-secdark-500">
-                                                            <X className="w-3 h-3" />
-                                                        </button>
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
                                     {form.categories.length > 0 && (
                                         <div className="border-t border-light-200 dark:border-dark-700 pt-4">
                                             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-light-500 dark:text-dark-400 mb-3">{tr("add_subsector_by_category", "Add Sub Sector by Category")}</p>
@@ -3930,7 +3911,7 @@ if (Array.isArray(clone.cast)) {
                                                     const catId = getOptionValue(cat) || `cat-${catIdx}`;
                                                     const isExpanded = !collapsedCategories.has(catId);
                                                     const availableSubcats = projectSubcategories.filter((s: any) => {
-                                                        return !form.subcategories.some((cs: any) => getOptionValue(cs) === getOptionValue(s));
+                                                        return s.parentCategory === catId && !form.subcategories.some((cs: any) => getOptionValue(cs) === getOptionValue(s));
                                                     });
                                                     return (
                                                         <div key={catId} className="rounded-xl border border-light-200/80 dark:border-dark-700/80 overflow-hidden">
@@ -3960,6 +3941,24 @@ if (Array.isArray(clone.cast)) {
                                                             </div>
                                                             {isExpanded && (
                                                                 <div className="px-4 py-3 space-y-3 bg-white dark:bg-dark-900/40">
+                                                                    {(() => {
+                                                                        const selectedSubcats = form.subcategories.filter((s: any) => s.parentCategory === catId);
+                                                                        return selectedSubcats.length > 0 ? (
+                                                                            <div className="flex flex-wrap gap-2">
+                                                                                {selectedSubcats.map((sub: any, subIdx: number) => (
+                                                                                    <span key={getOptionValue(sub) || `${subIdx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                                                        #{getOptionLabel(sub)}
+                                                                                        {sub && typeof sub === "object" && (sub.ar || (sub.name && typeof sub.name === "object" && (sub.name as any).ar)) && (sub.ar || (sub.name && typeof sub.name === "object" && (sub.name as any).ar) || "").trim() ? (
+                                                                                            <span className="opacity-70"> / #{sub.ar || (sub.name && typeof sub.name === "object" ? (sub.name as any).ar : "")}</span>
+                                                                                        ) : null}
+                                                                                        <button type="button" onClick={() => handleRemoveSubcategory(sub)} className="hover:text-light-500 dark:hover:text-secdark-500">
+                                                                                            <X className="w-3 h-3" />
+                                                                                        </button>
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
+                                                                        ) : null;
+                                                                    })()}
                                                                     <Autocomplete
                                                                         key={subcatKeysByParent[catId] || 0}
                                                                         options={availableSubcats}
