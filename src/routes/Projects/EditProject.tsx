@@ -5067,7 +5067,7 @@ if (Array.isArray(clone.cast)) {
                                         <input
                                             type="text"
                                             value={(editingCast.title || []).join(", ")}
-                                            onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) })}
+                                            onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value.split(/\s*,\s*/).filter(s => s !== "") })}
                                             className="input w-full"
                                             placeholder="e.g., Creative Director, Photographer"
                                         />
@@ -5230,7 +5230,7 @@ if (Array.isArray(clone.cast)) {
                                                 <input
                                                     type="text"
                                                     value={(row.title || []).join(", ")}
-                                                    onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) } : p)))}
+                                                    onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value.split(/\s*,\s*/).filter(s => s !== "") } : p)))}
                                                     className="input col-span-4"
                                                     placeholder={tr("title_role_optional", "Title/Role (optional)")}
                                                 />
