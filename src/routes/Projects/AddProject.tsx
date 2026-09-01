@@ -82,8 +82,8 @@ interface Cast {
 type PhotoItem = { url: string; mimeType?: string; size?: number; originalName?: string; type?: string };
 
 const SortablePhotoItem: React.FC<{ item: PhotoItem; index: number; onRemove: (i: number) => void; removeLabel: string; otherGroups?: { label: string; index: number }[]; onMoveToGroup?: (itemIndex: number, targetGroupIndex: number) => void }> = ({ item, index, onRemove, removeLabel, otherGroups, onMoveToGroup }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
-    const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
+    const style = { transform: CSS.Transform.toString(transform), transition: undefined, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
     const [showMoveMenu, setShowMoveMenu] = useState(false);
     const moveMenuRef = useRef<HTMLDivElement>(null);
 
@@ -296,8 +296,8 @@ const VideoFrameSelector: React.FC<{ videoUrl: string; onSelect: (dataUrl: strin
 };
 
 const SortableVideoItem: React.FC<SortableVideoItemProps> = ({ item, index, onRemove, onThumbnailUpload, onRemoveThumbnail, onFrameSelect, onFrameSelectForCover, removeLabel, materialCaption, materialDescription, otherGroups, onMoveToGroup }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
-    const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: `${item.originalName || item.url}-${index}` });
+    const style = { transform: CSS.Transform.toString(transform), transition: undefined, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
     const thumbUrl = item.thumbnail || undefined;
     const caption = materialCaption || "";
     const description = materialDescription || "";
@@ -386,10 +386,10 @@ const DraggableItemThumb: React.FC<{
     otherGroups?: { label: string; index: number }[];
     onMoveToGroup?: (targetGroupIndex: number) => void;
 }> = ({ id, url, isVideo, thumbnail, label, onRemove, otherGroups, onMoveToGroup }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, data: { url, isVideo, thumbnail, label } });
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id, data: { url, isVideo, thumbnail, label } });
     const style = {
         transform: CSS.Transform.toString(transform),
-        transition,
+        transition: undefined,
         zIndex: isDragging ? 50 : undefined,
         opacity: isDragging ? 0.4 : 1,
     };
@@ -477,10 +477,10 @@ const SortableMaterialGroup: React.FC<{
     id: string;
     children: (dragHandleProps: { listeners?: Record<string, any>; attributes?: Record<string, any> }) => React.ReactNode;
 }> = ({ id, children }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
     const style: React.CSSProperties = {
         transform: CSS.Transform.toString(transform),
-        transition,
+        transition: undefined,
         zIndex: isDragging ? 50 : undefined,
         opacity: isDragging ? 0.5 : 1,
     };

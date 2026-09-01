@@ -49,7 +49,9 @@ export const useCategories = (params?: CategoryQueryParams) => {
     return useQuery({
         queryKey: categoriesKeys.list(normalizedParams),
         queryFn: () => getCategories(normalizedParams),
-        refetchOnMount: "always",
+        staleTime: 5 * 60 * 1000,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
     });
 };
 

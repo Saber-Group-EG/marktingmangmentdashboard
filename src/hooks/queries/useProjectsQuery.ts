@@ -39,13 +39,29 @@ export const useProject = (id?: string, opts?: { enabled?: boolean }) => {
     const queryClient = useQueryClient();
 
     const shouldEnable = typeof opts?.enabled === "boolean" ? opts.enabled : !!id;
-    const cachedDetail = id ? (queryClient.getQueryData(projectsKeys.detail(id)) as Project | null | undefined) : undefined;
+
+    const getInitialData = (): Project | undefined => {
+        if (!id) return undefined;
+        // Check detail cache first
+        const cachedDetail = queryClient.getQueryData(projectsKeys.detail(id)) as Project | undefined;
+        if (cachedDetail) return cachedDetail;
+        // Fall back to list cache — find the project by id in any cached projects list
+        const listQueries = queryClient.getQueriesData<Project[]>({ queryKey: projectsKeys.lists() });
+        for (const [, data] of listQueries) {
+            if (!Array.isArray(data)) continue;
+            const found = data.find((p: any) => (p?.id || p?._id) === id);
+            if (found) return found;
+        }
+        return undefined;
+    };
+
+    const initialData = getInitialData();
 
     return useQuery({
         queryKey: projectsKeys.detail(id || ""),
         queryFn: () => getProjectById(id || ""),
         enabled: shouldEnable,
-        initialData: cachedDetail,
+        initialData,
         staleTime: 5 * 60 * 1000,
         refetchOnMount: true,
         refetchOnWindowFocus: false,

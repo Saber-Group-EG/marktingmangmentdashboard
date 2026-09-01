@@ -27,7 +27,9 @@ export const useSubcategories = (params?: SubcategoryQueryParams) => {
     return useQuery({
         queryKey: subcategoriesKeys.list(normalizedParams),
         queryFn: () => getSubcategories(normalizedParams),
-        refetchOnMount: "always",
+        staleTime: 5 * 60 * 1000,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
     });
 };
 

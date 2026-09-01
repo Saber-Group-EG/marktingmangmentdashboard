@@ -1184,7 +1184,6 @@ const EditProject: React.FC = () => {
 
     useEffect(() => {
         if (!project) return;
-        if (projectSubcategories.length === 0) return;
         if (formInitializedRef.current === id) return;
         formInitializedRef.current = id || null;
         localStorage.removeItem(`${EDIT_STORAGE_KEY_PREFIX}${id}`);
