@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageIcon, Save, RotateCcw } from "lucide-react";
+import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageIcon, Save, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
 import { getProxiedCoverUrl } from "@/utils/proxy";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { motion } from "framer-motion";
 import { useNavigate} from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useProjects, useProjectCast, useReorderProjects, useDeleteProject, useProjectCompanies, useTogglePublishProject } from "@/hooks/queries";
+import { useProjectsPaginated, useProjectCast, useReorderProjects, useDeleteProject, useProjectCompanies, useTogglePublishProject } from "@/hooks/queries";
 import { showConfirm, showAlert } from "@/utils/swal";
 
 const PROJECT_CARD_TYPE = "PROJECT_CARD";
@@ -92,7 +92,16 @@ const ProjectsPage: React.FC = () => {
 
     const [searchTerm, setSearchTerm] = useState<string>("");
     const [companyFilter, setCompanyFilter] = useState<string[]>([]);
-    const { data: projects = [], isLoading, error, refetch } = useProjects();
+    const [currentPage, setCurrentPage] = useState<number>(1);
+    const PAGE_SIZE = 24    ;
+
+    const { data: paginatedResponse, isLoading, error, refetch } = useProjectsPaginated({
+        page: currentPage,
+        PageCount: PAGE_SIZE,
+    });
+    const projects = paginatedResponse?.data || [];
+    const totalCount = paginatedResponse?.totalCount || 0;
+    const totalPages = paginatedResponse?.totalPages || 0;
     const { data: projectCast = [] } = useProjectCast();
     const { data: allProjectCompanies = [] } = useProjectCompanies();
     const { mutate: reorderProjects, isPending: isReordering } = useReorderProjects();
@@ -171,7 +180,11 @@ const ProjectsPage: React.FC = () => {
         orderedProjectsRef.current = orderedProjects;
     }, [orderedProjects]);
 
-    const total = projects.length;
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
+
+    const total = totalCount;
     const published = projects.filter((p: any) => p.published).length;
     const drafts = total - published;
 
@@ -474,6 +487,7 @@ const ProjectsPage: React.FC = () => {
                     </button>
                 </div>
             ) : (
+                <>
                 <DndProvider backend={HTML5Backend}>
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-6">
                     {filtered.map((project: any) => (
@@ -578,6 +592,72 @@ const ProjectsPage: React.FC = () => {
                     ))}
                 </div>
             </DndProvider>
+
+            {totalPages > 1 && (() => {
+                const getPageNumbers = (): (number | "...")[] => {
+                    const pages: (number | "...")[] = [];
+                    if (totalPages <= 7) {
+                        for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                        pages.push(1);
+                        if (currentPage > 3) pages.push("...");
+                        const start = Math.max(2, currentPage - 1);
+                        const end = Math.min(totalPages - 1, currentPage + 1);
+                        for (let i = start; i <= end; i++) pages.push(i);
+                        if (currentPage < totalPages - 2) pages.push("...");
+                        pages.push(totalPages);
+                    }
+                    return pages;
+                };
+
+                return (
+                    <div className="mt-6 flex items-center justify-between border-t border-light-200 pt-4 dark:border-dark-700">
+                        <button
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="flex items-center gap-1 rounded-xl border border-light-200 px-4 py-2 text-sm font-medium text-light-700 transition-colors hover:bg-light-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-700 dark:text-dark-300 dark:hover:bg-dark-800"
+                        >
+                            <ChevronLeft size={16} />
+                            {tr("previous", "Previous")}
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                            {getPageNumbers().map((page, index) =>
+                                page === "..." ? (
+                                    <span key={`dots-${index}`} className="px-2 text-light-500 dark:text-dark-500">
+                                        ...
+                                    </span>
+                                ) : (
+                                    <button
+                                        key={page}
+                                        onClick={() => setCurrentPage(page as number)}
+                                        className={`min-w-[36px] rounded-lg px-2 py-1.5 text-sm font-medium transition-colors ${
+                                            currentPage === page
+                                                ? "bg-primary-500 text-white shadow-sm"
+                                                : "text-light-700 hover:bg-light-50 dark:text-dark-300 dark:hover:bg-dark-800"
+                                        }`}
+                                    >
+                                        {page}
+                                    </button>
+                                )
+                            )}
+                            <span className="text-light-500 dark:text-dark-500 text-xs ml-2">
+                                ({totalCount} {tr("total", "total")})
+                            </span>
+                        </div>
+
+                        <button
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="flex items-center gap-1 rounded-xl border border-light-200 px-4 py-2 text-sm font-medium text-light-700 transition-colors hover:bg-light-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-700 dark:text-dark-300 dark:hover:bg-dark-800"
+                        >
+                            {tr("next", "Next")}
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
+                );
+            })()}
+            </>
             )}
         </div>
     );

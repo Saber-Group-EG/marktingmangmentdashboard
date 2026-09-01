@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Project } from "@/api/interfaces/projectInterface";
 import {
     getProjects,
+    getProjectsPaginated,
     getProjectById,
     createProject,
     updateProject,
@@ -12,6 +13,7 @@ import {
     getProjectTypes,
     type ProjectTaxonomyOption,
     getProjectCast,
+    type ProjectListResponse,
 } from "@/api/requests/projectsService";
 
 export const projectsKeys = {
@@ -29,6 +31,16 @@ export const useProjects = (params?: Record<string, any>) => {
     return useQuery({
         queryKey: projectsKeys.list(params),
         queryFn: () => getProjects(params),
+        staleTime: 5 * 60 * 1000,
+        refetchOnMount: true,
+        refetchOnWindowFocus: false,
+    });
+};
+
+export const useProjectsPaginated = (params?: Record<string, any>) => {
+    return useQuery<ProjectListResponse>({
+        queryKey: projectsKeys.list(params),
+        queryFn: () => getProjectsPaginated(params),
         staleTime: 5 * 60 * 1000,
         refetchOnMount: true,
         refetchOnWindowFocus: false,

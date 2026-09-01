@@ -133,6 +133,14 @@ const transformProject = (raw: any): Project => {
   return base;
 };
 
+export interface ProjectListResponse {
+  data: Project[];
+  totalCount: number;
+  totalPages: number;
+  currentPage: number;
+  currentPageCount: number;
+}
+
 export const getProjects = async (params?: Record<string, any>): Promise<Project[]> => {
   try {
     const mergedParams = { ...(params || {}), PageCount: "all" };
@@ -146,6 +154,40 @@ export const getProjects = async (params?: Record<string, any>): Promise<Project
     else data = [];
 
     return data.map(transformProject).filter(Boolean);
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const getProjectsPaginated = async (
+  params?: Record<string, any>
+): Promise<ProjectListResponse> => {
+  try {
+    const mergedParams = { ...(params || {}), PageCount: params?.PageCount ?? 20 };
+    const response = await axiosInstance.get(PROJECTS_ENDPOINT, { params: mergedParams });
+    const responseData = response.data;
+
+    let data: any[] = [];
+    if (Array.isArray(responseData)) data = responseData;
+    else if (Array.isArray(responseData?.projects)) data = responseData.projects;
+    else if (Array.isArray(responseData?.data)) data = responseData.data;
+    else if (Array.isArray(responseData?.data?.projects)) data = responseData.data.projects;
+
+    const pagination = responseData?.paginationResult || responseData?.pagination || {};
+    const totalCount =
+      pagination.totalCount ?? responseData?.totalCount ?? data.length;
+    const totalPages =
+      pagination.numberOfPages ?? responseData?.totalPages ?? Math.ceil(totalCount / (mergedParams.PageCount || 20));
+    const currentPage =
+      pagination.currentPage ?? responseData?.currentPage ?? (mergedParams as Record<string, any>).page ?? 1;
+
+    return {
+      data: data.map(transformProject).filter(Boolean),
+      totalCount,
+      totalPages,
+      currentPage,
+      currentPageCount: data.length,
+    };
   } catch (error) {
     throw error;
   }
