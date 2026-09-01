@@ -1238,14 +1238,14 @@ const EditProject: React.FC = () => {
                     const found = projectCast.find((pc: any) => (pc._id || pc.id) === c.name || pc.name === c.name);
                     return {
                         ...c,
-                        title: c.title || [],
+                        title: c.title || (found as any)?.title || [],
                         socialLinks: c.socialLinks?.length ? c.socialLinks : (found as any)?.socialLinks || [],
                         photo: c.photo || (found as any)?.photo || null,
                         order: c.order || idx + 1,
                     };
                 }
                 const found = projectCast.find((pc: any) => pc._id === c._id || pc.id === c._id || pc._id === c.id || pc.name === c.name);
-                return { ...(found || {}), ...c, title: c.title || [], order: c.order || idx + 1 };
+                return { ...(found || {}), ...c, title: c.title || (found as any)?.title || [], order: c.order || idx + 1 };
             }
 
             return { name: String(c), title: [], order: idx + 1 };
@@ -3127,7 +3127,12 @@ if (Array.isArray(clone.cast)) {
 
                         // Existing member — send its Cast id via castId
                         if (c._id || c.id) {
-                            const titleStr = Array.isArray(c.title) ? c.title.join(", ") : (c.title || "");
+                            let titles = c.title || [];
+                            if (!titles.length) {
+                                const found = projectCast.find((pc: any) => (pc._id || pc.id) === (c._id || c.id));
+                                titles = (found as any)?.title || [];
+                            }
+                            const titleStr = Array.isArray(titles) ? titles.join(", ") : (titles || "");
                             processedCast.push({ castId: c._id || c.id, title: titleStr, order: Number(c.order) || 0 });
                             continue;
                         }
