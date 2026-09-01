@@ -5049,7 +5049,7 @@ if (Array.isArray(clone.cast)) {
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="p-4 space-y-4">
+                        <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
                             {castModalMode === "edit" ? (
                                 <>
                                     <div>
@@ -5114,7 +5114,8 @@ if (Array.isArray(clone.cast)) {
                                             (val as any[]).forEach((m: any) => {
                                                 const mid = m._id || m.id;
                                                 if (!selectedCastTitles[mid]) {
-                                                    newTitles[mid] = parseTitles(m.title);
+                                                    const titles = parseTitles(m.title);
+                                                    newTitles[mid] = titles.length === 1 ? titles : [];
                                                 }
                                             });
                                             if (Object.keys(newTitles).length) {
