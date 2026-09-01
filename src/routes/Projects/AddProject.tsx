@@ -651,6 +651,19 @@ const AddProject: React.FC = () => {
     const [newCompanyLogo, setNewCompanyLogo] = useState("");
     const [activeTab, setActiveTab] = useState<"basic" | "sectors" | "materials" | "cast" | "media">("basic");
 
+    // Resolve string type IDs to full type objects once projectTypes loads
+    useEffect(() => {
+        if (!projectTypes.length || !form.types.length) return;
+        const resolved = form.types.map((t: any) => {
+            if (typeof t !== "string") return t;
+            return projectTypes.find((pt: any) => (pt._id || pt.id) === t) || t;
+        });
+        const hasChanges = resolved.some((r: any, i: number) => r !== form.types[i]);
+        if (hasChanges) {
+            setForm((prev: any) => ({ ...prev, types: resolved }));
+        }
+    }, [projectTypes]);
+
     // Persist form draft to localStorage (strip heavy media to avoid quota issues)
     useEffect(() => {
         try {
