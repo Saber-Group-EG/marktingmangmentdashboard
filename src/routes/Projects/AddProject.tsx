@@ -625,7 +625,7 @@ const AddProject: React.FC = () => {
     const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
     const [subcatKeysByParent, setSubcatKeysByParent] = useState<Record<string, number>>({});
     const [typeAutocompleteKey, setTypeAutocompleteKey] = useState(0);
-    const [tagAutocompleteKey, setTagAutocompleteKey] = useState(0);
+    // const [tagAutocompleteKey, setTagAutocompleteKey] = useState(0);
     const [validationErrors, setValidationErrors] = useState<{ tags?: string; categories?: string; subcategories?: string; types?: string }>({});
     const [newCompanyEn, setNewCompanyEn] = useState("");
     const [newCompanyAr, setNewCompanyAr] = useState("");
@@ -796,36 +796,36 @@ const AddProject: React.FC = () => {
         return getOptionLabel(opt);
     };
 
-    const makeLocalizedName = (en: string, ar: string): { en: string; ar: string } => ({ en: en.trim(), ar: ar.trim() });
+    // const makeLocalizedName = (en: string, ar: string): { en: string; ar: string } => ({ en: en.trim(), ar: ar.trim() });
 
-    const normalizeArrayField = (arr: any[] = []): { en: string; ar: string }[] => {
-        const seen = new Set<string>();
-        const result: { en: string; ar: string }[] = [];
-        for (const item of arr || []) {
-            let en = "";
-            let ar = "";
-            if (typeof item === "string") {
-                en = item.trim();
-            } else if (item && typeof item === "object") {
-                const name = item.name;
-                if (name && typeof name === "object") {
-                    en = String(name.en || "").trim();
-                    ar = String(name.ar || "").trim();
-                } else if (item.en !== undefined || item.ar !== undefined) {
-                    en = String(item.en || "").trim();
-                    ar = String(item.ar || "").trim();
-                } else {
-                    en = getOptionLabel(item).trim();
-                }
-            }
-            if (!en) continue;
-            const key = `${en.toLowerCase()}__${ar.toLowerCase()}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            result.push({ en, ar });
-        }
-        return result;
-    };
+    // const normalizeArrayField = (arr: any[] = []): { en: string; ar: string }[] => {
+    //     const seen = new Set<string>();
+    //     const result: { en: string; ar: string }[] = [];
+    //     for (const item of arr || []) {
+    //         let en = "";
+    //         let ar = "";
+    //         if (typeof item === "string") {
+    //             en = item.trim();
+    //         } else if (item && typeof item === "object") {
+    //             const name = item.name;
+    //             if (name && typeof name === "object") {
+    //                 en = String(name.en || "").trim();
+    //                 ar = String(name.ar || "").trim();
+    //             } else if (item.en !== undefined || item.ar !== undefined) {
+    //                 en = String(item.en || "").trim();
+    //                 ar = String(item.ar || "").trim();
+    //             } else {
+    //                 en = getOptionLabel(item).trim();
+    //             }
+    //         }
+    //         if (!en) continue;
+    //         const key = `${en.toLowerCase()}__${ar.toLowerCase()}`;
+    //         if (seen.has(key)) continue;
+    //         seen.add(key);
+    //         result.push({ en, ar });
+    //     }
+    //     return result;
+    // };
 
     const resolveTaxonomyIds = async (items: any[], kind: "category" | "type"): Promise<string[]> => {
         const options = kind === "category" ? projectCategories : projectTypes;
@@ -1155,71 +1155,70 @@ const AddProject: React.FC = () => {
     };
 
     // Tag Management
-    const existingTags = React.useMemo(() => {
-        const tagSet = new Set<string>();
-        (allProjects || []).forEach((p: any) => {
-            (p.tags || []).forEach((t: any) => {
-                const label = getOptionLabel(t);
-                if (label) tagSet.add(label.toLowerCase());
-            });
-        });
-        const tags: { en: string; ar: string }[] = [];
-        tagSet.forEach((label) => {
-            (allProjects || []).forEach((p: any) => {
-                (p.tags || []).forEach((t: any) => {
-                    const l = getOptionLabel(t);
-                    if (l && l.toLowerCase() === label) {
-                        const existing = tags.find((x) => x.en.toLowerCase() === label);
-                        if (!existing) {
-                            tags.push(typeof t === "object" && t.en ? { en: t.en, ar: t.ar || "" } : { en: l, ar: "" });
-                        }
-                    }
-                });
-            });
-        });
-        return tags.sort((a, b) => a.en.localeCompare(b.en));
-    }, [allProjects]);
+    // const existingTags = React.useMemo(() => {
+    //     const tagSet = new Set<string>();
+    //     (allProjects || []).forEach((p: any) => {
+    //         (p.tags || []).forEach((t: any) => {
+    //             const label = getOptionLabel(t);
+    //             if (label) tagSet.add(label.toLowerCase());
+    //         });
+    //     });
+    //     const tags: { en: string; ar: string }[] = [];
+    //     tagSet.forEach((label) => {
+    //         (allProjects || []).forEach((p: any) => {
+    //             (p.tags || []).forEach((t: any) => {
+    //                 const l = getOptionLabel(t);
+    //                 if (l && l.toLowerCase() === label) {
+    //                     const existing = tags.find((x) => x.en.toLowerCase() === label);
+    //                     if (!existing) {
+    //                         tags.push(typeof t === "object" && t.en ? { en: t.en, ar: t.ar || "" } : { en: l, ar: "" });
+    //                     }
+    //                 }
+    //             });
+    //         });
+    //     });
+    //     return tags.sort((a, b) => a.en.localeCompare(b.en));
+    // }, [allProjects]);
 
-    const handleSelectExistingTag = (enValue: string) => {
-        if (!enValue) return;
-        const tag = existingTags.find((t) => t.en === enValue);
-        if (!tag) return;
-        const currentTagsEn = form.tagsEn || [];
-        const currentTagsAr = form.tagsAr || [];
-        const alreadyAdded = currentTagsEn.some((t: string) => t.toLowerCase() === tag.en.toLowerCase());
-        if (!alreadyAdded) {
-            setForm({ ...form, tagsEn: [...currentTagsEn, tag.en], tagsAr: [...currentTagsAr, tag.ar || ""] });
-        }
-    };
+    // const handleSelectExistingTag = (enValue: string) => {
+    //     if (!enValue) return;
+    //     const tag = existingTags.find((t) => t.en === enValue);
+    //     if (!tag) return;
+    //     const currentTagsEn = form.tagsEn || [];
+    //     const currentTagsAr = form.tagsAr || [];
+    //     const alreadyAdded = currentTagsEn.some((t: string) => t.toLowerCase() === tag.en.toLowerCase());
+    //     if (!alreadyAdded) {
+    //         setForm({ ...form, tagsEn: [...currentTagsEn, tag.en], tagsAr: [...currentTagsAr, tag.ar || ""] });
+    //     }
+    // };
 
     const handleAddTag = () => {
         const enInput = newTag.trim();
         const arInput = newTagAr.trim();
-        if (!enInput) return;
-        const enParts = enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+        if (!enInput && !arInput) return;
+        const enParts = enInput ? enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
         const arParts = arInput ? arInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
-        if (arParts.length === 0) {
-            setValidationErrors((prev) => ({ ...prev, tags: "Arabic translations are required for all tags" }));
-            return;
-        }
-        if (enParts.length !== arParts.length) {
-            setValidationErrors((prev) => ({ ...prev, tags: `Count mismatch: ${enParts.length} EN items but ${arParts.length} AR items` }));
-            return;
-        }
         setValidationErrors((prev) => ({ ...prev, tags: undefined }));
-        const currentTagsEn = form.tagsEn || [];
-        const currentTagsAr = form.tagsAr || [];
         const newEnTags: string[] = [];
         const newArTags: string[] = [];
-        for (let i = 0; i < enParts.length; i++) {
-            const en = enParts[i];
-            const ar = arParts[i];
-            if (!en || !ar) continue;
-            if (currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase()) || newEnTags.some((t: string) => t.toLowerCase() === en.toLowerCase())) continue;
-            newEnTags.push(en);
-            newArTags.push(ar);
+        const maxLen = Math.max(enParts.length, arParts.length);
+        const currentTagsEn = form.tagsEn || [];
+        const currentTagsAr = form.tagsAr || [];
+        for (let i = 0; i < maxLen; i++) {
+            const en = enParts[i] || "";
+            const ar = arParts[i] || "";
+            if (en) {
+                const exists = currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
+                const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
+                if (!exists && !alreadyAdded) newEnTags.push(en);
+            }
+            if (ar) {
+                const exists = currentTagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
+                const alreadyAdded = newArTags.some((t) => t.toLowerCase() === ar.toLowerCase());
+                if (!exists && !alreadyAdded) newArTags.push(ar);
+            }
         }
-        if (newEnTags.length > 0) {
+        if (newEnTags.length > 0 || newArTags.length > 0) {
             setForm({ ...form, tagsEn: [...currentTagsEn, ...newEnTags], tagsAr: [...currentTagsAr, ...newArTags] });
         }
         setNewTag("");
@@ -1227,11 +1226,15 @@ const AddProject: React.FC = () => {
     };
 
     const handleRemoveTag = (index: number) => {
-        const newTagsEn = [...(form.tagsEn || [])];
+        const newTagsEn = [...form.tagsEn];
         newTagsEn.splice(index, 1);
-        const newTagsAr = [...(form.tagsAr || [])];
+        setForm({ ...form, tagsEn: newTagsEn });
+    };
+
+    const handleRemoveTagAr = (index: number) => {
+        const newTagsAr = [...form.tagsAr];
         newTagsAr.splice(index, 1);
-        setForm({ ...form, tagsEn: newTagsEn, tagsAr: newTagsAr });
+        setForm({ ...form, tagsAr: newTagsAr });
     };
 
     const handleRemoveCategory = (cat: any) => {
@@ -3565,12 +3568,17 @@ const handleShootedAtChange = (date: Date | null) => {
                                         <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("tags_hint", "Keywords related to the project that make it easier to search")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
                                             {(form.tagsEn || []).map((tag: string, idx: number) => (
-                                                <span key={`${tag}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                <span key={`en-${tag}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
                                                     #{tag}
-                                                    {form.tagsAr && form.tagsAr[idx] ? (
-                                                        <span className="opacity-70"> / #{form.tagsAr[idx]}</span>
-                                                    ) : null}
-                                                    <button type="button" onClick={() => handleRemoveTag(idx)} className="hover:text-light-500 dark:hover:text-secdark-500">
+                                                    <button type="button" onClick={() => handleRemoveTag(idx)}>
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                            {(form.tagsAr || []).map((tag: string, idx: number) => (
+                                                <span key={`ar-${tag}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm" dir="rtl">
+                                                    #{tag}
+                                                    <button type="button" onClick={() => handleRemoveTagAr(idx)}>
                                                         <X className="w-3 h-3" />
                                                     </button>
                                                 </span>
