@@ -1214,9 +1214,9 @@ const EditProject: React.FC = () => {
                         return {
                             _id: found?._id,
                             name: found?.name || castEntry,
-                            title: (found as any)?.title || [],
-                            socialLinks: (found as any)?.socialLinks || [],
-                            photo: (found as any)?.photo || null,
+                            title: c.title || [],
+                            socialLinks: c.socialLinks || (found as any)?.socialLinks || [],
+                            photo: c.photo || (found as any)?.photo || null,
                             order: c.order || idx + 1,
                         };
                     }
@@ -1226,7 +1226,7 @@ const EditProject: React.FC = () => {
                         return {
                             _id: castEntry._id || found?._id,
                             name: castEntry.name || found?.name || "",
-                            title: castEntry.title || (found as any)?.title || [],
+                            title: castEntry.title || [],
                             socialLinks: castEntry.socialLinks || (found as any)?.socialLinks || [],
                             photo: castEntry.photo || (found as any)?.photo || null,
                             order: c.order || idx + 1,
@@ -1238,14 +1238,14 @@ const EditProject: React.FC = () => {
                     const found = projectCast.find((pc: any) => (pc._id || pc.id) === c.name || pc.name === c.name);
                     return {
                         ...c,
-                        title: c.title || (found as any)?.title || [],
+                        title: c.title || [],
                         socialLinks: c.socialLinks?.length ? c.socialLinks : (found as any)?.socialLinks || [],
                         photo: c.photo || (found as any)?.photo || null,
                         order: c.order || idx + 1,
                     };
                 }
                 const found = projectCast.find((pc: any) => pc._id === c._id || pc.id === c._id || pc._id === c.id || pc.name === c.name);
-                return { ...(found || {}), ...c, order: c.order || idx + 1 };
+                return { ...(found || {}), ...c, title: c.title || [], order: c.order || idx + 1 };
             }
 
             return { name: String(c), title: [], order: idx + 1 };
@@ -2320,15 +2320,14 @@ const EditProject: React.FC = () => {
         setSelectedExistingCast([]);
     };
 
-    const handleEditCast = (cast: Cast, index: number) => {
-        const found = projectCast.find((pc: any) => cast._id && (pc._id || pc.id) === cast._id);
+            const handleEditCast = (cast: Cast, index: number) => {
         setCastModalMode("edit");
         setEditingCastIndex(index);
         setEditingCast({
             ...cast,
-            title: cast.title?.length ? cast.title : (found as any)?.title || [],
-            socialLinks: cast.socialLinks?.length ? cast.socialLinks : (found as any)?.socialLinks || [],
-            photo: cast.photo || (found as any)?.photo || null,
+            title: cast.title || [],
+            socialLinks: cast.socialLinks || [],
+            photo: cast.photo || null,
         });
     };
 
@@ -3128,7 +3127,8 @@ if (Array.isArray(clone.cast)) {
 
                         // Existing member — send its Cast id via castId
                         if (c._id || c.id) {
-                            processedCast.push({ castId: c._id || c.id, order: Number(c.order) || 0 });
+                            const titleStr = Array.isArray(c.title) ? c.title.join(", ") : (c.title || "");
+                            processedCast.push({ castId: c._id || c.id, title: titleStr, order: Number(c.order) || 0 });
                             continue;
                         }
 
@@ -3139,7 +3139,8 @@ if (Array.isArray(clone.cast)) {
                             photo: photo || undefined,
                             socialLinks: socialLinks.length ? socialLinks : undefined,
                         });
-                        processedCast.push({ castId: created._id, order: Number(c.order) || 0 });
+                        const titleStrNew = Array.isArray(c.title) ? c.title.join(", ") : (c.title || "");
+                        processedCast.push({ castId: created._id, title: titleStrNew, order: Number(c.order) || 0 });
                 }
                 clone.cast = processedCast;
             }
@@ -5195,7 +5196,7 @@ if (Array.isArray(clone.cast)) {
                                                                         }}
                                                                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border transition-colors ${
                                                                             isSelected
-                                                                                ? "bg-primary-100 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:border-primary-700 dark:text-primary-300"
+                                                                                ? "bg-red-100 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-300"
                                                                                 : "bg-light-50 border-light-200 text-light-500 dark:bg-dark-800 dark:border-dark-700 dark:text-dark-400"
                                                                         }`}
                                                                     >
