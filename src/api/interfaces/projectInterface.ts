@@ -67,7 +67,7 @@ export interface CastMember {
   _id?: string;
   id?: string;
   name?: string;
-  title?: string;
+  title?: string[];
   order?: number;
   socialLinks?: { platform: string; url: string }[];
   photo?: any;

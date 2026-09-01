@@ -3,7 +3,7 @@ import axiosInstance from "../axios";
 export interface CastMember {
     _id: string;
     name: string;
-    title?: string;
+    title?: string[];
     photo?: any; // string or object (e.g. uploaded file payload)
     socialLinks?: { platform: string; url: string; _id?: string }[];
     createdAt?: string;
@@ -22,7 +22,7 @@ export interface CastListResponse {
 
 export interface CastCreateInput {
     name: string;
-    title?: string;
+    title?: string[];
     photo?: string;
     socialLinks?: { platform: string; url: string }[];
 }

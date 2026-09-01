@@ -1,23 +1,20 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useSubcategories, useProjectCompanies, useCreateProjectCompany, projectsKeys, useCreateSubcategory } from "@/hooks/queries";
+import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useProjectCompanies, useCreateProjectCompany, projectsKeys } from "@/hooks/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
-import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency } from "@/utils/r2Upload";
-import { compressDataUrl } from "@/utils/imageCompression";
 
 import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
 import { stripHtml } from "@/utils/translateText";
 import TranslateButton from "@/components/TranslateButton";
 import { Autocomplete, TextField, Chip, Avatar } from "@mui/material";
-import { Reorder, AnimatePresence } from "framer-motion";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragOverlay, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -25,7 +22,7 @@ import {
     Plus, X, ArrowLeft, CheckCircle, AlertCircle,
     Trash2, Edit, MapPin, Users, Layers, Loader2,
     Image as ImageIcon, Video, Code, Upload, GripVertical,
-    Camera, User, FileText, Info, Copy, Target, Check
+    Camera, User, FileText, Info, Copy
 } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -75,7 +72,7 @@ interface VideoMaterialItem {
 interface Cast {
     _id?: string;
     name: string;
-    title: string;
+    title: string[];
     order: number;
     clientId?: string;
     socialLinks?: { platform: string; url: string }[];
@@ -474,25 +471,6 @@ const DraggableItemThumb: React.FC<{
     );
 };
 
-const SortableMaterialGroup: React.FC<{
-    id: string;
-    children: (dragHandleProps: { listeners?: Record<string, any>; attributes?: Record<string, any> }) => React.ReactNode;
-}> = ({ id, children }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-    const style: React.CSSProperties = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 50 : undefined,
-        opacity: isDragging ? 0.5 : 1,
-    };
-
-    return (
-        <div ref={setNodeRef} style={style}>
-            {children({ listeners, attributes })}
-        </div>
-    );
-};
-
 const STORAGE_KEY = "addproject_draft";
 
 const DroppableGroupContent: React.FC<{
@@ -575,8 +553,6 @@ const AddProject: React.FC = () => {
     // Replace useProjectCategories with useCategories
     const { data: projectCategoriesResponse } = useCategories({ type: "project" });
     const projectCategories = projectCategoriesResponse?.categories || [];
-    const { data: projectSubcategoriesResponse } = useSubcategories({});
-    const projectSubcategories = projectSubcategoriesResponse?.subcategories || [];
     const { data: projectTypes = [] } = useProjectTypes();
     const { data: projectCast = []} = useProjectCast();
     const { data: projectCompanies = [] } = useProjectCompanies();
@@ -591,11 +567,6 @@ const AddProject: React.FC = () => {
                 if (parsed.publishAt) {
                     parsed.publishAt = new Date(parsed.publishAt);
                 }
-                if (!Array.isArray(parsed.categories)) parsed.categories = [];
-                if (!Array.isArray(parsed.subcategories)) parsed.subcategories = [];
-                if (!Array.isArray(parsed.tagsEn)) parsed.tagsEn = [];
-                if (!Array.isArray(parsed.tagsAr)) parsed.tagsAr = [];
-                if (!Array.isArray(parsed.types)) parsed.types = [];
                 return parsed;
             }
         } catch {
@@ -607,9 +578,7 @@ const AddProject: React.FC = () => {
             location: { ar: "", en: "" },
             published: false,
             categories: [] as string[],
-            subcategories: [] as string[],
-            tagsEn: [] as string[],
-            tagsAr: [] as string[],
+            tags: [] as string[],
             types: [] as string[],    
             publishAt: null as Date | null,
             shootedAt: null as Date | null,
@@ -628,18 +597,14 @@ const AddProject: React.FC = () => {
     const [newType, setNewType] = useState("");
     const [newTypeAr, setNewTypeAr] = useState("");
     const [catAutocompleteKey, setCatAutocompleteKey] = useState(0);
-    const [newSubcategory, setNewSubcategory] = useState<Record<string, string>>({});
-    const [newSubcategoryAr, setNewSubcategoryAr] = useState<Record<string, string>>({});
-    const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
-    const [subcatKeysByParent, setSubcatKeysByParent] = useState<Record<string, number>>({});
     const [typeAutocompleteKey, setTypeAutocompleteKey] = useState(0);
     const [tagAutocompleteKey, setTagAutocompleteKey] = useState(0);
-    const [validationErrors, setValidationErrors] = useState<{ tags?: string; categories?: string; subcategories?: string; types?: string }>({});
+    const [validationErrors, setValidationErrors] = useState<{ tags?: string; categories?: string; types?: string }>({});
     const [newCompanyEn, setNewCompanyEn] = useState("");
     const [newCompanyAr, setNewCompanyAr] = useState("");
     const [newCompanyField, setNewCompanyField] = useState("");
     const [newCompanyLogo, setNewCompanyLogo] = useState("");
-    const [activeTab, setActiveTab] = useState<"basic" | "sectors" | "materials" | "cast" | "media">("basic");
+    const [activeTab, setActiveTab] = useState<"basic" | "materials" | "cast" | "media">("basic");
 
     // Persist form draft to localStorage (strip heavy media to avoid quota issues)
     useEffect(() => {
@@ -682,8 +647,6 @@ const AddProject: React.FC = () => {
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
     const [editingMaterialIndex, setEditingMaterialIndex] = useState<number | null>(null);
     const [activeDragItem, setActiveDragItem] = useState<{ id: string; url: string; isVideo: boolean; thumbnail?: string; label: string } | null>(null);
-    const crossGroupDragTargetRef = useRef<{ toGroupIdx: number; toItemIdx: number } | null>(null);
-    const draggedItemIdRef = useRef<string | null>(null);
 
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
     const [castModalMode, setCastModalMode] = useState<"add" | "edit">("add");
@@ -745,6 +708,7 @@ const AddProject: React.FC = () => {
 
     // Do NOT auto-prefill `form.cast` from `projectCast` — users must add members manually
     const [selectedExistingCast, setSelectedExistingCast] = useState<any[]>([]);
+    const [selectedCastTitles, setSelectedCastTitles] = useState<Record<string, string[]>>({});
 
     const nameEnToAr = useAutoTranslatePair(form.name?.en || "", form.name?.ar || "", "ar", (t) => setForm((prev: any) => ({ ...prev, name: { ...prev.name, ar: t } })));
     const nameArToEn = useAutoTranslatePair(form.name?.ar || "", form.name?.en || "", "en", (t) => setForm((prev: any) => ({ ...prev, name: { ...prev.name, en: t } })));
@@ -771,6 +735,16 @@ const AddProject: React.FC = () => {
     const matDescEnToAr = useAutoTranslatePair(editingMaterial?.description?.en || "", editingMaterial?.description?.ar || "", "ar", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, ar: t } } : prev)));
     const matDescArToEn = useAutoTranslatePair(editingMaterial?.description?.ar || "", editingMaterial?.description?.en || "", "en", (t) => setEditingMaterial((prev) => (prev ? { ...prev, description: { ...prev.description, en: t } } : prev)));
 
+    const parseTitles = (raw: any): string[] => {
+        if (!raw) return [];
+        const arr = Array.isArray(raw) ? raw : [raw];
+        return arr.flatMap((v: any) => {
+            const s = String(v || "").trim();
+            if (!s) return [];
+            return s.includes(",") ? s.split(",").map((x: string) => x.trim()).filter(Boolean) : [s];
+        });
+    };
+
     const getOptionLabel = (value: any): string => {
         if (typeof value === "string") return value;
         if (!value || typeof value !== "object") return "";
@@ -793,6 +767,37 @@ const AddProject: React.FC = () => {
         const name = opt.name;
         if (name && typeof name === "object") return name.en || name.ar || name || "";
         return getOptionLabel(opt);
+    };
+
+    const makeLocalizedName = (en: string, ar: string): { en: string; ar: string } => ({ en: en.trim(), ar: ar.trim() });
+
+    const normalizeArrayField = (arr: any[] = []): { en: string; ar: string }[] => {
+        const seen = new Set<string>();
+        const result: { en: string; ar: string }[] = [];
+        for (const item of arr || []) {
+            let en = "";
+            let ar = "";
+            if (typeof item === "string") {
+                en = item.trim();
+            } else if (item && typeof item === "object") {
+                const name = item.name;
+                if (name && typeof name === "object") {
+                    en = String(name.en || "").trim();
+                    ar = String(name.ar || "").trim();
+                } else if (item.en !== undefined || item.ar !== undefined) {
+                    en = String(item.en || "").trim();
+                    ar = String(item.ar || "").trim();
+                } else {
+                    en = getOptionLabel(item).trim();
+                }
+            }
+            if (!en) continue;
+            const key = `${en.toLowerCase()}__${ar.toLowerCase()}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            result.push({ en, ar });
+        }
+        return result;
     };
 
     const resolveTaxonomyIds = async (items: any[], kind: "category" | "type"): Promise<string[]> => {
@@ -987,9 +992,7 @@ const AddProject: React.FC = () => {
         order: (allProjects?.length || 0) + 1,
         published: false,
         categories: [] as string[],
-        subcategories: [] as string[],
-        tagsEn: [] as string[],
-        tagsAr: [] as string[],
+        tags: [] as string[],
         types: [] as string[],
         publishAt: null as Date | null,
         parentProject: null as any,
@@ -1034,15 +1037,16 @@ const AddProject: React.FC = () => {
         }
 
         const rawCast = source.cast || [];
+        const toTitleArray = (v: any): string[] => Array.isArray(v) ? v.filter(Boolean) : v ? [String(v)] : [];
         const mappedCast = (Array.isArray(rawCast) ? rawCast : []).map((c: any, idx: number) => {
-            if (!c) return { name: "", title: "", order: idx + 1 };
+            if (!c) return { name: "", title: [], order: idx + 1 };
 
             if (typeof c === "string") {
                 const found = projectCast.find((pc: any) => (pc._id || pc.id) === c || pc.name === c);
                 return {
                     _id: found?._id || undefined,
                     name: found?.name || c,
-                    title: (found as any)?.title || "",
+                    title: toTitleArray((found as any)?.title),
                     socialLinks: (found as any)?.socialLinks || [],
                     photo: (found as any)?.photo || null,
                     order: idx + 1,
@@ -1057,7 +1061,7 @@ const AddProject: React.FC = () => {
                         return {
                             _id: found?._id,
                             name: found?.name || castEntry,
-                            title: (found as any)?.title || "",
+                            title: toTitleArray((found as any)?.title),
                             socialLinks: (found as any)?.socialLinks || [],
                             photo: (found as any)?.photo || null,
                             order: c.order || idx + 1,
@@ -1068,7 +1072,7 @@ const AddProject: React.FC = () => {
                         return {
                             _id: castEntry._id || found?._id,
                             name: castEntry.name || found?.name || "",
-                            title: castEntry.title || (found as any)?.title || "",
+                            title: toTitleArray(castEntry.title || (found as any)?.title),
                             socialLinks: castEntry.socialLinks || (found as any)?.socialLinks || [],
                             photo: castEntry.photo || (found as any)?.photo || null,
                             order: c.order || idx + 1,
@@ -1081,7 +1085,7 @@ const AddProject: React.FC = () => {
                     return {
                         _id: c._id || found?._id,
                         name: c.name,
-                        title: c.title || (found as any)?.title || "",
+                        title: toTitleArray(c.title || (found as any)?.title),
                         socialLinks: c.socialLinks?.length ? c.socialLinks : (found as any)?.socialLinks || [],
                         photo: c.photo || (found as any)?.photo || null,
                         order: c.order || idx + 1,
@@ -1089,10 +1093,10 @@ const AddProject: React.FC = () => {
                 }
 
                 const found = projectCast.find((pc: any) => pc._id === c._id || pc.id === c._id || pc._id === c.id || pc.name === c.name);
-                return { ...(found || {}), ...c, order: c.order || idx + 1 };
+                return { ...(found || {}), ...c, title: toTitleArray(c.title || (found as any)?.title), order: c.order || idx + 1 };
             }
 
-            return { name: String(c), title: "", order: idx + 1 };
+            return { name: String(c), title: [], order: idx + 1 };
         }).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
 
         const srcName = source.localizedName ?? source.name;
@@ -1107,18 +1111,7 @@ const AddProject: React.FC = () => {
             published: source.published || false,
             publishAt: source.publishedAt ? new Date(source.publishedAt) : null,
             categories: source.categories || [],
-            subcategories: (() => {
-                const rawSubs = source.subcategories || [];
-                return rawSubs.map((s: any) => {
-                    const sid = typeof s === "string" ? s : (s?._id || s?.id || "");
-                    if (sid) {
-                        return projectSubcategories.find((ps: any) => (ps._id || ps.id) === sid) || s;
-                    }
-                    return s;
-                });
-            })(),
-            tagsEn: source.tagsEn || [],
-            tagsAr: source.tagsAr || [],
+            tags: source.tags || [],
             types: source.types || [],
             materials: [],
             cast: mappedCast,
@@ -1130,10 +1123,9 @@ const AddProject: React.FC = () => {
 
     useEffect(() => {
         if (!cloneProjectId || !cloneSourceProject) return;
-        if (projectSubcategories.length === 0) return;
         applyCloneData(cloneSourceProject);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cloneProjectId, cloneSourceProject, projectSubcategories]);
+    }, [cloneProjectId, cloneSourceProject]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -1147,120 +1139,78 @@ const AddProject: React.FC = () => {
 
     // Tag Management
     const existingTags = React.useMemo(() => {
-        const seen = new Set<string>();
-        const tags: { label: string; lang: "en" | "ar" }[] = [];
+        const tagSet = new Set<string>();
         (allProjects || []).forEach((p: any) => {
-            (p.tagsEn || []).forEach((t: string) => {
-                if (t && !seen.has(`en:${t.toLowerCase()}`)) {
-                    seen.add(`en:${t.toLowerCase()}`);
-                    tags.push({ label: t, lang: "en" });
-                }
-            });
-            (p.tagsAr || []).forEach((t: string) => {
-                if (t && !seen.has(`ar:${t.toLowerCase()}`)) {
-                    seen.add(`ar:${t.toLowerCase()}`);
-                    tags.push({ label: t, lang: "ar" });
-                }
+            (p.tags || []).forEach((t: any) => {
+                const label = getOptionLabel(t);
+                if (label) tagSet.add(label.toLowerCase());
             });
         });
-        return tags.sort((a, b) => a.label.localeCompare(b.label));
+        const tags: { en: string; ar: string }[] = [];
+        tagSet.forEach((label) => {
+            (allProjects || []).forEach((p: any) => {
+                (p.tags || []).forEach((t: any) => {
+                    const l = getOptionLabel(t);
+                    if (l && l.toLowerCase() === label) {
+                        const existing = tags.find((x) => x.en.toLowerCase() === label);
+                        if (!existing) {
+                            tags.push(typeof t === "object" && t.en ? { en: t.en, ar: t.ar || "" } : { en: l, ar: "" });
+                        }
+                    }
+                });
+            });
+        });
+        return tags.sort((a, b) => a.en.localeCompare(b.en));
     }, [allProjects]);
 
-    const handleSelectExistingTag = (tag: { label: string; lang: "en" | "ar" }) => {
+    const handleSelectExistingTag = (enValue: string) => {
+        if (!enValue) return;
+        const tag = existingTags.find((t) => t.en === enValue);
         if (!tag) return;
-        if (tag.lang === "en") {
-            const alreadyAdded = (form.tagsEn || []).some((t: string) => t.toLowerCase() === tag.label.toLowerCase());
-            if (!alreadyAdded) {
-                setForm({ ...form, tagsEn: [...(form.tagsEn || []), tag.label] });
-            }
-        } else {
-            const alreadyAdded = (form.tagsAr || []).some((t: string) => t.toLowerCase() === tag.label.toLowerCase());
-            if (!alreadyAdded) {
-                setForm({ ...form, tagsAr: [...(form.tagsAr || []), tag.label] });
-            }
+        const alreadyAdded = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === tag.en.toLowerCase());
+        if (!alreadyAdded) {
+            setForm({ ...form, tags: [...form.tags, { en: tag.en, ar: tag.ar || "" }] });
         }
     };
 
     const handleAddTag = () => {
         const enInput = newTag.trim();
         const arInput = newTagAr.trim();
-        if (!enInput && !arInput) return;
-        const enParts = enInput ? enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
+        if (!enInput) return;
+        const enParts = enInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
         const arParts = arInput ? arInput.split(/[,،]/).map((s) => s.trim()).filter(Boolean) : [];
-        setValidationErrors((prev) => ({ ...prev, tags: undefined }));
-        const newEnTags: string[] = [];
-        const newArTags: string[] = [];
-        const maxLen = Math.max(enParts.length, arParts.length);
-        const currentTagsEn = form.tagsEn || [];
-        const currentTagsAr = form.tagsAr || [];
-        for (let i = 0; i < maxLen; i++) {
-            const en = enParts[i] || "";
-            const ar = arParts[i] || "";
-            if (en) {
-                const exists = currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
-                const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
-                if (!exists && !alreadyAdded) newEnTags.push(en);
-            }
-            if (ar) {
-                const exists = currentTagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
-                const alreadyAdded = newArTags.some((t) => t.toLowerCase() === ar.toLowerCase());
-                if (!exists && !alreadyAdded) newArTags.push(ar);
-            }
+        if (arParts.length === 0) {
+            setValidationErrors((prev) => ({ ...prev, tags: "Arabic translations are required for all tags" }));
+            return;
         }
-        if (newEnTags.length > 0 || newArTags.length > 0) {
-            setForm({ ...form, tagsEn: [...currentTagsEn, ...newEnTags], tagsAr: [...currentTagsAr, ...newArTags] });
+        if (enParts.length !== arParts.length) {
+            setValidationErrors((prev) => ({ ...prev, tags: `Count mismatch: ${enParts.length} EN items but ${arParts.length} AR items` }));
+            return;
+        }
+        setValidationErrors((prev) => ({ ...prev, tags: undefined }));
+        const newTags: any[] = [];
+        for (let i = 0; i < enParts.length; i++) {
+            const en = enParts[i];
+            const ar = arParts[i];
+            if (!en || !ar) continue;
+            const exists = form.tags.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            const alreadyAdded = newTags.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            if (exists || alreadyAdded) continue;
+            newTags.push(makeLocalizedName(en, ar));
+        }
+        if (newTags.length > 0) {
+            setForm({ ...form, tags: [...form.tags, ...newTags] });
         }
         setNewTag("");
         setNewTagAr("");
     };
 
-    const handleRemoveTag = (index: number) => {
-        const newTagsEn = [...form.tagsEn];
-        newTagsEn.splice(index, 1);
-        setForm({ ...form, tagsEn: newTagsEn });
-    };
-
-    const handleRemoveTagAr = (index: number) => {
-        const newTagsAr = [...form.tagsAr];
-        newTagsAr.splice(index, 1);
-        setForm({ ...form, tagsAr: newTagsAr });
+    const handleRemoveTag = (tag: any) => {
+        setForm({ ...form, tags: form.tags.filter((t: any) => !isSameOption(t, tag)) });
     };
 
     const handleRemoveCategory = (cat: any) => {
         setForm({ ...form, categories: form.categories.filter((c: any) => !isSameOption(c, cat)) });
-    };
-
-    const handleRemoveSubcategory = (sub: any) => {
-        setForm({ ...form, subcategories: form.subcategories.filter((s: any) => !isSameOption(s, sub)) });
-    };
-
-    const createSubcategoryMutation = useCreateSubcategory();
-
-    const handleAddSubcategory = (parentId: string) => {
-        const en = (newSubcategory[parentId] || "").trim();
-        const ar = (newSubcategoryAr[parentId] || "").trim();
-        if (!en || !ar) {
-            setValidationErrors((prev) => ({ ...prev, subcategories: "Both EN and AR names are required" }));
-            return;
-        }
-        if (!parentId) {
-            setValidationErrors((prev) => ({ ...prev, subcategories: "Please select a sector first" }));
-            return;
-        }
-        createSubcategoryMutation.mutate(
-            { name: { en, ar }, parentCategory: parentId },
-            {
-                onSuccess: (created) => {
-                    setForm({ ...form, subcategories: [...form.subcategories, created] });
-                    setNewSubcategory((prev) => ({ ...prev, [parentId]: "" }));
-                    setNewSubcategoryAr((prev) => ({ ...prev, [parentId]: "" }));
-                    setValidationErrors((prev) => ({ ...prev, subcategories: undefined }));
-                },
-                onError: (e: any) => {
-                    setValidationErrors((prev) => ({ ...prev, subcategories: e?.response?.data?.message || "Failed to create subsector" }));
-                },
-            },
-        );
     };
 
     const handleRemoveType = (type: any) => {
@@ -1287,7 +1237,7 @@ const AddProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = (form.categories || []).some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
+            const exists = form.categories.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newCats.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
             if (exists || alreadyAdded) continue;
             newCats.push({ en, ar });
@@ -1319,13 +1269,13 @@ const AddProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = (form.types || []).some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
+            const exists = form.types.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newTypes.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
             if (exists || alreadyAdded) continue;
             newTypes.push({ en, ar });
         }
         if (newTypes.length > 0) {
-            setForm({ ...form, types: [...(form.types || []), ...newTypes] });
+            setForm({ ...form, types: [...form.types, ...newTypes] });
         }
         setNewType("");
         setNewTypeAr("");
@@ -1335,17 +1285,8 @@ const AddProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectCategories[idx];
         if (!selected) return;
-        if (!(form.categories || []).some((c: any) => isSameOption(c, selected))) {
-            setForm({ ...form, categories: [...(form.categories || []), selected] });
-        }
-    };
-
-    const handleSelectExistingSubcategory = (value: string) => {
-        const idx = Number(value);
-        const selected = projectSubcategories[idx];
-        if (!selected) return;
-        if (!(form.subcategories || []).some((s: any) => isSameOption(s, selected))) {
-            setForm({ ...form, subcategories: [...(form.subcategories || []), selected] });
+        if (!form.categories.some((c: any) => isSameOption(c, selected))) {
+            setForm({ ...form, categories: [...form.categories, selected] });
         }
     };
 
@@ -1353,8 +1294,8 @@ const AddProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectTypes[idx];
         if (!selected) return;
-        if (!(form.types || []).some((t: any) => isSameOption(t, selected))) {
-            setForm({ ...form, types: [...(form.types || []), selected] });
+        if (!form.types.some((t: any) => isSameOption(t, selected))) {
+            setForm({ ...form, types: [...form.types, selected] });
         }
     };
 
@@ -1804,9 +1745,7 @@ const AddProject: React.FC = () => {
             location: { ar: "", en: "" },
             published: false,
             categories: [],
-            subcategories: [],
-            tagsEn: [],
-            tagsAr: [],
+            tags: [],
             types: [],
             publishAt: null,
             shootedAt: null,
@@ -1943,12 +1882,7 @@ const AddProject: React.FC = () => {
         setEditingMaterial(updatedEditingMaterial);
     };
 
-    const handleMaterialsReorder = (newMaterials: Material[]) => {
-        setForm((prev: any) => ({
-            ...prev,
-            materials: newMaterials.map((m: Material, idx: number) => ({ ...m, order: idx + 1 })),
-        }));
-    };
+
 
     const handleFlatItemRemove = (groupIndex: number, itemLocalIndex: number) => {
         const material = form.materials[groupIndex];
@@ -2028,82 +1962,18 @@ const AddProject: React.FC = () => {
         }
     };
 
-    const clearDropIndicators = () => {
-        document.querySelectorAll("[data-drop-gap]").forEach((el) => {
-            const htmlEl = el as HTMLElement;
-            htmlEl.style.marginLeft = "";
-            htmlEl.style.marginRight = "";
-            htmlEl.removeAttribute("data-drop-gap");
-        });
-    };
-
-    const applyDropIndicator = (toGroupIdx: number, toItemIdx: number) => {
-        const groupContainer = document.querySelector(`[data-group-container="${toGroupIdx}"]`);
-        if (!groupContainer) return;
-        const itemEls = groupContainer.querySelectorAll("[data-sortable-item]");
-        const targetEl = itemEls[toItemIdx] as HTMLElement | undefined;
-        if (targetEl) {
-            targetEl.style.marginLeft = "100px";
-            targetEl.style.transition = "margin 150ms ease";
-            targetEl.setAttribute("data-drop-gap", "true");
-        } else if (itemEls.length > 0) {
-            const lastEl = itemEls[itemEls.length - 1] as HTMLElement;
-            lastEl.style.marginRight = "100px";
-            lastEl.style.transition = "margin 150ms ease";
-            lastEl.setAttribute("data-drop-gap", "true");
-        }
-    };
-
     const handleFlatDragEnd = (event: any) => {
         const { active, over } = event;
-        if (!over || active.id === over.id) {
-            clearDropIndicators();
-            crossGroupDragTargetRef.current = null;
-            return;
-        }
+        if (!over || active.id === over.id) return;
 
         const activeId = String(active.id);
         const overId = String(over.id);
 
-        const groupMatch = activeId.match(/^mat-group-(\d+)$/);
-        if (groupMatch) {
-            const overGroupMatch = overId.match(/^mat-group-(\d+)$/);
-            if (overGroupMatch) {
-                const fromIdx = parseInt(groupMatch[1]);
-                const toIdx = parseInt(overGroupMatch[1]);
-                if (fromIdx !== toIdx) {
-                    setForm((prev: any) => ({
-                        ...prev,
-                        materials: arrayMove(prev.materials, fromIdx, toIdx),
-                    }));
-                }
-            }
-            clearDropIndicators();
-            crossGroupDragTargetRef.current = null;
-            return;
-        }
-
         const activeMatch = activeId.match(/^group-(\d+)-item-(\d+)$/);
-        if (!activeMatch) {
-            clearDropIndicators();
-            crossGroupDragTargetRef.current = null;
-            return;
-        }
+        if (!activeMatch) return;
 
         const fromGroupIdx = parseInt(activeMatch[1]);
         const fromItemIdx = parseInt(activeMatch[2]);
-
-        const placeholderMatch = overId.match(/^cross-group-placeholder-(\d+)$/);
-        if (placeholderMatch && crossGroupDragTargetRef.current) {
-            const toGroupIdx = crossGroupDragTargetRef.current.toGroupIdx;
-            const toItemIdx = crossGroupDragTargetRef.current.toItemIdx;
-            if (fromGroupIdx !== toGroupIdx) {
-                handleFlatItemMoveToGroup(fromGroupIdx, fromItemIdx, toGroupIdx, toItemIdx);
-            }
-            clearDropIndicators();
-            crossGroupDragTargetRef.current = null;
-            return;
-        }
 
         const overItemMatch = overId.match(/^group-(\d+)-item-(\d+)$/);
         if (overItemMatch) {
@@ -2181,8 +2051,6 @@ const AddProject: React.FC = () => {
                 handleFlatItemMoveToGroup(fromGroupIdx, fromItemIdx, toGroupIdx);
             }
         }
-        clearDropIndicators();
-        crossGroupDragTargetRef.current = null;
     };
 
     const handleBeforeAfterUpload = async (e: React.ChangeEvent<HTMLInputElement>, which: 'before' | 'after') => {
@@ -2299,11 +2167,11 @@ const AddProject: React.FC = () => {
         setEditingCastIndex(null);
         setEditingCast({
             name: "",
-            title: "",
+            title: [],
             order: nextOrder,
             socialLinks: [],
         });
-        setNewMembersRows([{ name: "", title: "", order: nextOrder, socialLinks: [], photo: null }]);
+        setNewMembersRows([{ name: "", title: [], order: nextOrder, socialLinks: [], photo: null }]);
         setSelectedExistingCast([]);
     };
 
@@ -2313,7 +2181,7 @@ const AddProject: React.FC = () => {
         setEditingCastIndex(index);
         setEditingCast({
             ...cast,
-            title: cast.title || (found as any)?.title || "",
+            title: cast.title?.length ? cast.title : Array.isArray((found as any)?.title) ? (found as any).title : (found as any)?.title ? [(found as any).title] : [],
             socialLinks: cast.socialLinks?.length ? cast.socialLinks : (found as any)?.socialLinks || [],
             photo: cast.photo || (found as any)?.photo || null,
         });
@@ -2342,10 +2210,12 @@ const AddProject: React.FC = () => {
             setForm((prev: any) => {
                 const next = [...prev.cast];
                 existing.forEach((ex) => {
+                    const castId = ex._id || ex.id;
+                    const titles = selectedCastTitles[castId] || (Array.isArray(ex.title) ? ex.title : ex.title ? [ex.title] : []);
                     next.push({
-                        _id: ex._id || ex.id,
+                        _id: castId,
                         name: ex.name || "",
-                        title: ex.title || "",
+                        title: titles,
                         order: next.length + 1,
                         socialLinks: ex.socialLinks || [],
                         photo: ex.photo || null,
@@ -2354,7 +2224,7 @@ const AddProject: React.FC = () => {
                 });
 
                 rows.forEach((r) => {
-                    next.push({ name: r.name, title: r.title || "", order: next.length + 1, socialLinks: r.socialLinks || [], photo: r.photo || null });
+                    next.push({ name: r.name, title: r.title || [], order: next.length + 1, socialLinks: r.socialLinks || [], photo: r.photo || null });
                 });
 
                 return { ...prev, cast: next };
@@ -2428,7 +2298,7 @@ const AddProject: React.FC = () => {
                 title: "Uploading photo...",
                 label: file.name,
                 task: async () => {
-                    const dataUrl = await compressDataUrl(await readFileAsDataUrl(file));
+                    const dataUrl = await readFileAsDataUrl(file);
                     // load image to read natural dimensions
                     const img = new Image();
                     await new Promise<void>((resolve) => {
@@ -2757,36 +2627,28 @@ const handleShootedAtChange = (date: Date | null) => {
         // upload full main cover (original image before crop)
         if (clone.mainCover) {
             const fullCoverSource = form.mainCover?.url || clone.mainCover.url;
-            if (isDataUrl(fullCoverSource)) {
-                const uploadedFullCover = await uploadDataUrlToR2(fullCoverSource, {
-                    resourceType: "image",
-                    fileName: clone.mainCover.originalName || `full-main-cover-${Date.now()}.jpg`,
-                });
-                clone.fullMainCover = { ...clone.mainCover, ...uploadedFullCover };
-                delete clone.fullMainCover.croppedUrl;
-                delete clone.fullMainCover.crop;
-            } else {
-                clone.fullMainCover = { url: fullCoverSource, mimeType: clone.mainCover.mimeType, originalName: clone.mainCover.originalName, size: clone.mainCover.size };
-            }
+            const uploadedFullCover = await uploadAssetIfNeeded(
+                { url: fullCoverSource, mimeType: clone.mainCover.mimeType, originalName: clone.mainCover.originalName, size: clone.mainCover.size },
+                "image",
+                clone.mainCover.originalName || `full-main-cover-${Date.now()}.jpg`,
+            );
+            clone.fullMainCover = uploadedFullCover;
         }
 
         // upload main cover if needed
         if (clone.mainCover) {
             const coverUploadSource = clone.mainCover.croppedUrl || clone.mainCover.url;
-            if (isDataUrl(coverUploadSource)) {
-                const compressedCover = await compressDataUrl(coverUploadSource);
-                const uploadedMainCover = await uploadDataUrlToR2(compressedCover, {
-                    resourceType: "image",
-                    fileName: clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
-                });
-                clone.mainCover = {
-                    ...clone.mainCover,
-                    ...uploadedMainCover,
-                    url: uploadedMainCover.url,
-                };
-            } else {
-                clone.mainCover = { ...clone.mainCover, url: coverUploadSource };
-            }
+            const uploadedMainCover = await uploadAssetIfNeeded(
+                { ...clone.mainCover, url: coverUploadSource },
+                "image",
+                clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
+            );
+
+            clone.mainCover = {
+                ...clone.mainCover,
+                ...uploadedMainCover,
+                url: uploadedMainCover.url,
+            };
 
             // remove cropping preview data that backend validation may reject
             delete clone.mainCover.croppedUrl;
@@ -2842,7 +2704,6 @@ const handleShootedAtChange = (date: Date | null) => {
                             copy.originalName = normalizedVideoItems[0]?.originalName || copy.originalName;
                             copy.size = normalizedVideoItems[0]?.size || copy.size;
                             copy.type = normalizedVideoItems.length > 1 ? "bulk" : "video";
-                            copy.thumbnail = "";
                         } else if (copy.type === "video" && copy.url) {
                             // Check if material has multiple video items (type was "video" but had bulk items)
                             const videoItems = buildVideoItems(copy);
@@ -2866,8 +2727,8 @@ const handleShootedAtChange = (date: Date | null) => {
                                             item.originalName || `project-video-${materialIndex + 1}-${itemIndex + 1}.mp4`,
                                         );
                                         let uploadedThumb = item.thumbnail;
-                                        if (item.thumbnail && needsUpload(item.thumbnail)) {
-                                            const thumbResult = await uploadThumbnailToR2(item.thumbnail, {
+                                        if (item.thumbnail && isDataUrl(item.thumbnail)) {
+                                            const thumbResult = await uploadDataUrlToR2Cached(item.thumbnail, {
                                                 resourceType: "image",
                                                 fileName: `video-thumb-${materialIndex + 1}-${itemIndex + 1}.jpg`,
                                             });
@@ -2904,15 +2765,14 @@ const handleShootedAtChange = (date: Date | null) => {
                                 if (!copy.thumbnail && videoItems[0]?.thumbnail) {
                                     copy.thumbnail = videoItems[0].thumbnail;
                                 }
-                                const rawThumb = typeof copy.thumbnail === 'string' ? copy.thumbnail : copy.thumbnail?.url;
-                                if (rawThumb && isDataUrl(rawThumb)) {
-                                    const uploadedThumb = await uploadDataUrlToR2(rawThumb, {
-                                        resourceType: "image",
-                                        fileName: `project-video-thumb-${materialIndex + 1}.jpg`,
-                                    });
+                                const thumbAsset = typeof copy.thumbnail === 'string' ? { url: copy.thumbnail } : copy.thumbnail;
+                                if (thumbAsset?.url) {
+                                    const uploadedThumb = await uploadAssetIfNeeded(
+                                        thumbAsset,
+                                        "image",
+                                        thumbAsset.originalName || `project-video-thumb-${materialIndex + 1}.jpg`,
+                                    );
                                     copy.thumbnail = uploadedThumb.url;
-                                } else if (!rawThumb) {
-                                    copy.thumbnail = "";
                                 }
                             }
                     } else if (isPhotoMaterialType(copy.type)) {
@@ -3012,7 +2872,7 @@ const handleShootedAtChange = (date: Date | null) => {
                     return {
                         ...material,
                         items: Array.isArray(material.items) ? material.items : [],
-                        thumbnail: "",
+                        thumbnail: getThumbUrl(material.thumbnail),
                         order: index + 1,
                     };
                 }
@@ -3020,7 +2880,7 @@ const handleShootedAtChange = (date: Date | null) => {
                 const { items, thumbnail, ...rest } = material || {};
                 return {
                     ...rest,
-                    thumbnail: thumbnail || "",
+                    thumbnail: getThumbUrl(thumbnail),
                     order: index + 1,
                 };
             });
@@ -3062,7 +2922,7 @@ const handleShootedAtChange = (date: Date | null) => {
                     // New member — pre-create via API, then use returned _id as castId
                     const created = await createCast({
                         name: c.name || "",
-                        title: c.title || "",
+                        title: Array.isArray(c.title) ? c.title : c.title ? [c.title] : [],
                         photo: photo || undefined,
                         socialLinks: socialLinks.length ? socialLinks : undefined,
                     });
@@ -3080,9 +2940,7 @@ const handleShootedAtChange = (date: Date | null) => {
             publishedAt: clone.publishAt ? new Date(clone.publishAt).toISOString() : undefined,
             shootedAt: clone.shootedAt ? new Date(clone.shootedAt).toISOString() : undefined,
             categories: await resolveTaxonomyIds(clone.categories, "category"),
-            subcategories: clone.subcategories ? clone.subcategories.map((s: any) => getOptionValue(s)).filter(Boolean) : [],
-            tagsEn: clone.tagsEn || [],
-            tagsAr: clone.tagsAr || [],
+            tags: normalizeArrayField(clone.tags),
             types: await resolveTaxonomyIds(clone.types, "type"),
             material: clone.materials,
             cast: clone.cast,
@@ -3130,7 +2988,7 @@ const handleShootedAtChange = (date: Date | null) => {
 
         e.preventDefault();
 
-        const order: Array<"basic" | "sectors" | "materials" | "cast" | "media"> = ["basic", "sectors", "materials", "cast", "media"];
+        const order: Array<"basic" | "materials" | "cast" | "media"> = ["basic", "materials", "cast", "media"];
         const idx = order.indexOf(activeTab);
         if (idx === -1) return;
 
@@ -3148,10 +3006,7 @@ const handleShootedAtChange = (date: Date | null) => {
         return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
     };
 
-    const formatRichText = (content?: string) => {
-        if (!content) return "";
-        return /<\/?[a-z][\s\S]*>/i.test(content) ? content : content.replace(/\n/g, "<br />");
-    };
+
 
     const formatTimeShort = (secs: number) => {
         const s = Math.max(0, Math.round(secs || 0));
@@ -3239,10 +3094,6 @@ const handleShootedAtChange = (date: Date | null) => {
                                 <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("categories_label", "Sectors")}</div>
                                 <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.categories.length}</div>
                             </div>
-                            <div className="p-3 rounded-lg bg-white/5 dark:bg-dark-800/40 border border-light-100 dark:border-dark-700">
-                                <div className="text-xs text-light-400 dark:text-dark-400 uppercase">{tr("subcategories_label", "Sub Sectors")}</div>
-                                <div className="mt-1 text-lg font-bold text-light-700 dark:text-secdark-500">{form.subcategories.length}</div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -3261,17 +3112,6 @@ const handleShootedAtChange = (date: Date | null) => {
                     >
                         <Info className="w-4 h-4 inline mr-2" />
                         {tr("basic_info", "Basic Info")}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("sectors")}
-                        className={`px-4 py-2 text-sm font-medium transition-colors ${
-                            activeTab === "sectors"
-                                ? "text-light-500 dark:text-secdark-500 border-b-2 border-light-500 dark:border-secdark-500"
-                                : "text-light-600 dark:text-dark-400 hover:text-light-700 dark:hover:text-dark-300"
-                        }`}
-                    >
-                        <Target className="w-4 h-4 inline mr-2" />
-                        {tr("sectors_tab", "Sectors")} ({form.categories.length})
                     </button>
                     <button
                         onClick={() => setActiveTab("materials")}
@@ -3651,44 +3491,109 @@ const handleShootedAtChange = (date: Date | null) => {
                                     </div>
 
                                     <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("tags_label", "Tags")}</label>
-                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("tags_hint", "Keywords related to the project that make it easier to search")}</p>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                            {tr("categories_label", "Sectors")}
+                                        </label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("categories_hint", "The field or industry that the project or client belongs to")}</p>
                                         <div className="flex flex-wrap gap-2 mb-2">
-                                            {(form.tagsEn || []).map((tag: string, idx: number) => (
-                                                <span key={`en-${tag}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
-                                                    #{tag}
-                                                    <button type="button" onClick={() => handleRemoveTag(idx)} className="hover:text-light-500 dark:hover:text-secdark-500">
-                                                        <X className="w-3 h-3" />
-                                                    </button>
-                                                </span>
-                                            ))}
-                                            {(form.tagsAr || []).map((tag: string, idx: number) => (
-                                                <span key={`ar-${tag}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm" dir="rtl">
-                                                    #{tag}
-                                                    <button type="button" onClick={() => handleRemoveTagAr(idx)} className="hover:text-light-500 dark:hover:text-secdark-500">
+                                            {form.categories.map((cat: any, idx: number) => (
+                                                <span key={getOptionValue(cat) || `${getOptionLabel(cat)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                    #{getOptionLabel(cat)}
+                                                    {cat && typeof cat === "object" && cat.ar && cat.ar.trim() ? (
+                                                        <span className="opacity-70"> / #{cat.ar}</span>
+                                                    ) : null}
+                                                    <button type="button" onClick={() => handleRemoveCategory(cat)} className="hover:text-light-500 dark:hover:text-secdark-500">
                                                         <X className="w-3 h-3" />
                                                     </button>
                                                 </span>
                                             ))}
                                         </div>
-                                        {/* <Autocomplete
-                                            key={tagAutocompleteKey}
-                                            options={existingTags}
-                                            getOptionLabel={(opt) => opt.label}
-                                            isOptionEqualToValue={(opt, val) => opt.label === val.label && opt.lang === val.lang}
+                                        <Autocomplete
+                                            key={catAutocompleteKey}
+                                            options={projectCategories}
+                                            getOptionLabel={(opt) => {
+                                                const label = getOptionLabel(opt);
+                                                const name = opt?.name;
+                                                const ar = name && typeof name === "object" ? (name as any).ar : undefined;
+                                                return ar ? `${label} / ${ar}` : label;
+                                            }}
+                                            isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
                                             value={null}
                                             onChange={(_e, val) => {
                                                 if (val) {
-                                                    handleSelectExistingTag(val);
+                                                    handleSelectExistingCategory(String(projectCategories.indexOf(val)));
+                                                    setCatAutocompleteKey((k) => k + 1);
+                                                }
+                                            }}
+                                            renderInput={(params) => (
+                                                <TextField {...params} placeholder={tr("select_existing_category", "Search existing sectors...")} size="small" />
+                                            )}
+                                            sx={taxonomyAutocompleteSx}
+                                            slotProps={taxonomyAutocompleteSlotProps}
+                                            size="small"
+                                            className="mb-2"
+                                        />
+                                        <div className="space-y-2">
+                                            <div className="flex gap-2 items-center">
+                                                <input
+                                                    type="text"
+                                                    value={newCategory}
+                                                    onChange={(e) => setNewCategory(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_category_hint", "en1,en2,en3...")}
+                                                />
+                                                <TranslateButton onClick={catEnToAr.translate} isTranslating={catEnToAr.isTranslating} disabled={!newCategory.trim()} />
+                                            </div>
+                                            <div className="flex gap-2 items-center">
+                                                <input
+                                                    type="text"
+                                                    dir="rtl"
+                                                    value={newCategoryAr}
+                                                    onChange={(e) => setNewCategoryAr(e.target.value)}
+                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
+                                                    data-enter-add
+                                                    className="input w-full"
+                                                    placeholder={tr("add_category_ar_hint", "ar1,ar2,ar3...")}
+                                                />
+                                                <TranslateButton onClick={catArToEn.translate} isTranslating={catArToEn.isTranslating} disabled={!newCategoryAr.trim()} label="Translate" />
+                                            </div>
+                                            {validationErrors.categories && (
+                                                <p className="text-xs text-danger-500">{validationErrors.categories}</p>
+                                            )}
+                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">{tr("add", "Add")}</button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("tags_label", "Tags")}</label>
+                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("tags_hint", "Keywords related to the project that make it easier to search")}</p>
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {form.tags.map((tag: any, idx: number) => (
+                                                <span key={getOptionValue(tag) || `${getOptionLabel(tag)}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
+                                                    #{getOptionLabel(tag)}
+                                                    {tag && typeof tag === "object" && tag.ar && tag.ar.trim() ? (
+                                                        <span className="opacity-70"> / #{tag.ar}</span>
+                                                    ) : null}
+                                                    <button type="button" onClick={() => handleRemoveTag(tag)} className="hover:text-light-500 dark:hover:text-secdark-500">
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <Autocomplete
+                                            key={tagAutocompleteKey}
+                                            options={existingTags}
+                                            getOptionLabel={(opt) => opt.ar ? `${opt.en} / ${opt.ar}` : opt.en}
+                                            isOptionEqualToValue={(opt, val) => opt.en === val.en}
+                                            value={null}
+                                            onChange={(_e, val) => {
+                                                if (val) {
+                                                    handleSelectExistingTag(val.en);
                                                     setTagAutocompleteKey((k) => k + 1);
                                                 }
                                             }}
-                                            renderOption={(props, opt) => (
-                                                <li {...props} key={`${opt.lang}-${opt.label}`}>
-                                                    {opt.lang === "ar" ? <span dir="rtl">{opt.label}</span> : <span>{opt.label}</span>}
-                                                    <span className="ml-2 text-xs opacity-50">({opt.lang})</span>
-                                                </li>
-                                            )}
                                             renderInput={(params) => (
                                                 <TextField {...params} placeholder={tr("select_existing_tag", "Search existing tags...")} size="small" />
                                             )}
@@ -3696,7 +3601,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                             slotProps={taxonomyAutocompleteSlotProps}
                                             size="small"
                                             className="mb-2"
-                                        /> */}
+                                        />
                                         <div className="space-y-2">
                                             <div className="flex gap-2 items-center">
                                                 <input
@@ -3706,7 +3611,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_tag_hint", "New tag (EN)...")}
+                                                    placeholder={tr("add_tag_hint", "en1,en2,en3...")}
                                                 />
                                                 <TranslateButton onClick={tagEnToAr.translate} isTranslating={tagEnToAr.isTranslating} disabled={!newTag.trim()} />
                                             </div>
@@ -3719,14 +3624,14 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_tag_ar_hint", "اسم الوسم (AR)...")}
+                                                    placeholder={tr("add_tag_ar_hint", "ar1,ar2,ar3...")}
                                                 />
                                                 <TranslateButton onClick={tagArToEn.translate} isTranslating={tagArToEn.isTranslating} disabled={!newTagAr.trim()} label="Translate" />
                                             </div>
                                             {validationErrors.tags && (
                                                 <p className="text-xs text-danger-500">{validationErrors.tags}</p>
                                             )}
-                                            <button type="button" onClick={handleAddTag} className="w-full py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors disabled:opacity-50">{tr("add_tag", "Add Tag")}</button>
+                                            <button type="button" onClick={handleAddTag} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
 
@@ -3796,7 +3701,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_type_hint", "New type (EN)...")}
+                                                    placeholder={tr("add_type_hint", "en1,en2,en3...")}
                                                 />
                                                 <TranslateButton onClick={typeEnToAr.translate} isTranslating={typeEnToAr.isTranslating} disabled={!newType.trim()} />
                                             </div>
@@ -3809,225 +3714,16 @@ const handleShootedAtChange = (date: Date | null) => {
                                                     onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddType())}
                                                     data-enter-add
                                                     className="input w-full"
-                                                    placeholder={tr("add_type_ar_hint", "نوع المشروع (AR)...")}
+                                                    placeholder={tr("add_type_ar_hint", "ar1,ar2,ar3...")}
                                                 />
                                                 <TranslateButton onClick={typeArToEn.translate} isTranslating={typeArToEn.isTranslating} disabled={!newTypeAr.trim()} label="Translate" />
                                             </div>
                                             {validationErrors.types && (
                                                 <p className="text-xs text-danger-500">{validationErrors.types}</p>
                                             )}
-                                            <button type="button" onClick={handleAddType} className="w-full py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors disabled:opacity-50">{tr("add_type", "Add Type")}</button>
+                                            <button type="button" onClick={handleAddType} className="btn-secondary">{tr("add", "Add")}</button>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Sectors Tab */}
-                    {activeTab === "sectors" && (
-                        <div className="space-y-6">
-                            <div className="card p-6">
-                                <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50 mb-4">{tr("sectors_tab", "Sectors")}</h2>
-                                <div className="space-y-6">
-                                    <div>
-                                        <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
-                                            {tr("categories_label", "Sectors")}
-                                        </label>
-                                        <p className="text-xs text-light-400 dark:text-dark-500 mt-1">{tr("categories_hint", "The field or industry that the project or client belongs to")}</p>
-                                        <Autocomplete
-                                            key={catAutocompleteKey}
-                                            options={projectCategories}
-                                            getOptionLabel={(opt) => {
-                                                const label = getOptionLabel(opt);
-                                                const name = opt?.name;
-                                                const ar = name && typeof name === "object" ? (name as any).ar : undefined;
-                                                return ar ? `${label} / ${ar}` : label;
-                                            }}
-                                            isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
-                                            value={null}
-                                            onChange={(_e, val) => {
-                                                if (val) {
-                                                    handleSelectExistingCategory(String(projectCategories.indexOf(val)));
-                                                    setCatAutocompleteKey((k) => k + 1);
-                                                }
-                                            }}
-                                            renderInput={(params) => (
-                                                <TextField {...params} placeholder={tr("select_existing_category", "Search existing sectors...")} size="small" />
-                                            )}
-                                            sx={taxonomyAutocompleteSx}
-                                            slotProps={taxonomyAutocompleteSlotProps}
-                                            size="small"
-                                            className="mb-2"
-                                        />
-                                        <div className="space-y-2">
-                                            <div className="flex gap-2 items-center">
-                                                <input
-                                                    type="text"
-                                                    value={newCategory}
-                                                    onChange={(e) => setNewCategory(e.target.value)}
-                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
-                                                    data-enter-add
-                                                    className="input w-full"
-                                                    placeholder={tr("add_category_hint", "en1,en2,en3...")}
-                                                />
-                                                <TranslateButton onClick={catEnToAr.translate} isTranslating={catEnToAr.isTranslating} disabled={!newCategory.trim()} />
-                                            </div>
-                                            <div className="flex gap-2 items-center">
-                                                <input
-                                                    type="text"
-                                                    dir="rtl"
-                                                    value={newCategoryAr}
-                                                    onChange={(e) => setNewCategoryAr(e.target.value)}
-                                                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddCategory())}
-                                                    data-enter-add
-                                                    className="input w-full"
-                                                    placeholder={tr("add_category_ar_hint", "ar1,ar2,ar3...")}
-                                                />
-                                                <TranslateButton onClick={catArToEn.translate} isTranslating={catArToEn.isTranslating} disabled={!newCategoryAr.trim()} label="Translate" />
-                                            </div>
-                                            {validationErrors.categories && (
-                                                <p className="text-xs text-danger-500">{validationErrors.categories}</p>
-                                            )}
-                                            <button type="button" onClick={handleAddCategory} className="btn-secondary">{tr("add", "Add")}</button>
-                                        </div>
-                                    </div>
-
-                                    {form.categories.length > 0 && (
-                                        <div className="border-t border-light-200 dark:border-dark-700 pt-4">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-light-500 dark:text-dark-400 mb-3">{tr("add_subsector_by_category", "Add Sub Sector by Category")}</p>
-                                            <div className="space-y-4">
-                                                {form.categories.map((cat: any, catIdx: number) => {
-                                                    const catId = getOptionValue(cat) || `cat-${catIdx}`;
-                                                    const isExpanded = !collapsedCategories.has(catId);
-                                                    const availableSubcats = projectSubcategories.filter((s: any) => {
-                                                        return s.parentCategory === catId;
-                                                    });
-                                                    return (
-                                                        <div key={catId} className="rounded-xl border border-light-200/80 dark:border-dark-700/80 overflow-hidden">
-                                                            <div
-                                                                role="button"
-                                                                tabIndex={0}
-                                                                onClick={() => setCollapsedCategories(prev => {
-                                                                    const next = new Set(prev);
-                                                                    if (next.has(catId)) next.delete(catId); else next.add(catId);
-                                                                    return next;
-                                                                })}
-                                                                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCollapsedCategories(prev => { const next = new Set(prev); if (next.has(catId)) next.delete(catId); else next.add(catId); return next; }); } }}
-                                                                className="w-full flex items-center justify-between px-4 py-3 bg-light-50/80 dark:bg-dark-800/60 hover:bg-light-100 dark:hover:bg-dark-800 transition-colors cursor-pointer"
-                                                            >
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-sm font-semibold text-light-900 dark:text-dark-50">
-                                                                        #{getOptionLabel(cat)}
-                                                                        {cat && typeof cat === "object" && (cat.ar || (cat.name && typeof cat.name === "object" && (cat.name as any).ar)) && (cat.ar || (cat.name && typeof cat.name === "object" && (cat.name as any).ar) || "").trim() ? (
-                                                                            <span className="opacity-70"> / #{cat.ar || (cat.name && typeof cat.name === "object" ? (cat.name as any).ar : "")}</span>
-                                                                        ) : null}
-                                                                    </span>
-                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleRemoveCategory(cat); }} className="text-light-400 hover:text-danger-500 dark:text-dark-500 dark:hover:text-danger-400">
-                                                                        <X className="w-3.5 h-3.5" />
-                                                                    </button>
-                                                                </div>
-                                                                <svg className={`w-4 h-4 text-light-400 dark:text-dark-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                                            </div>
-                                                            {isExpanded && (
-                                                                <div className="px-4 py-3 space-y-3 bg-white dark:bg-dark-900/40">
-                                                                    {(() => {
-                                                                        const selectedSubcats = form.subcategories.filter((s: any) => {
-                                                                            const sid = getOptionValue(s);
-                                                                            const full = projectSubcategories.find((ps: any) => (ps._id || ps.id) === sid);
-                                                                            return full && full.parentCategory === catId;
-                                                                        });
-                                                                        return selectedSubcats.length > 0 ? (
-                                                                            <div className="flex flex-wrap gap-2">
-                                                                                {selectedSubcats.map((sub: any, subIdx: number) => (
-                                                                                    <span key={getOptionValue(sub) || `${subIdx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-light-100 dark:bg-dark-800 text-light-700 dark:text-dark-300 rounded-md text-sm">
-                                                                                        #{getOptionLabel(sub)}
-                                                                                        {sub && typeof sub === "object" && (sub.ar || (sub.name && typeof sub.name === "object" && (sub.name as any).ar)) && (sub.ar || (sub.name && typeof sub.name === "object" && (sub.name as any).ar) || "").trim() ? (
-                                                                                            <span className="opacity-70"> / #{sub.ar || (sub.name && typeof sub.name === "object" ? (sub.name as any).ar : "")}</span>
-                                                                                        ) : null}
-                                                                                        <button type="button" onClick={() => handleRemoveSubcategory(sub)} className="hover:text-light-500 dark:hover:text-secdark-500">
-                                                                                            <X className="w-3 h-3" />
-                                                                                        </button>
-                                                                                    </span>
-                                                                                ))}
-                                                                            </div>
-                                                                        ) : null;
-                                                                    })()}
-                                                                    <Autocomplete
-                                                                        key={subcatKeysByParent[catId] || 0}
-                                                                        options={availableSubcats}
-                                                                        getOptionLabel={(opt) => {
-                                                                            const label = getOptionLabel(opt);
-                                                                            const name = opt?.name;
-                                                                            const ar = name && typeof name === "object" ? (name as any).ar : undefined;
-                                                                            return ar ? `${label} / ${ar}` : label;
-                                                                        }}
-                                                                        isOptionEqualToValue={(opt, val) => getOptionValue(opt) === getOptionValue(val)}
-                                                                        value={null}
-                                                                        onChange={(_e, val) => {
-                                                                            if (val && !form.subcategories.some((cs: any) => getOptionValue(cs) === getOptionValue(val))) {
-                                                                                handleSelectExistingSubcategory(String(projectSubcategories.indexOf(val)));
-                                                                                setSubcatKeysByParent(prev => ({ ...prev, [catId]: (prev[catId] || 0) + 1 }));
-                                                                            }
-                                                                        }}
-                                                                        renderOption={(props, option) => {
-                                                                            const isSelected = form.subcategories.some((cs: any) => getOptionValue(cs) === getOptionValue(option));
-                                                                            return (
-                                                                                <li {...props} key={getOptionValue(option)}>
-                                                                                    <div className="flex items-center justify-between w-full">
-                                                                                        <span>{getOptionLabel(option)}{option && typeof option === "object" && ((option as any).ar || (option.name && typeof option.name === "object" && (option.name as any).ar)) ? ` / ${(option as any).ar || (option.name && typeof option.name === "object" ? (option.name as any).ar : "")}` : ""}</span>
-                                                                                        {isSelected && <Check className="w-4 h-4 text-primary-500 ml-2" />}
-                                                                                    </div>
-                                                                                </li>
-                                                                            );
-                                                                        }}
-                                                                        renderInput={(params) => (
-                                                                            <TextField {...params} placeholder={tr("select_existing_subcategory", "Search existing sub sectors...")} size="small" />
-                                                                        )}
-                                                                        sx={taxonomyAutocompleteSx}
-                                                                        slotProps={taxonomyAutocompleteSlotProps}
-                                                                        size="small"
-                                                                    />
-                                                                    <div className="space-y-2">
-                                                                        <div className="flex gap-2 items-center">
-                                                                            <input
-                                                                                type="text"
-                                                                                value={newSubcategory[catId] || ""}
-                                                                                onChange={(e) => setNewSubcategory((prev) => ({ ...prev, [catId]: e.target.value }))}
-                                                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSubcategory(catId))}
-                                                                                data-enter-add
-                                                                                className="input w-full"
-                                                                                placeholder={tr("add_subsector_hint", "New sub sector (EN)...")}
-                                                                            />
-                                                                        </div>
-                                                                        <div className="flex gap-2 items-center">
-                                                                            <input
-                                                                                type="text"
-                                                                                dir="rtl"
-                                                                                value={newSubcategoryAr[catId] || ""}
-                                                                                onChange={(e) => setNewSubcategoryAr((prev) => ({ ...prev, [catId]: e.target.value }))}
-                                                                                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSubcategory(catId))}
-                                                                                data-enter-add
-                                                                                className="input w-full"
-                                                                                placeholder={tr("add_subsector_ar_hint", "اسم الفئة الفرعية (AR)...")}
-                                                                            />
-                                                                        </div>
-                                                                        {validationErrors.subcategories && (
-                                                                            <p className="text-xs text-danger-500">{validationErrors.subcategories}</p>
-                                                                        )}
-                                                                        <button type="button" onClick={() => handleAddSubcategory(catId)} disabled={createSubcategoryMutation.isPending} className="w-full py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors disabled:opacity-50">
-                                                                            {createSubcategoryMutation.isPending ? <Loader2 size={16} className="animate-spin inline mr-2" /> : <Plus size={16} className="inline mr-2" />}
-                                                                            {tr("add_subsector", "Add Sub Sector")}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
@@ -4048,69 +3744,11 @@ const handleShootedAtChange = (date: Date | null) => {
                                 <DndContext sensors={photoSensors} collisionDetection={materialsCollisionDetection}
                                     onDragStart={(event) => {
                                         const { active } = event;
-                                        const activeId = String(active.id);
-                                        if (activeId.startsWith("mat-group-")) return;
                                         const data = active.data.current as any;
                                         if (!data) return;
-                                        crossGroupDragTargetRef.current = null;
-                                        draggedItemIdRef.current = String(active.id);
                                         setActiveDragItem({ id: String(active.id), url: data.url, isVideo: data.isVideo, thumbnail: data.thumbnail, label: data.label });
                                     }}
-                                    onDragOver={(event) => {
-                                        const { active, over } = event;
-                                        const activeId = String(active.id);
-                                        const overId = over ? String(over.id) : "";
-
-                                        if (activeId.startsWith("mat-group-") || overId.startsWith("mat-group-")) {
-                                            return;
-                                        }
-
-                                        const activeMatch = activeId.match(/^group-(\d+)-item-(\d+)$/);
-                                        if (!activeMatch) {
-                                            if (crossGroupDragTargetRef.current !== null) {
-                                                clearDropIndicators();
-                                                crossGroupDragTargetRef.current = null;
-                                            }
-                                            return;
-                                        }
-
-                                        const fromGroupIdx = parseInt(activeMatch[1]);
-                                        let next: { toGroupIdx: number; toItemIdx: number } | null = null;
-
-                                        const overItemMatch = overId.match(/^group-(\d+)-item-(\d+)$/);
-                                        if (overItemMatch) {
-                                            const toGroupIdx = parseInt(overItemMatch[1]);
-                                            const toItemIdx = parseInt(overItemMatch[2]);
-                                            if (fromGroupIdx !== toGroupIdx) {
-                                                next = { toGroupIdx, toItemIdx };
-                                            }
-                                        } else {
-                                            const overGroupMatch = overId.match(/^group-(\d+)$/);
-                                            if (overGroupMatch) {
-                                                const toGroupIdx = parseInt(overGroupMatch[1]);
-                                                if (fromGroupIdx !== toGroupIdx) {
-                                                    const toMaterial = form.materials[toGroupIdx];
-                                                    if (toMaterial) {
-                                                        const isToVideo = toMaterial.type === "video" || (toMaterial.type === "bulk" && isVideoBulkType(toMaterial));
-                                                        const toItems = isToVideo ? buildVideoItems(toMaterial) : buildPhotoItems(toMaterial);
-                                                        next = { toGroupIdx, toItemIdx: toItems.length };
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        const prev = crossGroupDragTargetRef.current;
-                                        const changed = (next === null) !== (prev === null) || (next !== null && prev !== null && (next.toGroupIdx !== prev.toGroupIdx || next.toItemIdx !== prev.toItemIdx));
-
-                                        if (changed) {
-                                            clearDropIndicators();
-                                            crossGroupDragTargetRef.current = next;
-                                            if (next) {
-                                                applyDropIndicator(next.toGroupIdx, next.toItemIdx);
-                                            }
-                                        }
-                                    }}
-                                    onDragEnd={(event) => { crossGroupDragTargetRef.current = null; draggedItemIdRef.current = null; setActiveDragItem(null); handleFlatDragEnd(event); requestAnimationFrame(() => clearDropIndicators()); }}
+                                    onDragEnd={(event) => { setActiveDragItem(null); handleFlatDragEnd(event); }}
                                 >
                                     <DragOverlay dropAnimation={null}>
                                         {activeDragItem ? (
@@ -4131,7 +3769,6 @@ const handleShootedAtChange = (date: Date | null) => {
                                             </div>
                                         ) : null}
                                     </DragOverlay>
-                                    <SortableContext items={form.materials.map((_: Material, i: number) => `mat-group-${i}`)} strategy={verticalListSortingStrategy}>
                                     <div className="space-y-4">
                                         {form.materials.map((material: Material, idx: number) => {
                                             const isVideo = material.type === "video" || (material.type === "bulk" && isVideoBulkType(material));
@@ -4159,13 +3796,15 @@ const handleShootedAtChange = (date: Date | null) => {
                                                 }));
                                             }
 
+                                            const otherGroups = form.materials
+                                                .map((m: Material, gIdx: number) => ({ material: m, gIdx }))
+                                                .filter(({ material: mat, gIdx }: { material: Material; gIdx: number }) => gIdx !== idx && ((isPhoto && isPhotoMaterialType(mat.type)) || (isVideo && (mat.type === "video" || (mat.type === "bulk" && isVideoBulkType(mat))))));
+
                                             return (
-                                                <SortableMaterialGroup key={material._id || `mat-${idx}`} id={`mat-group-${idx}`}>
-                                                {({ listeners, attributes }) => (
-                                                <div className="border border-light-200 dark:border-dark-700 rounded-xl overflow-hidden">
+                                                <div key={material._id || `mat-${idx}`} className="border border-light-200 dark:border-dark-700 rounded-xl overflow-hidden">
                                                     <div className="flex items-center justify-between px-4 py-3 bg-light-50 dark:bg-dark-800/50 border-b border-light-200 dark:border-dark-700">
                                                         <div className="flex items-center gap-3 min-w-0">
-                                                            <span {...listeners} {...attributes} className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing" title={tr("drag_to_reorder", "Drag to reorder")}>
+                                                            <span className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-light-200 dark:border-dark-700 bg-white/70 dark:bg-dark-900/50 text-light-500 dark:text-dark-400 cursor-grab active:cursor-grabbing" title={tr("drag_to_reorder", "Drag to reorder")}>
                                                                 <GripVertical className="w-3.5 h-3.5" />
                                                             </span>
                                                             {isPhoto && <ImageIcon className="w-4 h-4 text-light-500 shrink-0" />}
@@ -4192,12 +3831,23 @@ const handleShootedAtChange = (date: Date | null) => {
 
                                                     <DroppableGroupContent groupId={`group-${idx}`} className="p-3">
                                                         {isBa ? (
-                                                            <BeforeAfterSlider
-                                                                beforeUrl={material.before?.url}
-                                                                afterUrl={material.after?.url}
-                                                                beforeLabel={tr("before", "Before")}
-                                                                afterLabel={tr("after", "After")}
-                                                            />
+                                                            <div className="flex gap-4">
+                                                                {material.before?.url && (
+                                                                    <div className="relative w-32 h-32 shrink-0 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
+                                                                        <img src={material.before.url} alt="Before" className="w-full h-full object-cover" />
+                                                                        <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-medium">Before</div>
+                                                                    </div>
+                                                                )}
+                                                                {material.after?.url && (
+                                                                    <div className="relative w-32 h-32 shrink-0 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
+                                                                        <img src={material.after.url} alt="After" className="w-full h-full object-cover" />
+                                                                        <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-medium">After</div>
+                                                                    </div>
+                                                                )}
+                                                                {!material.before?.url && !material.after?.url && (
+                                                                    <div className="text-xs text-light-500 dark:text-dark-400 py-4">No images uploaded yet</div>
+                                                                )}
+                                                            </div>
                                                         ) : isText ? (
                                                             <div className="text-xs text-light-600 dark:text-dark-300 max-h-20 overflow-auto break-words">
                                                                 {localizedToString(material.textContent) || <span className="text-light-400 dark:text-dark-500 italic">No text content</span>}
@@ -4208,18 +3858,22 @@ const handleShootedAtChange = (date: Date | null) => {
                                                             </div>
                                                         ) : items.length > 0 ? (
                                                             <SortableContext items={items.map((it) => it.id)} strategy={horizontalListSortingStrategy}>
-                                                                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin" data-group-container={idx}>
+                                                                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
                                                                     {items.map((item) => (
-                                                                        <div key={item.id} data-sortable-item>
-                                                                            <DraggableItemThumb
-                                                                                id={item.id}
-                                                                                url={item.url}
-                                                                                isVideo={item.isVideo}
-                                                                                thumbnail={item.thumbnail}
-                                                                                label={item.label}
-                                                                                onRemove={() => handleFlatItemRemove(idx, items.indexOf(item))}
-                                                                            />
-                                                                        </div>
+                                                                        <DraggableItemThumb
+                                                                            key={item.id}
+                                                                            id={item.id}
+                                                                            url={item.url}
+                                                                            isVideo={item.isVideo}
+                                                                            thumbnail={item.thumbnail}
+                                                                            label={item.label}
+                                                                            onRemove={() => handleFlatItemRemove(idx, items.indexOf(item))}
+                                                                            otherGroups={otherGroups.map((g: { material: Material; gIdx: number }) => ({
+                                                                                label: localizedToString(g.material.caption) || `Group ${g.gIdx + 1}`,
+                                                                                index: g.gIdx,
+                                                                            }))}
+                                                                            onMoveToGroup={(toIdx) => handleFlatItemMoveToGroup(idx, items.indexOf(item), toIdx)}
+                                                                        />
                                                                     ))}
                                                                 </div>
                                                             </SortableContext>
@@ -4230,12 +3884,9 @@ const handleShootedAtChange = (date: Date | null) => {
                                                         )}
                                                     </DroppableGroupContent>
                                                 </div>
-                                                )}
-                                                </SortableMaterialGroup>
                                             );
                                         })}
                                     </div>
-                                    </SortableContext>
 
                                     {form.materials.length === 0 && (
                                         <div className="text-center py-8 text-light-500 dark:text-dark-400">
@@ -4291,7 +3942,13 @@ const handleShootedAtChange = (date: Date | null) => {
                                                             return <User className="w-4 h-4 text-light-500" />;
                                                         })()}
                                                         <span className="font-medium text-light-900 dark:text-dark-50">{member.name}</span>
-                                                        <span className="text-sm text-light-500 dark:text-secdark-500">{member.title}</span>
+                                                        {(member.title || []).length > 0 && (
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {(member.title || []).map((t: string, tIdx: number) => (
+                                                                    <span key={tIdx} className="inline-flex items-center rounded-full border border-light-200 bg-light-50 px-2 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200">{t}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div className="mb-1">
                                                         <SocialLinkIcons links={member.socialLinks} size={14} className="!gap-1.5" />
@@ -4548,7 +4205,7 @@ const handleShootedAtChange = (date: Date | null) => {
    <button
     type="button"
     onClick={() => {
-        const order: Array<"basic" | "sectors" | "materials" | "cast" | "media"> = ["basic", "sectors", "materials", "cast", "media"];
+        const order: Array<"basic" | "materials" | "cast" | "media"> = ["basic", "materials", "cast", "media"];
         const idx = order.indexOf(activeTab);
         const next = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : "media";
         setActiveTab(next); // TypeScript now knows next is of the correct type
@@ -5026,8 +4683,8 @@ const handleShootedAtChange = (date: Date | null) => {
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_role", "Title/Role")}</label>
                                         <input
                                             type="text"
-                                            value={editingCast.title}
-                                            onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value })}
+                                            value={(editingCast.title || []).join(", ")}
+                                            onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) })}
                                             className="input w-full"
                                             placeholder={tr("title_role_placeholder", "e.g., Creative Director, Photographer")}
                                         />
@@ -5064,7 +4721,19 @@ const handleShootedAtChange = (date: Date | null) => {
                                                 filterSelectedOptions
                                                 options={projectCast}
                                                 value={selectedExistingCast}
-                                                onChange={(_, val) => setSelectedExistingCast(val as any[])}
+                                                onChange={(_, val) => {
+                                                    setSelectedExistingCast(val as any[]);
+                                                    const newTitles: Record<string, string[]> = {};
+                                                    (val as any[]).forEach((m: any) => {
+                                                        const mid = m._id || m.id;
+                                                        if (!selectedCastTitles[mid]) {
+                                                            newTitles[mid] = parseTitles(m.title);
+                                                        }
+                                                    });
+                                                    if (Object.keys(newTitles).length) {
+                                                        setSelectedCastTitles((prev) => ({ ...prev, ...newTitles }));
+                                                    }
+                                                }}
                                                 getOptionLabel={getOptionLabel}
                                                 isOptionEqualToValue={(o, v) => (o._id || o.id) === (v._id || v.id)}
                                                 className="w-full mb-3"
@@ -5085,7 +4754,12 @@ const handleShootedAtChange = (date: Date | null) => {
                                                         })()}
                                                         <div className="flex-1">
                                                             <div className="font-medium text-sm text-light-900 dark:text-dark-50">{getOptionLabel(option)}</div>
-                                                            {option.title && <div className="text-xs text-light-500 dark:text-dark-400">{option.title}</div>}
+                                                            {(() => {
+                                                                const titles = parseTitles(option.title);
+                                                                return titles.length > 0 ? (
+                                                                    <div className="text-xs text-light-500 dark:text-dark-400">{titles.join(", ")}</div>
+                                                                ) : null;
+                                                            })()}
                                                         </div>
                                                     </li>
                                                 )}
@@ -5113,6 +4787,48 @@ const handleShootedAtChange = (date: Date | null) => {
                                                 renderInput={(params) => <TextField {...params} placeholder={tr("search_existing_members", "Search existing members")} size="small" />}
                                             />
 
+                                            {selectedExistingCast.length > 0 && (
+                                                <div className="mb-3 space-y-2">
+                                                    <p className="text-xs font-medium text-light-700 dark:text-dark-300">{tr("select_titles_for_members", "Select titles for each member:")}</p>
+                                                    {selectedExistingCast.map((member: any) => {
+                                                        const memberId = member._id || member.id;
+                                                        const availableTitles = parseTitles(member.title);
+                                                        const selected = selectedCastTitles[memberId] || availableTitles;
+                                                        if (availableTitles.length === 0) return null;
+                                                        return (
+                                                            <div key={memberId} className="pl-2 border-l-2 border-light-200 dark:border-dark-700">
+                                                                <div className="text-xs font-medium text-light-600 dark:text-dark-400 mb-1">{member.name || getOptionLabel(member)}</div>
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {availableTitles.map((t: string) => {
+                                                                        const isSelected = selected.includes(t);
+                                                                        return (
+                                                                            <button
+                                                                                key={t}
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setSelectedCastTitles((prev) => {
+                                                                                        const current = prev[memberId] || availableTitles;
+                                                                                        const next = isSelected ? current.filter((x: string) => x !== t) : [...current, t];
+                                                                                        return { ...prev, [memberId]: next };
+                                                                                    });
+                                                                                }}
+                                                                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border transition-colors ${
+                                                                                    isSelected
+                                                                                        ? "bg-primary-100 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:border-primary-700 dark:text-primary-300"
+                                                                                        : "bg-light-50 border-light-200 text-light-500 dark:bg-dark-800 dark:border-dark-700 dark:text-dark-400"
+                                                                                }`}
+                                                                            >
+                                                                                {t}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
                                             {newMembersRows.map((row, rIdx) => (
                                                 <div key={rIdx} className="mb-3">
                                                     <div className="grid grid-cols-12 gap-2 items-center mb-2">
@@ -5125,8 +4841,8 @@ const handleShootedAtChange = (date: Date | null) => {
                                                         />
                                                         <input
                                                             type="text"
-                                                            value={row.title}
-                                                            onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value } : p)))}
+                                                            value={(row.title || []).join(", ")}
+                                                            onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) } : p)))}
                                                             className="input col-span-4"
                                                             placeholder={tr("title_role_optional", "Title/Role (optional)")}
                                                         />
@@ -5170,7 +4886,7 @@ const handleShootedAtChange = (date: Date | null) => {
                                             <div className="flex gap-2">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setNewMembersRows((prev) => [...prev, { name: "", title: "", order: form.cast.length + prev.length + 1, socialLinks: [], photo: null }])}
+                                                    onClick={() => setNewMembersRows((prev) => [...prev, { name: "", title: [], order: form.cast.length + prev.length + 1, socialLinks: [], photo: null }])}
                                                     className="btn-secondary"
                                                 >
                                                     <Plus className="w-4 h-4 inline mr-2" />

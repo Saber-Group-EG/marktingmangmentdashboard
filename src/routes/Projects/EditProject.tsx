@@ -78,7 +78,7 @@ interface VideoMaterialItem {
 interface Cast {
   _id?: string;
   name: string;
-  title: string;
+  title: string[];
   order: number;
     clientId?: string;
     socialLinks?: { platform: string; url: string }[];
@@ -704,6 +704,7 @@ const EditProject: React.FC = () => {
     const [editingCastIndex, setEditingCastIndex] = useState<number | null>(null);
     const [newMembersRows, setNewMembersRows] = useState<Cast[]>([]);
     const [selectedExistingCast, setSelectedExistingCast] = useState<any[]>([]);
+    const [selectedCastTitles, setSelectedCastTitles] = useState<Record<string, string[]>>({});
     const [draggedCastIndex, setDraggedCastIndex] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const displayImgRef = useRef<HTMLImageElement | null>(null);
@@ -777,6 +778,16 @@ const EditProject: React.FC = () => {
     const [activeDragItem, setActiveDragItem] = useState<{ id: string; url: string; isVideo: boolean; thumbnail?: string; label: string } | null>(null);
     const crossGroupDragTargetRef = useRef<{ toGroupIdx: number; toItemIdx: number } | null>(null);
     const draggedItemIdRef = useRef<string | null>(null);
+
+    const parseTitles = (raw: any): string[] => {
+        if (!raw) return [];
+        const arr = Array.isArray(raw) ? raw : [raw];
+        return arr.flatMap((v: any) => {
+            const s = String(v || "").trim();
+            if (!s) return [];
+            return s.includes(",") ? s.split(",").map((x: string) => x.trim()).filter(Boolean) : [s];
+        });
+    };
 
     const getOptionLabel = (value: any): string => {
         if (typeof value === "string") return value;
@@ -1180,14 +1191,14 @@ const EditProject: React.FC = () => {
 
         const rawCast = project.cast || [];
         const mappedCast = (Array.isArray(rawCast) ? rawCast : []).map((c: any, idx: number) => {
-            if (!c) return { name: "", title: "", order: idx + 1 };
+            if (!c) return { name: "", title: [], order: idx + 1 };
 
             if (typeof c === "string") {
                 const found = projectCast.find((pc: any) => (pc._id || pc.id) === c || pc.name === c);
                 return {
                     _id: found?._id || undefined,
                     name: found?.name || c,
-                    title: (found as any)?.title || "",
+                    title: (found as any)?.title || [],
                     socialLinks: (found as any)?.socialLinks || [],
                     photo: (found as any)?.photo || null,
                     order: idx + 1,
@@ -1203,7 +1214,7 @@ const EditProject: React.FC = () => {
                         return {
                             _id: found?._id,
                             name: found?.name || castEntry,
-                            title: (found as any)?.title || "",
+                            title: (found as any)?.title || [],
                             socialLinks: (found as any)?.socialLinks || [],
                             photo: (found as any)?.photo || null,
                             order: c.order || idx + 1,
@@ -1215,7 +1226,7 @@ const EditProject: React.FC = () => {
                         return {
                             _id: castEntry._id || found?._id,
                             name: castEntry.name || found?.name || "",
-                            title: castEntry.title || (found as any)?.title || "",
+                            title: castEntry.title || (found as any)?.title || [],
                             socialLinks: castEntry.socialLinks || (found as any)?.socialLinks || [],
                             photo: castEntry.photo || (found as any)?.photo || null,
                             order: c.order || idx + 1,
@@ -1227,7 +1238,7 @@ const EditProject: React.FC = () => {
                     const found = projectCast.find((pc: any) => (pc._id || pc.id) === c.name || pc.name === c.name);
                     return {
                         ...c,
-                        title: c.title || (found as any)?.title || "",
+                        title: c.title || (found as any)?.title || [],
                         socialLinks: c.socialLinks?.length ? c.socialLinks : (found as any)?.socialLinks || [],
                         photo: c.photo || (found as any)?.photo || null,
                         order: c.order || idx + 1,
@@ -1237,7 +1248,7 @@ const EditProject: React.FC = () => {
                 return { ...(found || {}), ...c, order: c.order || idx + 1 };
             }
 
-            return { name: String(c), title: "", order: idx + 1 };
+            return { name: String(c), title: [], order: idx + 1 };
         }).sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
 
         // derive parentProject option from server payload when available
@@ -2301,11 +2312,11 @@ const EditProject: React.FC = () => {
         setEditingCastIndex(null);
         setEditingCast({
             name: "",
-            title: "",
+            title: [],
             order: nextOrder,
             socialLinks: [],
         });
-        setNewMembersRows([{ name: "", title: "", order: nextOrder, socialLinks: [], photo: null }]);
+        setNewMembersRows([{ name: "", title: [], order: nextOrder, socialLinks: [], photo: null }]);
         setSelectedExistingCast([]);
     };
 
@@ -2315,7 +2326,7 @@ const EditProject: React.FC = () => {
         setEditingCastIndex(index);
         setEditingCast({
             ...cast,
-            title: cast.title || (found as any)?.title || "",
+            title: cast.title?.length ? cast.title : (found as any)?.title || [],
             socialLinks: cast.socialLinks?.length ? cast.socialLinks : (found as any)?.socialLinks || [],
             photo: cast.photo || (found as any)?.photo || null,
         });
@@ -2344,10 +2355,12 @@ const EditProject: React.FC = () => {
             setForm((prev: any) => {
                 const next = [...prev.cast];
                 existing.forEach((ex) => {
+                    const castId = ex._id || ex.id;
+                    const titles = selectedCastTitles[castId] || (Array.isArray(ex.title) ? ex.title : ex.title ? [ex.title] : []);
                     next.push({
-                        _id: ex._id || ex.id,
+                        _id: castId,
                         name: ex.name || "",
-                        title: ex.title || "",
+                        title: titles,
                         order: next.length + 1,
                         socialLinks: ex.socialLinks || [],
                         photo: ex.photo || null,
@@ -2356,7 +2369,7 @@ const EditProject: React.FC = () => {
                 });
 
                 rows.forEach((r) => {
-                    next.push({ name: r.name, title: r.title || "", order: next.length + 1, socialLinks: r.socialLinks || [], photo: r.photo || null });
+                    next.push({ name: r.name, title: r.title || [], order: next.length + 1, socialLinks: r.socialLinks || [], photo: r.photo || null });
                 });
 
                 return { ...prev, cast: next };
@@ -3122,7 +3135,7 @@ if (Array.isArray(clone.cast)) {
                         // New member — pre-create via API, then use returned _id as castId
                         const created = await createCast({
                             name: c.name || "",
-                            title: c.title || "",
+                            title: c.title || [],
                             photo: photo || undefined,
                             socialLinks: socialLinks.length ? socialLinks : undefined,
                         });
@@ -4307,7 +4320,13 @@ if (Array.isArray(clone.cast)) {
 <div>
                                                             <div className="flex items-center gap-3">
                                                                 <h3 className="font-semibold text-light-900 dark:text-dark-50">{member.name}</h3>
-                                                                {member.title && <span className="text-sm text-secdark-500">{member.title}</span>}
+                                                                {(member.title || []).length > 0 && (
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {member.title!.map((t, tIdx) => (
+                                                                            <span key={tIdx} className="inline-flex items-center rounded-full border border-light-200 bg-light-50 px-2 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200">{t}</span>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                             <div className="mt-1.5">
                                                                 <SocialLinkIcons links={member.socialLinks} size={14} className="!gap-1.5" />
@@ -5041,8 +5060,8 @@ if (Array.isArray(clone.cast)) {
                                         <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">{tr("title_role", "Title/Role")}</label>
                                         <input
                                             type="text"
-                                            value={editingCast.title}
-                                            onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value })}
+                                            value={(editingCast.title || []).join(", ")}
+                                            onChange={(e) => setEditingCast({ ...editingCast, title: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) })}
                                             className="input w-full"
                                             placeholder="e.g., Creative Director, Photographer"
                                         />
@@ -5083,7 +5102,19 @@ if (Array.isArray(clone.cast)) {
                                             )
                                         )}
                                         value={selectedExistingCast}
-                                        onChange={(_, val) => setSelectedExistingCast(val as any[])}
+                                        onChange={(_, val) => {
+                                            setSelectedExistingCast(val as any[]);
+                                            const newTitles: Record<string, string[]> = {};
+                                            (val as any[]).forEach((m: any) => {
+                                                const mid = m._id || m.id;
+                                                if (!selectedCastTitles[mid]) {
+                                                    newTitles[mid] = parseTitles(m.title);
+                                                }
+                                            });
+                                            if (Object.keys(newTitles).length) {
+                                                setSelectedCastTitles((prev) => ({ ...prev, ...newTitles }));
+                                            }
+                                        }}
                                         getOptionLabel={getOptionLabel}
                                         isOptionEqualToValue={(o, v) => (o._id || o.id) === (v._id || v.id)}
                                         className="w-full mb-3"
@@ -5104,7 +5135,12 @@ if (Array.isArray(clone.cast)) {
                                                 })()}
                                                 <div className="flex-1">
                                                     <div className="font-medium text-sm text-light-900 dark:text-dark-50">{getOptionLabel(option)}</div>
-                                                    {option.title && <div className="text-xs text-light-500 dark:text-dark-400">{option.title}</div>}
+                                                    {(() => {
+                                                        const titles = parseTitles(option.title);
+                                                        return titles.length > 0 ? (
+                                                            <div className="text-xs text-light-500 dark:text-dark-400">{titles.join(", ")}</div>
+                                                        ) : null;
+                                                    })()}
                                                 </div>
                                             </li>
                                         )}
@@ -5132,6 +5168,48 @@ if (Array.isArray(clone.cast)) {
                                         renderInput={(params) => <TextField {...params} placeholder={tr("search_members", "Search existing members")} size="small" />}
                                     />
 
+                                    {selectedExistingCast.length > 0 && (
+                                        <div className="mb-3 space-y-2">
+                                            <p className="text-xs font-medium text-light-700 dark:text-dark-300">{tr("select_titles_for_members", "Select titles for each member:")}</p>
+                                            {selectedExistingCast.map((member: any) => {
+                                                const memberId = member._id || member.id;
+                                                const availableTitles = parseTitles(member.title);
+                                                const selected = selectedCastTitles[memberId] || availableTitles;
+                                                if (availableTitles.length === 0) return null;
+                                                return (
+                                                    <div key={memberId} className="pl-2 border-l-2 border-light-200 dark:border-dark-700">
+                                                        <div className="text-xs font-medium text-light-600 dark:text-dark-400 mb-1">{member.name || getOptionLabel(member)}</div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {availableTitles.map((t: string) => {
+                                                                const isSelected = selected.includes(t);
+                                                                return (
+                                                                    <button
+                                                                        key={t}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setSelectedCastTitles((prev) => {
+                                                                                const current = prev[memberId] || availableTitles;
+                                                                                const next = isSelected ? current.filter((x: string) => x !== t) : [...current, t];
+                                                                                return { ...prev, [memberId]: next };
+                                                                            });
+                                                                        }}
+                                                                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border transition-colors ${
+                                                                            isSelected
+                                                                                ? "bg-primary-100 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:border-primary-700 dark:text-primary-300"
+                                                                                : "bg-light-50 border-light-200 text-light-500 dark:bg-dark-800 dark:border-dark-700 dark:text-dark-400"
+                                                                        }`}
+                                                                    >
+                                                                        {t}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
                                     {newMembersRows.map((row, rIdx) => (
                                         <div key={rIdx} className="mb-3">
                                             <div className="grid grid-cols-12 gap-2 items-center mb-2">
@@ -5144,8 +5222,8 @@ if (Array.isArray(clone.cast)) {
                                                 />
                                                 <input
                                                     type="text"
-                                                    value={row.title}
-                                                    onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value } : p)))}
+                                                    value={(row.title || []).join(", ")}
+                                                    onChange={(e) => setNewMembersRows((prev) => prev.map((p, i) => (i === rIdx ? { ...p, title: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) } : p)))}
                                                     className="input col-span-4"
                                                     placeholder={tr("title_role_optional", "Title/Role (optional)")}
                                                 />
@@ -5189,7 +5267,7 @@ if (Array.isArray(clone.cast)) {
                                     <div className="flex gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => setNewMembersRows((prev) => [...prev, { name: "", title: "", order: form.cast.length + prev.length + 1, socialLinks: [], photo: null }])}
+                                            onClick={() => setNewMembersRows((prev) => [...prev, { name: "", title: [], order: form.cast.length + prev.length + 1, socialLinks: [], photo: null }])}
                                             className="btn-secondary"
                                         >
                                             <Plus className="w-4 h-4 inline mr-2" />

@@ -38,14 +38,16 @@ const CastPage = () => {
 
     // Add form states
     const [inputName, setInputName] = useState("");
-    const [inputTitle, setInputTitle] = useState("");
+    const [inputTitles, setInputTitles] = useState<string[]>([]);
+    const [titleInput, setTitleInput] = useState("");
     const [inputPhoto, setInputPhoto] = useState("");
     const [inputSocialLinks, setInputSocialLinks] = useState<SocialLink[]>([]);
 
     // Edit modal states
     const [editingMember, setEditingMember] = useState<CastMember | null>(null);
     const [editName, setEditName] = useState("");
-    const [editTitle, setEditTitle] = useState("");
+    const [editTitles, setEditTitles] = useState<string[]>([]);
+    const [editTitleInput, setEditTitleInput] = useState("");
     const [editPhoto, setEditPhoto] = useState("");
     const [editSocialLinks, setEditSocialLinks] = useState<SocialLink[]>([]);
 
@@ -63,7 +65,7 @@ const CastPage = () => {
         return members.filter(
             (m) =>
                 (m.name || "").toLowerCase().includes(q) ||
-                (m.title || "").toLowerCase().includes(q),
+                (m.title || []).some((t) => t.toLowerCase().includes(q)),
         );
     }, [members, searchQuery]);
 
@@ -108,14 +110,15 @@ const CastPage = () => {
         createCastMutation.mutate(
             {
                 name,
-                title: (inputTitle || "").trim() || undefined,
+                title: inputTitles.length > 0 ? inputTitles : undefined,
                 photo: inputPhoto || undefined,
                 socialLinks: cleanSocialLinks(inputSocialLinks),
             },
             {
                 onSuccess: () => {
                     setInputName("");
-                    setInputTitle("");
+                    setInputTitles([]);
+                    setTitleInput("");
                     setInputPhoto("");
                     setInputSocialLinks([]);
                 },
@@ -136,7 +139,8 @@ const CastPage = () => {
     const openEditModal = (member: CastMember) => {
         setEditingMember(member);
         setEditName(member.name || "");
-        setEditTitle(member.title || "");
+        setEditTitles(member.title || []);
+        setEditTitleInput("");
         setEditPhoto(getCastPhotoUrl(member.photo));
         setEditSocialLinks((member.socialLinks || []).map((l) => ({ platform: l.platform, url: l.url })));
         setError("");
@@ -145,7 +149,8 @@ const CastPage = () => {
     const closeEditModal = () => {
         setEditingMember(null);
         setEditName("");
-        setEditTitle("");
+        setEditTitles([]);
+        setEditTitleInput("");
         setEditPhoto("");
         setEditSocialLinks([]);
         setError("");
@@ -172,7 +177,7 @@ const CastPage = () => {
                 id: editingMember._id,
                 data: {
                     name,
-                    title: (editTitle || "").trim() || undefined,
+                    title: editTitles.length > 0 ? editTitles : undefined,
                     photo: editPhoto || undefined,
                     socialLinks: cleanSocialLinks(editSocialLinks),
                 },
@@ -196,6 +201,44 @@ const CastPage = () => {
             await deleteCastMutation.mutateAsync(member._id);
         } catch (e: any) {
             setError(e?.response?.data?.message || "Failed to delete member");
+        }
+    };
+
+    const addTitle = () => {
+        const val = titleInput.trim();
+        if (val && !inputTitles.includes(val)) {
+            setInputTitles([...inputTitles, val]);
+        }
+        setTitleInput("");
+    };
+
+    const removeTitle = (index: number) => {
+        setInputTitles(inputTitles.filter((_, i) => i !== index));
+    };
+
+    const handleTitleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            addTitle();
+        }
+    };
+
+    const addEditTitle = () => {
+        const val = editTitleInput.trim();
+        if (val && !editTitles.includes(val)) {
+            setEditTitles([...editTitles, val]);
+        }
+        setEditTitleInput("");
+    };
+
+    const removeEditTitle = (index: number) => {
+        setEditTitles(editTitles.filter((_, i) => i !== index));
+    };
+
+    const handleEditTitleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            addEditTitle();
         }
     };
 
@@ -261,13 +304,31 @@ const CastPage = () => {
 
                     <div>
                         <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
-                            {tr("cast_title_role", "Title/Role")}
+                            {tr("cast_title_role", "Titles/Roles")}
                         </label>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                            {inputTitles.map((title, idx) => (
+                                <span
+                                    key={idx}
+                                    className="inline-flex items-center gap-1 rounded-full border border-light-300 bg-light-100 px-2.5 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-700 dark:text-dark-200"
+                                >
+                                    {title}
+                                    <button
+                                        type="button"
+                                        onClick={() => removeTitle(idx)}
+                                        className="ml-0.5 rounded-full p-0.5 hover:bg-light-300 dark:hover:bg-dark-600"
+                                    >
+                                        <X size={10} />
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
                         <input
-                            value={inputTitle}
-                            onChange={(e) => setInputTitle(e.target.value)}
-                            onKeyDown={handleCreateKeyDown}
-                            placeholder={tr("cast_title_role", "Title/Role")}
+                            value={titleInput}
+                            onChange={(e) => setTitleInput(e.target.value)}
+                            onKeyDown={handleTitleKeyDown}
+                            onBlur={addTitle}
+                            placeholder={tr("cast_title_placeholder", "Type a title and press Enter")}
                             disabled={isSaving}
                             className="input w-full disabled:opacity-50"
                         />
@@ -366,7 +427,8 @@ const CastPage = () => {
                                 {filteredMembers.map((member) => {
                                     const photoUrl = getCastPhotoUrl(member.photo);
                                     const initial = member.name ? member.name.charAt(0).toUpperCase() : "?";
-                                    return (
+
+    return (
                                         <tr key={member._id} className="hover:bg-light-50/50 dark:hover:bg-dark-800/50 transition-colors">
                                             <td className="py-3 pr-4">
                                                 <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-light-200 bg-light-100 dark:border-dark-700 dark:bg-dark-700">
@@ -383,7 +445,20 @@ const CastPage = () => {
                                                 {member.name}
                                             </td>
                                             <td className="py-3 pr-4 text-light-600 dark:text-dark-300 whitespace-nowrap">
-                                                {member.title || "-"}
+                                                <div className="flex flex-wrap gap-1">
+                                                    {(member.title || []).length > 0 ? (
+                                                        member.title!.map((t, idx) => (
+                                                            <span
+                                                                key={idx}
+                                                                className="inline-flex items-center rounded-full border border-light-200 bg-light-50 px-2 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200"
+                                                            >
+                                                                {t}
+                                                            </span>
+                                                        ))
+                                                    ) : (
+                                                        "-"
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="py-3 pr-4 whitespace-nowrap">
                                                 <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -477,14 +552,32 @@ const CastPage = () => {
 
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-light-700 dark:text-dark-300">
-                                        {tr("cast_title_role", "Title/Role")}
+                                        {tr("cast_title_role", "Titles/Roles")}
                                     </label>
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {editTitles.map((title, idx) => (
+                                            <span
+                                                key={idx}
+                                                className="inline-flex items-center gap-1 rounded-full border border-light-300 bg-light-100 px-2.5 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-700 dark:text-dark-200"
+                                            >
+                                                {title}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeEditTitle(idx)}
+                                                    className="ml-0.5 rounded-full p-0.5 hover:bg-light-300 dark:hover:bg-dark-600"
+                                                >
+                                                    <X size={10} />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
                                     <input
-                                        value={editTitle}
-                                        onChange={(e) => setEditTitle(e.target.value)}
-                                        onKeyDown={handleEditKeyDown}
+                                        value={editTitleInput}
+                                        onChange={(e) => setEditTitleInput(e.target.value)}
+                                        onKeyDown={handleEditTitleKeyDown}
+                                        onBlur={addEditTitle}
                                         className="w-full rounded-lg border border-light-300 px-4 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700 dark:text-light-100"
-                                        placeholder={tr("cast_title_role", "Title/Role")}
+                                        placeholder={tr("cast_title_placeholder", "Type a title and press Enter")}
                                     />
                                 </div>
                             </div>

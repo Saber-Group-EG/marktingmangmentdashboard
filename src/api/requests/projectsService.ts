@@ -7,7 +7,7 @@ export interface ProjectTaxonomyOption {
   _id?: string;
   id?: string;
   name: string | { en?: string; ar?: string };
-  title?: string;
+  title?: string[];
   socialLinks?: { platform: string; url: string; _id?: string }[];
   photo?: any;
 }
@@ -60,7 +60,14 @@ const normalizeTaxonomyOption = (item: any): ProjectTaxonomyOption | null => {
     _id: id || undefined,
     id: id || undefined,
     name,
-    ...(item.title ? { title: String(item.title).trim() } : {}),
+    ...(() => {
+      const raw = item.titles || item.title;
+      if (!raw) return {};
+      const arr = Array.isArray(raw)
+        ? raw.flatMap((v: any) => typeof v === "string" ? v.split(",").map((s: string) => s.trim()).filter(Boolean) : [String(v)])
+        : String(raw).split(",").map((s: string) => s.trim()).filter(Boolean);
+      return arr.length ? { title: arr } : {};
+    })(),
     ...(Array.isArray(item.socialLinks) && item.socialLinks.length
       ? { socialLinks: item.socialLinks.filter((l: any) => l && l.url).map((l: any) => ({ platform: l.platform || "", url: l.url, _id: l._id })) }
       : {}),
