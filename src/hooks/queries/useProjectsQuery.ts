@@ -27,13 +27,14 @@ export const projectsKeys = {
     cast: () => [...projectsKeys.all, "cast"] as const,
 };
 
-export const useProjects = (params?: Record<string, any>) => {
+export const useProjects = (params?: Record<string, any>, opts?: { enabled?: boolean }) => {
     return useQuery({
         queryKey: projectsKeys.list(params),
         queryFn: () => getProjects(params),
         staleTime: 5 * 60 * 1000,
         refetchOnMount: true,
         refetchOnWindowFocus: false,
+        enabled: opts?.enabled !== undefined ? opts.enabled : true,
     });
 };
 

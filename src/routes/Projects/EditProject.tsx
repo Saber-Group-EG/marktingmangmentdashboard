@@ -578,7 +578,15 @@ const EditProject: React.FC = () => {
 
     const { data: project, isLoading, error } = useProject(id);
     const { data: projectCast = []} = useProjectCast();
-    const { data: allProjects = [] as any[] } = useProjects();
+    const [parentSearch, setParentSearch] = useState("");
+    const [debouncedParentSearch, setDebouncedParentSearch] = useState("");
+
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedParentSearch(parentSearch), 300);
+        return () => clearTimeout(t);
+    }, [parentSearch]);
+
+    const { data: parentSearchResults = [] as any[], isLoading: isLoadingParentProjects } = useProjects({ search: debouncedParentSearch } as any, { enabled: !!debouncedParentSearch });
     const update = useUpdateProject();
     const del = useDeleteProject();
     const queryClient = useQueryClient();
@@ -673,7 +681,7 @@ const EditProject: React.FC = () => {
         if (hasChanges) {
             setForm((prev: any) => ({ ...prev, types: resolved }));
         }
-    }, [projectTypes]);
+    }, [projectTypes, form.types]);
 
     // Persist form draft to localStorage (strip heavy media to avoid quota issues)
     useEffect(() => {
@@ -1267,14 +1275,7 @@ const EditProject: React.FC = () => {
         let parentInitial: any = null;
         const rawParent: any = (project as any).parentProject;
         if (rawParent) {
-            if (typeof rawParent === 'string') {
-                const found = allProjects.find((p: any) => (p.id || p._id) === rawParent || p.name === rawParent);
-                parentInitial = found || rawParent;
-            } else if (typeof rawParent === 'object') {
-                const pid = rawParent._id || rawParent.id;
-                const found = pid ? allProjects.find((p: any) => (p.id || p._id) === pid) : allProjects.find((p: any) => p.name === rawParent.name);
-                parentInitial = found || rawParent;
-            }
+            parentInitial = typeof rawParent === 'object' ? rawParent : rawParent;
         }
 
         // derive project company option from server payload when available
@@ -1320,7 +1321,7 @@ const EditProject: React.FC = () => {
             company: companyInitial,
         });
 
-    }, [project, projectCast, allProjects, projectSubcategories]);
+    }, [project, projectCast, projectSubcategories]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -1382,47 +1383,53 @@ const EditProject: React.FC = () => {
         const newEnTags: string[] = [];
         const newArTags: string[] = [];
         const maxLen = Math.max(enParts.length, arParts.length);
-        const currentTagsEn = form.tagsEn || [];
-        const currentTagsAr = form.tagsAr || [];
         for (let i = 0; i < maxLen; i++) {
             const en = enParts[i] || "";
             const ar = arParts[i] || "";
             if (en) {
-                const exists = currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
                 const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
-                if (!exists && !alreadyAdded) newEnTags.push(en);
+                if (!alreadyAdded) newEnTags.push(en);
             }
             if (ar) {
-                const exists = currentTagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
                 const alreadyAdded = newArTags.some((t) => t.toLowerCase() === ar.toLowerCase());
-                if (!exists && !alreadyAdded) newArTags.push(ar);
+                if (!alreadyAdded) newArTags.push(ar);
             }
         }
         if (newEnTags.length > 0 || newArTags.length > 0) {
-            setForm({ ...form, tagsEn: [...currentTagsEn, ...newEnTags], tagsAr: [...currentTagsAr, ...newArTags] });
+            setForm((prev: any) => {
+                const currentTagsEn = prev.tagsEn || [];
+                const currentTagsAr = prev.tagsAr || [];
+                const filteredNewEn = newEnTags.filter((en) => !currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase()));
+                const filteredNewAr = newArTags.filter((ar) => !currentTagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase()));
+                return { ...prev, tagsEn: [...currentTagsEn, ...filteredNewEn], tagsAr: [...currentTagsAr, ...filteredNewAr] };
+            });
         }
         setNewTag("");
         setNewTagAr("");
     };
 
     const handleRemoveTag = (index: number) => {
-        const newTagsEn = [...form.tagsEn];
-        newTagsEn.splice(index, 1);
-        setForm({ ...form, tagsEn: newTagsEn });
+        setForm((prev: any) => {
+            const newTagsEn = [...(prev.tagsEn || [])];
+            newTagsEn.splice(index, 1);
+            return { ...prev, tagsEn: newTagsEn };
+        });
     };
 
     const handleRemoveTagAr = (index: number) => {
-        const newTagsAr = [...form.tagsAr];
-        newTagsAr.splice(index, 1);
-        setForm({ ...form, tagsAr: newTagsAr });
+        setForm((prev: any) => {
+            const newTagsAr = [...(prev.tagsAr || [])];
+            newTagsAr.splice(index, 1);
+            return { ...prev, tagsAr: newTagsAr };
+        });
     };
 
     const handleRemoveCategory = (cat: any) => {
-        setForm({ ...form, categories: form.categories.filter((c: any) => !isSameOption(c, cat)) });
+        setForm((prev: any) => ({ ...prev, categories: (prev.categories || []).filter((c: any) => !isSameOption(c, cat)) }));
     };
 
     const handleRemoveSubcategory = (sub: any) => {
-        setForm({ ...form, subcategories: form.subcategories.filter((s: any) => !isSameOption(s, sub)) });
+        setForm((prev: any) => ({ ...prev, subcategories: (prev.subcategories || []).filter((s: any) => !isSameOption(s, sub)) }));
     };
 
     const createSubcategoryMutation = useCreateSubcategory();
@@ -1442,7 +1449,7 @@ const EditProject: React.FC = () => {
             { name: { en, ar }, parentCategory: parentId },
             {
                 onSuccess: (created) => {
-                    setForm({ ...form, subcategories: [...form.subcategories, created] });
+                    setForm((prev: any) => ({ ...prev, subcategories: [...(prev.subcategories || []), created] }));
                     setNewSubcategory((prev) => ({ ...prev, [parentId]: "" }));
                     setNewSubcategoryAr((prev) => ({ ...prev, [parentId]: "" }));
                     setValidationErrors((prev) => ({ ...prev, subcategories: undefined }));
@@ -1455,7 +1462,7 @@ const EditProject: React.FC = () => {
     };
 
     const handleRemoveType = (type: any) => {
-        setForm({ ...form, types: form.types.filter((t: any) => !isSameOption(t, type)) });
+        setForm((prev: any) => ({ ...prev, types: (prev.types || []).filter((t: any) => !isSameOption(t, type)) }));
     };
 
     const handleAddCategory = () => {
@@ -1478,13 +1485,15 @@ const EditProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = (form.categories || []).some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newCats.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
-            if (exists || alreadyAdded) continue;
+            if (alreadyAdded) continue;
             newCats.push({ en, ar });
         }
         if (newCats.length > 0) {
-            setForm({ ...form, categories: [...form.categories, ...newCats] });
+            setForm((prev: any) => {
+                const filteredNew = newCats.filter((c: any) => !(prev.categories || []).some((existing: any) => getOptionLabel(existing).toLowerCase() === getOptionLabel(c).toLowerCase()));
+                return { ...prev, categories: [...(prev.categories || []), ...filteredNew] };
+            });
         }
         setNewCategory("");
         setNewCategoryAr("");
@@ -1510,13 +1519,15 @@ const EditProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = (form.types || []).some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newTypes.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
-            if (exists || alreadyAdded) continue;
+            if (alreadyAdded) continue;
             newTypes.push({ en, ar });
         }
         if (newTypes.length > 0) {
-            setForm({ ...form, types: [...(form.types || []), ...newTypes] });
+            setForm((prev: any) => {
+                const filteredNew = newTypes.filter((t: any) => !(prev.types || []).some((existing: any) => getOptionLabel(existing).toLowerCase() === getOptionLabel(t).toLowerCase()));
+                return { ...prev, types: [...(prev.types || []), ...filteredNew] };
+            });
         }
         setNewType("");
         setNewTypeAr("");
@@ -1526,27 +1537,30 @@ const EditProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectCategories[idx];
         if (!selected) return;
-        if (!(form.categories || []).some((c: any) => isSameOption(c, selected))) {
-            setForm({ ...form, categories: [...(form.categories || []), selected] });
-        }
+        setForm((prev: any) => {
+            if ((prev.categories || []).some((c: any) => isSameOption(c, selected))) return prev;
+            return { ...prev, categories: [...(prev.categories || []), selected] };
+        });
     };
 
     const handleSelectExistingSubcategory = (value: string) => {
         const idx = Number(value);
         const selected = projectSubcategories[idx];
         if (!selected) return;
-        if (!(form.subcategories || []).some((s: any) => isSameOption(s, selected))) {
-            setForm({ ...form, subcategories: [...(form.subcategories || []), selected] });
-        }
+        setForm((prev: any) => {
+            if ((prev.subcategories || []).some((s: any) => isSameOption(s, selected))) return prev;
+            return { ...prev, subcategories: [...(prev.subcategories || []), selected] };
+        });
     };
 
     const handleSelectExistingType = (value: string) => {
         const idx = Number(value);
         const selected = projectTypes[idx];
         if (!selected) return;
-        if (!(form.types || []).some((t: any) => isSameOption(t, selected))) {
-            setForm({ ...form, types: [...(form.types || []), selected] });
-        }
+        setForm((prev: any) => {
+            if ((prev.types || []).some((t: any) => isSameOption(t, selected))) return prev;
+            return { ...prev, types: [...(prev.types || []), selected] };
+        });
     };
 
     const createCompanyMutation = useCreateProjectCompany();
@@ -1584,7 +1598,7 @@ const EditProject: React.FC = () => {
                 field: newCompanyField.trim() || undefined,
                 logo: newCompanyLogo || undefined,
             });
-            setForm({ ...form, company: created });
+            setForm((prev: any) => ({ ...prev, company: created }));
             setNewCompanyEn("");
             setNewCompanyAr("");
             setNewCompanyField("");
@@ -3527,9 +3541,10 @@ if (Array.isArray(clone.cast)) {
                                             {tr("parent_project", "Parent Project")}
                                         </label>
                                         <Autocomplete
-                                            options={allProjects.filter((p: any) => ((p.id || p._id) !== id))}
+                                            options={parentSearchResults.filter((p: any) => ((p.id || p._id) !== id))}
                                             value={form.parentProject || null}
-                                            onChange={(_, v) => setForm({ ...form, parentProject: v })}
+                                            onChange={(_, v) => setForm((prev: any) => ({ ...prev, parentProject: v }))}
+                                            onInputChange={(_, v) => setParentSearch(v)}
                                             getOptionLabel={(opt) => getOptionLabel(opt)}
                                             isOptionEqualToValue={(o: any, v: any) => {
                                                 const oId = (o && (o._id || o.id)) || "";
@@ -3537,9 +3552,11 @@ if (Array.isArray(clone.cast)) {
                                                 if (oId && vId) return String(oId) === String(vId);
                                                 return getOptionLabel(o) === getOptionLabel(v);
                                             }}
-                                            renderInput={(params) => <TextField {...params} placeholder={tr("optional_parent_project", "Optional parent project")} size="small" />}
+                                            renderInput={(params) => <TextField {...params} placeholder={isLoadingParentProjects ? tr("searching", "Searching...") : tr("optional_parent_project", "Optional parent project")} size="small" />}
                                             sx={taxonomyAutocompleteSx}
                                             slotProps={taxonomyAutocompleteSlotProps}
+                                            loading={isLoadingParentProjects}
+                                            noOptionsText={debouncedParentSearch ? tr("no_results", "No results") : tr("type_to_search", "Type to search...")}
                                         />
                                     </div>
 

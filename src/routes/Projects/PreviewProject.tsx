@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useProject, useProjectCast } from "@/hooks/queries";
+import { useProject, useProjectCast, useCategories, useProjectTypes } from "@/hooks/queries";
 import { useLang } from "@/hooks/useLang";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import { getProxiedCoverUrl } from "@/utils/proxy";
@@ -34,6 +34,28 @@ const ProjectDetails: React.FC = () => {
 
     const { data: project, isLoading, error } = useProject(id);
     const { data: projectCast = [] } = useProjectCast();
+    const { data: projectCategoriesResponse } = useCategories({ type: "project" });
+    const allCategories = projectCategoriesResponse?.categories || [];
+    const { data: projectTypes = [] } = useProjectTypes();
+
+    const resolveTaxonomyName = (item: any, lookupList: any[], lang: string): { en: string; ar: string } | string => {
+        if (!item) return "";
+        if (typeof item === "string") {
+            const found = lookupList.find((o: any) => (o._id || o.id) === item);
+            if (found) {
+                const name = found.name;
+                if (name && typeof name === "object") return name;
+                return name || found.en || found.ar || item;
+            }
+            return item;
+        }
+        if (typeof item === "object") {
+            const name = item.name;
+            if (name && typeof name === "object") return name;
+            return name || item.en || item.ar || item._id || item.id || "";
+        }
+        return String(item);
+    };
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
     const [copied, setCopied] = useState<string | null>(null);
@@ -882,7 +904,7 @@ const ProjectDetails: React.FC = () => {
                             <div className="flex flex-wrap gap-2">
                                 {p.categories?.map((cat: any, idx: number) => (
                                     <span key={getOptionKey(cat, idx)} className="px-3 py-1.5 bg-light-500 text-white dark:bg-secdark-700 dark:text-white rounded-lg text-sm">
-                                        <BilingualText value={cat?.name || cat} size="sm" className="text-white [&>span]:text-white/70" />
+                                        <BilingualText value={resolveTaxonomyName(cat, allCategories, lang)} size="sm" className="text-white [&>span]:text-white/70" />
                                     </span>
                                 )) || <span className="text-light-400 dark:text-dark-500">{tr("no_categories", "No sectors")}</span>}
                             </div>
@@ -908,7 +930,7 @@ const ProjectDetails: React.FC = () => {
                             <div className="flex flex-wrap gap-2">
                                 {p.types?.map((type: any, idx: number) => (
                                     <span key={getOptionKey(type, idx)} className="px-3 py-1.5 border border-light-200 dark:border-dark-700 text-light-700 dark:text-dark-300 rounded-lg text-sm">
-                                        <BilingualText value={type?.name || type} size="sm" />
+                                        <BilingualText value={resolveTaxonomyName(type, projectTypes, lang)} size="sm" />
                                     </span>
                                 )) || <span className="text-light-400 dark:text-dark-500">{tr("no_types", "No types")}</span>}
                             </div>

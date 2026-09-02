@@ -30,6 +30,7 @@ import { Calendar } from "lucide-react";
 import { createCategory } from "@/api/requests/categoriesService";
 import { createType } from "@/api/requests/typesService";
 import { createCast } from "@/api/requests/castService";
+import { togglePublishProject } from "@/api/requests/projectsService";
 import { showAlert } from "@/utils/swal";
 
 interface Material {
@@ -595,8 +596,24 @@ const AddProject: React.FC = () => {
     const { data: projectTypes = [] } = useProjectTypes();
     const { data: projectCast = []} = useProjectCast();
     const { data: projectCompanies = [] } = useProjectCompanies();
-    const { data: allProjects = [] as any[]} = useProjects();
     const [cloneProjectId, setCloneProjectId] = useState("");
+    const [parentSearch, setParentSearch] = useState("");
+    const [debouncedParentSearch, setDebouncedParentSearch] = useState("");
+    const [cloneSearch, setCloneSearch] = useState("");
+    const [debouncedCloneSearch, setDebouncedCloneSearch] = useState("");
+
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedParentSearch(parentSearch), 300);
+        return () => clearTimeout(t);
+    }, [parentSearch]);
+
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedCloneSearch(cloneSearch), 300);
+        return () => clearTimeout(t);
+    }, [cloneSearch]);
+
+    const { data: parentSearchResults = [] as any[], isLoading: isLoadingParentProjects } = useProjects({ search: debouncedParentSearch } as any, { enabled: !!debouncedParentSearch });
+    const { data: cloneSearchResults = [] as any[], isLoading: isLoadingCloneProjects } = useProjects({ search: debouncedCloneSearch } as any, { enabled: !!debouncedCloneSearch });
     const { data: cloneSourceProject } = useProject(cloneProjectId || undefined, { enabled: !!cloneProjectId });
     const [form, setForm] = useState<any>(() => {
         const defaults = getDefaultFormState();
@@ -662,7 +679,7 @@ const AddProject: React.FC = () => {
         if (hasChanges) {
             setForm((prev: any) => ({ ...prev, types: resolved }));
         }
-    }, [projectTypes]);
+    }, [projectTypes, form.types]);
 
     // Persist form draft to localStorage (strip heavy media to avoid quota issues)
     useEffect(() => {
@@ -1047,7 +1064,7 @@ const AddProject: React.FC = () => {
 
     const emptyForm = () => ({
         ...getDefaultFormState(),
-        order: (allProjects?.length || 0) + 1,
+        order: 0,
     });
 
     const resetCloneSelection = () => {
@@ -1061,13 +1078,10 @@ const AddProject: React.FC = () => {
         const rawParent: any = source.parentProject;
         let parentInitial: any = null;
         if (rawParent) {
-            if (typeof rawParent === "string") {
-                const found = allProjects.find((p: any) => (p.id || p._id) === rawParent || p.name === rawParent);
-                parentInitial = found || rawParent;
-            } else if (typeof rawParent === "object") {
-                const pid = rawParent._id || rawParent.id;
-                const found = pid ? allProjects.find((p: any) => (p.id || p._id) === pid) : null;
-                parentInitial = found || rawParent;
+            if (typeof rawParent === "object") {
+                parentInitial = rawParent;
+            } else {
+                parentInitial = rawParent;
             }
         }
 
@@ -1155,7 +1169,7 @@ const AddProject: React.FC = () => {
             name: toLocalizedString(srcName),
             description: toLocalizedString(srcDesc),
             location: toLocalizedString(srcLoc),
-            order: Number(source.order) || (allProjects?.length || 0) + 1,
+            order: Number(source.order) || 0,
             published: source.published || false,
             publishAt: source.publishedAt ? new Date(source.publishedAt) : null,
             categories: source.categories || [],
@@ -1235,47 +1249,53 @@ const AddProject: React.FC = () => {
         const newEnTags: string[] = [];
         const newArTags: string[] = [];
         const maxLen = Math.max(enParts.length, arParts.length);
-        const currentTagsEn = form.tagsEn || [];
-        const currentTagsAr = form.tagsAr || [];
         for (let i = 0; i < maxLen; i++) {
             const en = enParts[i] || "";
             const ar = arParts[i] || "";
             if (en) {
-                const exists = currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase());
                 const alreadyAdded = newEnTags.some((t) => t.toLowerCase() === en.toLowerCase());
-                if (!exists && !alreadyAdded) newEnTags.push(en);
+                if (!alreadyAdded) newEnTags.push(en);
             }
             if (ar) {
-                const exists = currentTagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase());
                 const alreadyAdded = newArTags.some((t) => t.toLowerCase() === ar.toLowerCase());
-                if (!exists && !alreadyAdded) newArTags.push(ar);
+                if (!alreadyAdded) newArTags.push(ar);
             }
         }
         if (newEnTags.length > 0 || newArTags.length > 0) {
-            setForm({ ...form, tagsEn: [...currentTagsEn, ...newEnTags], tagsAr: [...currentTagsAr, ...newArTags] });
+            setForm((prev: any) => {
+                const currentTagsEn = prev.tagsEn || [];
+                const currentTagsAr = prev.tagsAr || [];
+                const filteredNewEn = newEnTags.filter((en) => !currentTagsEn.some((t: string) => t.toLowerCase() === en.toLowerCase()));
+                const filteredNewAr = newArTags.filter((ar) => !currentTagsAr.some((t: string) => t.toLowerCase() === ar.toLowerCase()));
+                return { ...prev, tagsEn: [...currentTagsEn, ...filteredNewEn], tagsAr: [...currentTagsAr, ...filteredNewAr] };
+            });
         }
         setNewTag("");
         setNewTagAr("");
     };
 
     const handleRemoveTag = (index: number) => {
-        const newTagsEn = [...form.tagsEn];
-        newTagsEn.splice(index, 1);
-        setForm({ ...form, tagsEn: newTagsEn });
+        setForm((prev: any) => {
+            const newTagsEn = [...(prev.tagsEn || [])];
+            newTagsEn.splice(index, 1);
+            return { ...prev, tagsEn: newTagsEn };
+        });
     };
 
     const handleRemoveTagAr = (index: number) => {
-        const newTagsAr = [...form.tagsAr];
-        newTagsAr.splice(index, 1);
-        setForm({ ...form, tagsAr: newTagsAr });
+        setForm((prev: any) => {
+            const newTagsAr = [...(prev.tagsAr || [])];
+            newTagsAr.splice(index, 1);
+            return { ...prev, tagsAr: newTagsAr };
+        });
     };
 
     const handleRemoveCategory = (cat: any) => {
-        setForm({ ...form, categories: form.categories.filter((c: any) => !isSameOption(c, cat)) });
+        setForm((prev: any) => ({ ...prev, categories: (prev.categories || []).filter((c: any) => !isSameOption(c, cat)) }));
     };
 
     const handleRemoveType = (type: any) => {
-        setForm({ ...form, types: form.types.filter((t: any) => !isSameOption(t, type)) });
+        setForm((prev: any) => ({ ...prev, types: (prev.types || []).filter((t: any) => !isSameOption(t, type)) }));
     };
 
     const handleAddCategory = () => {
@@ -1298,13 +1318,15 @@ const AddProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = form.categories.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newCats.some((c: any) => getOptionLabel(c).toLowerCase() === en.toLowerCase());
-            if (exists || alreadyAdded) continue;
+            if (alreadyAdded) continue;
             newCats.push({ en, ar });
         }
         if (newCats.length > 0) {
-            setForm({ ...form, categories: [...form.categories, ...newCats] });
+            setForm((prev: any) => {
+                const filteredNew = newCats.filter((c: any) => !(prev.categories || []).some((existing: any) => getOptionLabel(existing).toLowerCase() === getOptionLabel(c).toLowerCase()));
+                return { ...prev, categories: [...(prev.categories || []), ...filteredNew] };
+            });
         }
         setNewCategory("");
         setNewCategoryAr("");
@@ -1330,13 +1352,15 @@ const AddProject: React.FC = () => {
             const en = enParts[i];
             const ar = arParts[i];
             if (!en || !ar) continue;
-            const exists = form.types.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
             const alreadyAdded = newTypes.some((t: any) => getOptionLabel(t).toLowerCase() === en.toLowerCase());
-            if (exists || alreadyAdded) continue;
+            if (alreadyAdded) continue;
             newTypes.push({ en, ar });
         }
         if (newTypes.length > 0) {
-            setForm({ ...form, types: [...form.types, ...newTypes] });
+            setForm((prev: any) => {
+                const filteredNew = newTypes.filter((t: any) => !(prev.types || []).some((existing: any) => getOptionLabel(existing).toLowerCase() === getOptionLabel(t).toLowerCase()));
+                return { ...prev, types: [...(prev.types || []), ...filteredNew] };
+            });
         }
         setNewType("");
         setNewTypeAr("");
@@ -1346,13 +1370,14 @@ const AddProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectCategories[idx];
         if (!selected) return;
-        if (!form.categories.some((c: any) => isSameOption(c, selected))) {
-            setForm({ ...form, categories: [...form.categories, selected] });
-        }
+        setForm((prev: any) => {
+            if ((prev.categories || []).some((c: any) => isSameOption(c, selected))) return prev;
+            return { ...prev, categories: [...(prev.categories || []), selected] };
+        });
     };
 
     const handleRemoveSubcategory = (sub: any) => {
-        setForm({ ...form, subcategories: form.subcategories.filter((s: any) => !isSameOption(s, sub)) });
+        setForm((prev: any) => ({ ...prev, subcategories: (prev.subcategories || []).filter((s: any) => !isSameOption(s, sub)) }));
     };
 
     const createSubcategoryMutation = useCreateSubcategory();
@@ -1372,7 +1397,7 @@ const AddProject: React.FC = () => {
             { name: { en, ar }, parentCategory: parentId },
             {
                 onSuccess: (created) => {
-                    setForm({ ...form, subcategories: [...form.subcategories, created] });
+                    setForm((prev: any) => ({ ...prev, subcategories: [...(prev.subcategories || []), created] }));
                     setNewSubcategory((prev) => ({ ...prev, [parentId]: "" }));
                     setNewSubcategoryAr((prev) => ({ ...prev, [parentId]: "" }));
                     setValidationErrors((prev) => ({ ...prev, subcategories: undefined }));
@@ -1388,18 +1413,20 @@ const AddProject: React.FC = () => {
         const idx = Number(value);
         const selected = projectSubcategories[idx];
         if (!selected) return;
-        if (!(form.subcategories || []).some((s: any) => isSameOption(s, selected))) {
-            setForm({ ...form, subcategories: [...(form.subcategories || []), selected] });
-        }
+        setForm((prev: any) => {
+            if ((prev.subcategories || []).some((s: any) => isSameOption(s, selected))) return prev;
+            return { ...prev, subcategories: [...(prev.subcategories || []), selected] };
+        });
     };
 
     const handleSelectExistingType = (value: string) => {
         const idx = Number(value);
         const selected = projectTypes[idx];
         if (!selected) return;
-        if (!form.types.some((t: any) => isSameOption(t, selected))) {
-            setForm({ ...form, types: [...form.types, selected] });
-        }
+        setForm((prev: any) => {
+            if ((prev.types || []).some((t: any) => isSameOption(t, selected))) return prev;
+            return { ...prev, types: [...(prev.types || []), selected] };
+        });
     };
 
     const createCompanyMutation = useCreateProjectCompany();
@@ -1437,7 +1464,7 @@ const AddProject: React.FC = () => {
                 field: newCompanyField.trim() || undefined,
                 logo: newCompanyLogo || undefined,
             });
-            setForm({ ...form, company: created });
+            setForm((prev: any) => ({ ...prev, company: created }));
             setNewCompanyEn("");
             setNewCompanyAr("");
             setNewCompanyField("");
@@ -3120,6 +3147,17 @@ const handleShootedAtChange = (date: Date | null) => {
         setUploadLabel("Submitting project...");
         const created = await mutation.mutateAsync(submitData as any);
 
+        // Auto-publish the newly created project
+        const projectId = created?.id || created?._id;
+        if (projectId) {
+            try {
+                setUploadLabel("Publishing project...");
+                await togglePublishProject(projectId);
+            } catch {
+                // Silently ignore publish errors — project was created successfully
+            }
+        }
+
         // mark final step complete
         updateProgress();
 
@@ -3128,7 +3166,6 @@ const handleShootedAtChange = (date: Date | null) => {
         setTimeout(() => {
             // close modal and navigate to created project if available
             setUploadModalOpen(false);
-            const projectId = created?.id;
             navigate(projectId ? `/projects/${projectId}` : "/projects");
         }, 900);
     } catch (error: any) {
@@ -3345,18 +3382,28 @@ const handleShootedAtChange = (date: Date | null) => {
                 {tr("clone_description", "Select an existing project to copy all of its data into this form. Materials are not copied.")}
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
-                <select
-                    value={cloneProjectId}
-                    onChange={(e) => setCloneProjectId(e.target.value)}
-                    className="input w-full"
-                >
-                    <option value="">{tr("select_project_to_clone", "Select a project to clone...")}</option>
-                    {allProjects.map((p: any) => (
-                        <option key={p._id || p.id || getOptionLabel(p)} value={p._id || p.id}>
-                            {getOptionLabel(p)}
-                        </option>
-                    ))}
-                </select>
+                <Autocomplete
+                    options={cloneSearchResults}
+                    value={cloneSourceProject || null}
+                    onChange={(_, v) => {
+                        const id = v ? (v._id || v.id) : "";
+                        setCloneProjectId(id);
+                    }}
+                    onInputChange={(_, v) => setCloneSearch(v)}
+                    getOptionLabel={(opt) => getOptionLabel(opt)}
+                    isOptionEqualToValue={(o: any, v: any) => {
+                        const oId = (o && (o._id || o.id)) || "";
+                        const vId = (v && (v._id || v.id)) || "";
+                        if (oId && vId) return String(oId) === String(vId);
+                        return getOptionLabel(o) === getOptionLabel(v);
+                    }}
+                    renderInput={(params) => <TextField {...params} placeholder={isLoadingCloneProjects ? tr("searching", "Searching...") : tr("select_project_to_clone", "Select a project to clone...")} size="small" />}
+                    sx={taxonomyAutocompleteSx}
+                    slotProps={taxonomyAutocompleteSlotProps}
+                    loading={isLoadingCloneProjects}
+                    className="w-full"
+                    noOptionsText={debouncedCloneSearch ? tr("no_results", "No results") : tr("type_to_search", "Type to search...")}
+                />
                 <button
                     type="button"
                     onClick={resetCloneSelection}
@@ -3480,9 +3527,10 @@ const handleShootedAtChange = (date: Date | null) => {
                         {tr("parent_project", "Parent Project")}
                     </label>
                     <Autocomplete
-                        options={allProjects}
+                        options={parentSearchResults}
                         value={form.parentProject || null}
-                        onChange={(_, v) => setForm({ ...form, parentProject: v })}
+                        onChange={(_, v) => setForm((prev: any) => ({ ...prev, parentProject: v }))}
+                        onInputChange={(_, v) => setParentSearch(v)}
                         getOptionLabel={(opt) => getOptionLabel(opt)}
                         isOptionEqualToValue={(o: any, v: any) => {
                             const oId = (o && (o._id || o.id)) || "";
@@ -3490,9 +3538,11 @@ const handleShootedAtChange = (date: Date | null) => {
                             if (oId && vId) return String(oId) === String(vId);
                             return getOptionLabel(o) === getOptionLabel(v);
                         }}
-                        renderInput={(params) => <TextField {...params} placeholder={tr("optional_parent_project", "Optional parent project")} size="small" />}
+                        renderInput={(params) => <TextField {...params} placeholder={isLoadingParentProjects ? tr("searching", "Searching...") : tr("optional_parent_project", "Optional parent project")} size="small" />}
                         sx={taxonomyAutocompleteSx}
                         slotProps={taxonomyAutocompleteSlotProps}
+                        loading={isLoadingParentProjects}
+                        noOptionsText={debouncedParentSearch ? tr("no_results", "No results") : tr("type_to_search", "Type to search...")}
                     />
                 </div>
 

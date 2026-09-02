@@ -143,7 +143,7 @@ export interface ProjectListResponse {
 
 export const getProjects = async (params?: Record<string, any>): Promise<Project[]> => {
   try {
-    const mergedParams = { ...(params || {}), PageCount: "all" };
+    const mergedParams = { ...(params || {}) };
     const response = await axiosInstance.get(PROJECTS_ENDPOINT, { params: mergedParams });
     const responseData = response.data;
     let data: any[] = [];
