@@ -3588,6 +3588,10 @@ if (Array.isArray(clone.cast)) {
                                                 dateFormat="MMMM d, yyyy"
                                                 placeholderText={tr("select_shoot_date", "Select the shoot date")}
                                                 className="input w-full pl-10"
+                                                showYearDropdown
+                                                showMonthDropdown
+                                                yearDropdownItemNumber={30}
+                                                scrollableYearDropdown
                                                 calendarClassName="!bg-white dark:!bg-dark-800 !border-light-200 dark:!border-dark-600 !rounded-lg shadow-lg"
                                                 dayClassName={(date) =>
                                                     date.toDateString() === new Date().toDateString()
