@@ -38,13 +38,14 @@ export const useProjects = (params?: Record<string, any>, opts?: { enabled?: boo
     });
 };
 
-export const useProjectsPaginated = (params?: Record<string, any>) => {
+export const useProjectsPaginated = (params?: Record<string, any>, opts?: { enabled?: boolean }) => {
     return useQuery<ProjectListResponse>({
         queryKey: projectsKeys.list(params),
         queryFn: () => getProjectsPaginated(params),
         staleTime: 5 * 60 * 1000,
         refetchOnMount: true,
         refetchOnWindowFocus: false,
+        enabled: opts?.enabled !== undefined ? opts.enabled : true,
     });
 };
 

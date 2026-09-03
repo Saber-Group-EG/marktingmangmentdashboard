@@ -42,6 +42,7 @@ const ProjectDetails: React.FC = () => {
         if (!item) return "";
         if (typeof item === "string") {
             const found = lookupList.find((o: any) => (o._id || o.id) === item);
+            void lang; // to avoid unused variable warning
             if (found) {
                 const name = found.name;
                 if (name && typeof name === "object") return name;

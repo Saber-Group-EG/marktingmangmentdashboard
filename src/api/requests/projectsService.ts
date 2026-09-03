@@ -163,7 +163,10 @@ export const getProjectsPaginated = async (
   params?: Record<string, any>
 ): Promise<ProjectListResponse> => {
   try {
-    const mergedParams = { ...(params || {}), PageCount: params?.PageCount ?? 20 };
+    const mergedParams = { 
+      ...(params || {}), 
+      PageCount: params?.PageCount ?? 20,
+    };
     const response = await axiosInstance.get(PROJECTS_ENDPOINT, { params: mergedParams });
     const responseData = response.data;
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageIcon, Save, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, RefreshCw, GripVertical, Trash2, Loader2, Image as ImageIcon, Save, RotateCcw } from "lucide-react";
 import { getProxiedCoverUrl } from "@/utils/proxy";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -84,7 +84,7 @@ const SortableProjectCard: React.FC<SortableProjectCardProps> = ({
 
 const ProjectsPage: React.FC = () => {
     const navigate = useNavigate();
-    const { t, lang } = useLang();
+    const { t } = useLang();
     const tr = (key: string, fallback: string) => {
         const value = t(key);
         return !value || value === key ? fallback : value;
@@ -92,194 +92,26 @@ const ProjectsPage: React.FC = () => {
 
     const [searchTerm, setSearchTerm] = useState<string>("");
     const [companyFilter, setCompanyFilter] = useState<string[]>([]);
-    const [currentPage, setCurrentPage] = useState<number>(1);
-    const PAGE_SIZE = 24    ;
 
-    const { data: paginatedResponse, isLoading, error, refetch } = useProjectsPaginated({
-        page: currentPage,
-        PageCount: PAGE_SIZE,
+    const { data: allProjectsData, isLoading, error, refetch } = useProjectsPaginated({
+        PageCount: "all",
     });
-    const projects = paginatedResponse?.data || [];
-    const totalCount = paginatedResponse?.totalCount || 0;
-    const totalPages = paginatedResponse?.totalPages || 0;
+
     const { data: projectCast = [] } = useProjectCast();
     const { data: allProjectCompanies = [] } = useProjectCompanies();
-    const { mutate: reorderProjects, isPending: isReordering } = useReorderProjects();
-    const deleteProject = useDeleteProject();
-    const togglePublish = useTogglePublishProject();
-    const [deletingId, setDeletingId] = useState<string | null>(null);
 
-    // Only show companies that are actually used in projects
-    const usedCompanyIds = useMemo(() => {
-        const ids = new Set<string>();
-        projects.forEach((p: any) => {
-            const c = p.company;
-            if (!c) return;
-            if (typeof c === "string") ids.add(c);
-            else if (c?._id) ids.add(c._id);
-            else if (c?.id) ids.add(c.id);
-        });
-        return ids;
-    }, [projects]);
-
-    const usedProjectCompanies = useMemo(
-        () => allProjectCompanies.filter((pc: any) => usedCompanyIds.has(pc._id || pc.id)),
-        [allProjectCompanies, usedCompanyIds]
-    );
-
-    const handleTogglePublish = (project: any) => {
-        const id = getProjectId(project);
-        if (!id) return;
-        const newPublished = !project.published;
-        // Optimistic update
-        setOrderedProjects((prev) =>
-            prev.map((p: any) => (getProjectId(p) === id ? { ...p, published: newPublished } : p))
-        );
-        togglePublish.mutate(id, {
-            onError: () => {
-                // Revert on error
-                setOrderedProjects((prev) =>
-                    prev.map((p: any) => (getProjectId(p) === id ? { ...p, published: !newPublished } : p))
-                );
-                showAlert(tr("failed_to_toggle", "Failed to update publish status"), "error");
-            },
-        });
-    };
-
-    const handleDelete = async (project: any) => {
-        const id = getProjectId(project);
-        if (!id || deletingId) return;
-        const name = localizedText(project.localizedName || project.name) || tr("untitled", "Untitled");
-        const confirmed = await showConfirm(tr("delete_confirm_msg", 'Delete "{name}"? This cannot be undone.').replace("{name}", name), tr("delete_confirm", "Delete"), tr("cancel_confirm", "Cancel"));
-        if (!confirmed) return;
-        setDeletingId(id);
-        deleteProject.mutate(id, {
-            onSettled: () => setDeletingId(null),
-        });
-    };
-
-    const [orderedProjects, setOrderedProjects] = useState<any[]>([]);
-    const orderedProjectsRef = useRef<any[]>([]);
-    const [hasUnsavedOrderChanges, setHasUnsavedOrderChanges] = useState(false);
-    const originalOrderRef = useRef<string[]>([]);
-
-    useEffect(() => {
-        const sorted = [...projects].sort(
-            (a: any, b: any) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
-        );
-        setOrderedProjects((prev) => {
-            if (prev.length === sorted.length && prev.every((p: any, i: number) => getProjectId(p) === getProjectId(sorted[i]))) return prev;
-            return sorted;
-        });
-        if (!originalOrderRef.current.length) {
-            originalOrderRef.current = sorted.map((p: any) => getProjectId(p));
-        }
-    }, [projects]);
-
-    useEffect(() => {
-        orderedProjectsRef.current = orderedProjects;
-    }, [orderedProjects]);
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm]);
-
-    const total = totalCount;
-    const published = projects.filter((p: any) => p.published).length;
-    const drafts = total - published;
-
-    const createdAtNumbers = useMemo(() => {
-        const map = new Map<string, number>();
-        const sorted = [...projects].sort(
-            (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        );
-        sorted.forEach((p: any, i: number) => {
-            map.set(getProjectId(p), i + 1);
-        });
-        return map;
-    }, [projects]);
+    const allProjects = allProjectsData?.data || [];
 
     const localizedText = (value: any): string => {
         if (!value) return "";
         if (typeof value === "string") return value;
-        if (typeof value === "object") return value[lang] || value.en || value.ar || value.name || "";
-        return "";
+        if (typeof value === "object") {
+            if ("en" in value || "ar" in value) return value.en || value.ar || "";
+            if ("name" in value) return value.name || "";
+            return "";
+        }
+        return String(value);
     };
-
-    const filtered = useMemo(() => {
-        const q = searchTerm.trim().toLowerCase();
-        return orderedProjects.filter((p: any) => {
-            const name = localizedText(p?.localizedName || p?.name).toLowerCase();
-            const category = localizedText(p?.category).toLowerCase();
-            const matchesSearch = !q || name.includes(q) || category.includes(q);
-            let matchesCompany = true;
-            if (companyFilter.length > 0) {
-                const c = p.company;
-                const cid = typeof c === "string" ? c : c?._id || c?.id || "";
-                matchesCompany = companyFilter.includes(cid);
-            }
-            return matchesSearch && matchesCompany;
-        });
-    }, [orderedProjects, searchTerm, companyFilter]);
-
-    const toggleCompanyFilter = (companyId: string) => {
-        setCompanyFilter((prev) =>
-            prev.includes(companyId) ? prev.filter((id) => id !== companyId) : [...prev, companyId]
-        );
-    };
-
-    const handleDrop = useCallback(() => {
-        const dragId = dragSourceIdRef.current;
-        const hoverId = dropTargetRef.current;
-
-        if (!dragId || !hoverId || dragId === hoverId) return;
-
-        setOrderedProjects((prev) => {
-            const dragIndex = prev.findIndex((p: any) => getProjectId(p) === dragId);
-            const hoverIndex = prev.findIndex((p: any) => getProjectId(p) === hoverId);
-            if (dragIndex < 0 || hoverIndex < 0 || dragIndex === hoverIndex) return prev;
-
-            const next = [...prev];
-            const [moved] = next.splice(dragIndex, 1);
-            next.splice(hoverIndex, 0, moved);
-
-            const orderedIds = next.map((p: any) => getProjectId(p));
-            const hasChanged = orderedIds.length !== originalOrderRef.current.length ||
-                orderedIds.some((id, i) => id !== originalOrderRef.current[i]);
-            setHasUnsavedOrderChanges(hasChanged);
-
-            return next;
-        });
-    }, []);
-
-    const handleSaveOrder = useCallback(() => {
-        const orderedIds = orderedProjectsRef.current.map((p: any) => getProjectId(p)).filter(Boolean);
-        if (!orderedIds.length) return;
-        reorderProjects(orderedIds, {
-            onSuccess: () => {
-                originalOrderRef.current = orderedIds;
-                setHasUnsavedOrderChanges(false);
-            },
-            onError: () => refetch(),
-        });
-    }, [reorderProjects, refetch]);
-
-    const handleRevertOrder = useCallback(() => {
-        setOrderedProjects((prev) => {
-            const sorted = [...prev].sort(
-                (a: any, b: any) => {
-                    const aIdx = originalOrderRef.current.indexOf(getProjectId(a));
-                    const bIdx = originalOrderRef.current.indexOf(getProjectId(b));
-                    return (aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx) - (bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx);
-                }
-            );
-            return sorted;
-        });
-        setHasUnsavedOrderChanges(false);
-    }, []);
-
-    const dragSourceIdRef = useRef<string | null>(null);
-    const dropTargetRef = useRef<string | null>(null);
 
     const getClientOrCastName = (project: any): string => {
         const clientName =
@@ -340,6 +172,181 @@ const ProjectsPage: React.FC = () => {
 
         return "-";
     };
+
+    // Apply search and company filter
+    const projects = useMemo(() => {
+        const q = searchTerm.trim().toLowerCase();
+        return allProjects.filter((p: any) => {
+            // Search filter
+            if (q) {
+                const name = localizedText(p?.localizedName || p?.name).toLowerCase();
+                const category = localizedText(p?.category).toLowerCase();
+                const description = localizedText(p?.localizedDescription || p?.description).toLowerCase();
+                const clientName = getClientOrCastName(p).toLowerCase();
+                if (!name.includes(q) && !category.includes(q) && !description.includes(q) && !clientName.includes(q)) {
+                    return false;
+                }
+            }
+            // Company filter
+            if (companyFilter.length > 0) {
+                const c = p.company;
+                const cid = typeof c === "string" ? c : c?._id || c?.id || "";
+                if (!companyFilter.includes(cid)) return false;
+            }
+            return true;
+        });
+    }, [allProjects, searchTerm, companyFilter]);
+
+    const totalCount = projects.length;
+    const { mutate: reorderProjects, isPending: isReordering } = useReorderProjects();
+    const deleteProject = useDeleteProject();
+    const togglePublish = useTogglePublishProject();
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    // Only show companies that are actually used in projects
+    const usedCompanyIds = useMemo(() => {
+        const ids = new Set<string>();
+        allProjects.forEach((p: any) => {
+            const c = p.company;
+            if (!c) return;
+            if (typeof c === "string") ids.add(c);
+            else if (c?._id) ids.add(c._id);
+            else if (c?.id) ids.add(c.id);
+        });
+        return ids;
+    }, [allProjects]);
+
+    const usedProjectCompanies = useMemo(
+        () => allProjectCompanies.filter((pc: any) => usedCompanyIds.has(pc._id || pc.id)),
+        [allProjectCompanies, usedCompanyIds]
+    );
+
+    const handleTogglePublish = (project: any) => {
+        const id = getProjectId(project);
+        if (!id) return;
+        const newPublished = !project.published;
+        // Optimistic update
+        setOrderedProjects((prev) =>
+            prev.map((p: any) => (getProjectId(p) === id ? { ...p, published: newPublished } : p))
+        );
+        togglePublish.mutate(id, {
+            onError: () => {
+                // Revert on error
+                setOrderedProjects((prev) =>
+                    prev.map((p: any) => (getProjectId(p) === id ? { ...p, published: !newPublished } : p))
+                );
+                showAlert(tr("failed_to_toggle", "Failed to update publish status"), "error");
+            },
+        });
+    };
+
+    const handleDelete = async (project: any) => {
+        const id = getProjectId(project);
+        if (!id || deletingId) return;
+        const name = localizedText(project.localizedName || project.name) || tr("untitled", "Untitled");
+        const confirmed = await showConfirm(tr("delete_confirm_msg", 'Delete "{name}"? This cannot be undone.').replace("{name}", name), tr("delete_confirm", "Delete"), tr("cancel_confirm", "Cancel"));
+        if (!confirmed) return;
+        setDeletingId(id);
+        deleteProject.mutate(id, {
+            onSettled: () => setDeletingId(null),
+        });
+    };
+
+    const [orderedProjects, setOrderedProjects] = useState<any[]>([]);
+    const orderedProjectsRef = useRef<any[]>([]);
+    const [hasUnsavedOrderChanges, setHasUnsavedOrderChanges] = useState(false);
+    const originalOrderRef = useRef<string[]>([]);
+
+    useEffect(() => {
+        const sorted = [...projects].sort(
+            (a: any, b: any) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+        );
+        setOrderedProjects((prev) => {
+            if (prev.length === sorted.length && prev.every((p: any, i: number) => getProjectId(p) === getProjectId(sorted[i]))) return prev;
+            return sorted;
+        });
+        if (!originalOrderRef.current.length) {
+            originalOrderRef.current = sorted.map((p: any) => getProjectId(p));
+        }
+    }, [projects]);
+
+    useEffect(() => {
+        orderedProjectsRef.current = orderedProjects;
+    }, [orderedProjects]);
+
+    const total = totalCount;
+    const published = projects.filter((p: any) => p.published).length;
+    const drafts = total - published;
+
+    const createdAtNumbers = useMemo(() => {
+        const map = new Map<string, number>();
+        const sorted = [...projects].sort(
+            (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+        sorted.forEach((p: any, i: number) => {
+            map.set(getProjectId(p), i + 1);
+        });
+        return map;
+    }, [projects]);
+
+    const toggleCompanyFilter = (companyId: string) => {
+        setCompanyFilter((prev) =>
+            prev.includes(companyId) ? prev.filter((id) => id !== companyId) : [...prev, companyId]
+        );
+    };
+
+    const handleDrop = useCallback(() => {
+        const dragId = dragSourceIdRef.current;
+        const hoverId = dropTargetRef.current;
+
+        if (!dragId || !hoverId || dragId === hoverId) return;
+
+        setOrderedProjects((prev) => {
+            const dragIndex = prev.findIndex((p: any) => getProjectId(p) === dragId);
+            const hoverIndex = prev.findIndex((p: any) => getProjectId(p) === hoverId);
+            if (dragIndex < 0 || hoverIndex < 0 || dragIndex === hoverIndex) return prev;
+
+            const next = [...prev];
+            const [moved] = next.splice(dragIndex, 1);
+            next.splice(hoverIndex, 0, moved);
+
+            const orderedIds = next.map((p: any) => getProjectId(p));
+            const hasChanged = orderedIds.length !== originalOrderRef.current.length ||
+                orderedIds.some((id, i) => id !== originalOrderRef.current[i]);
+            setHasUnsavedOrderChanges(hasChanged);
+
+            return next;
+        });
+    }, []);
+
+    const handleSaveOrder = useCallback(() => {
+        const orderedIds = orderedProjectsRef.current.map((p: any) => getProjectId(p)).filter(Boolean);
+        if (!orderedIds.length) return;
+        reorderProjects(orderedIds, {
+            onSuccess: () => {
+                originalOrderRef.current = orderedIds;
+                setHasUnsavedOrderChanges(false);
+            },
+            onError: () => refetch(),
+        });
+    }, [reorderProjects, refetch]);
+
+    const handleRevertOrder = useCallback(() => {
+        setOrderedProjects((prev) => {
+            const sorted = [...prev].sort(
+                (a: any, b: any) => {
+                    const aIdx = originalOrderRef.current.indexOf(getProjectId(a));
+                    const bIdx = originalOrderRef.current.indexOf(getProjectId(b));
+                    return (aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx) - (bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx);
+                }
+            );
+            return sorted;
+        });
+        setHasUnsavedOrderChanges(false);
+    }, []);
+
+    const dragSourceIdRef = useRef<string | null>(null);
+    const dropTargetRef = useRef<string | null>(null);
 
     return (
         <div className="space-y-8 pb-10 px-4 sm:px-6 lg:px-8">
@@ -432,13 +439,13 @@ const ProjectsPage: React.FC = () => {
                             >
                                 {tr("all", "All")}
                                 <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-semibold bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                                    {projects.length}
+                                    {allProjects.length}
                                 </span>
                             </button>
                             {usedProjectCompanies.map((pc: any) => {
                                 const cid = pc._id || pc.id;
                                 const selected = companyFilter.includes(cid);
-                                const count = projects.filter((p: any) => {
+                                const count = allProjects.filter((p: any) => {
                                     const c = (p as any).company;
                                     const pid = typeof c === "string" ? c : c?._id || c?.id || "";
                                     return pid === cid;
@@ -478,7 +485,7 @@ const ProjectsPage: React.FC = () => {
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200">
                     {(error as any)?.message || tr("failed_projects", "Failed to load projects")}
                 </div>
-            ) : filtered.length === 0 ? (
+            ) : orderedProjects.length === 0 ? (
                 <div className="py-12 text-center">
                     <p className="text-light-600 dark:text-dark-400">{projects.length === 0 ? tr("no_projects_yet", "No projects yet") : tr("no_projects_found", "No projects found")}</p>
                     <button onClick={() => navigate("/projects/add")} className="btn-primary mt-4 inline-flex items-center gap-2">
@@ -490,7 +497,7 @@ const ProjectsPage: React.FC = () => {
                 <>
                 <DndProvider backend={HTML5Backend}>
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-6">
-                    {filtered.map((project: any) => (
+                    {orderedProjects.map((project: any) => (
                         <SortableProjectCard
                             key={getProjectId(project)}
                             project={project}
@@ -592,71 +599,6 @@ const ProjectsPage: React.FC = () => {
                     ))}
                 </div>
             </DndProvider>
-
-            {totalPages > 1 && (() => {
-                const getPageNumbers = (): (number | "...")[] => {
-                    const pages: (number | "...")[] = [];
-                    if (totalPages <= 7) {
-                        for (let i = 1; i <= totalPages; i++) pages.push(i);
-                    } else {
-                        pages.push(1);
-                        if (currentPage > 3) pages.push("...");
-                        const start = Math.max(2, currentPage - 1);
-                        const end = Math.min(totalPages - 1, currentPage + 1);
-                        for (let i = start; i <= end; i++) pages.push(i);
-                        if (currentPage < totalPages - 2) pages.push("...");
-                        pages.push(totalPages);
-                    }
-                    return pages;
-                };
-
-                return (
-                    <div className="mt-6 flex items-center justify-between border-t border-light-200 pt-4 dark:border-dark-700">
-                        <button
-                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                            className="flex items-center gap-1 rounded-xl border border-light-200 px-4 py-2 text-sm font-medium text-light-700 transition-colors hover:bg-light-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-700 dark:text-dark-300 dark:hover:bg-dark-800"
-                        >
-                            <ChevronLeft size={16} />
-                            {tr("previous", "Previous")}
-                        </button>
-
-                        <div className="flex items-center gap-1">
-                            {getPageNumbers().map((page, index) =>
-                                page === "..." ? (
-                                    <span key={`dots-${index}`} className="px-2 text-light-500 dark:text-dark-500">
-                                        ...
-                                    </span>
-                                ) : (
-                                    <button
-                                        key={page}
-                                        onClick={() => setCurrentPage(page as number)}
-                                        className={`min-w-[36px] rounded-lg px-2 py-1.5 text-sm font-medium transition-colors ${
-                                            currentPage === page
-                                                ? "bg-primary-500 text-white shadow-sm"
-                                                : "text-light-700 hover:bg-light-50 dark:text-dark-300 dark:hover:bg-dark-800"
-                                        }`}
-                                    >
-                                        {page}
-                                    </button>
-                                )
-                            )}
-                            <span className="text-light-500 dark:text-dark-500 text-xs ml-2">
-                                ({totalCount} {tr("total", "total")})
-                            </span>
-                        </div>
-
-                        <button
-                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
-                            className="flex items-center gap-1 rounded-xl border border-light-200 px-4 py-2 text-sm font-medium text-light-700 transition-colors hover:bg-light-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-700 dark:text-dark-300 dark:hover:bg-dark-800"
-                        >
-                            {tr("next", "Next")}
-                            <ChevronRight size={16} />
-                        </button>
-                    </div>
-                );
-            })()}
             </>
             )}
         </div>

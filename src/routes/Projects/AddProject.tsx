@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useLang } from "@/hooks/useLang";
-import { useCreateProject, useProjectTypes, useProjectCast, useProjects, useProject, useCategories, useSubcategories, useProjectCompanies, useCreateProjectCompany, projectsKeys, useCreateSubcategory } from "@/hooks/queries";
+import { useCreateProject, useProjectTypes, useProjectCast, useProject, useCategories, useSubcategories, useProjectCompanies, useCreateProjectCompany, projectsKeys, useCreateSubcategory, useProjectsPaginated } from "@/hooks/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
@@ -597,23 +597,28 @@ const AddProject: React.FC = () => {
     const { data: projectCast = []} = useProjectCast();
     const { data: projectCompanies = [] } = useProjectCompanies();
     const [cloneProjectId, setCloneProjectId] = useState("");
-    const [parentSearch, setParentSearch] = useState("");
-    const [debouncedParentSearch, setDebouncedParentSearch] = useState("");
-    const [cloneSearch, setCloneSearch] = useState("");
-    const [debouncedCloneSearch, setDebouncedCloneSearch] = useState("");
 
-    useEffect(() => {
-        const t = setTimeout(() => setDebouncedParentSearch(parentSearch), 300);
-        return () => clearTimeout(t);
-    }, [parentSearch]);
+    const { data: allProjectsPaginated, isLoading: isLoadingAllProjects } = useProjectsPaginated({ PageCount: "all" });
 
-    useEffect(() => {
-        const t = setTimeout(() => setDebouncedCloneSearch(cloneSearch), 300);
-        return () => clearTimeout(t);
-    }, [cloneSearch]);
+    const allProjects = useMemo(() => {
+        return allProjectsPaginated?.data || [];
+    }, [allProjectsPaginated]);
 
-    const { data: parentSearchResults = [] as any[], isLoading: isLoadingParentProjects } = useProjects({ search: debouncedParentSearch } as any, { enabled: !!debouncedParentSearch });
-    const { data: cloneSearchResults = [] as any[], isLoading: isLoadingCloneProjects } = useProjects({ search: debouncedCloneSearch } as any, { enabled: !!debouncedCloneSearch });
+    const localizedName = (value: any): string => {
+        if (!value) return "";
+        if (typeof value === "string") return value;
+        if (typeof value === "number") return String(value);
+        if (typeof value === "object") {
+            if ("en" in value || "ar" in value) return value.en || value.ar || "";
+            if ("name" in value) return localizedName(value.name);
+            if ("title" in value) return localizedName(value.title);
+            return "";
+        }
+        return "";
+    };
+
+    const isLoadingCloneProjects = isLoadingAllProjects;
+    const isLoadingParentProjects = isLoadingAllProjects;
     const { data: cloneSourceProject } = useProject(cloneProjectId || undefined, { enabled: !!cloneProjectId });
     const [form, setForm] = useState<any>(() => {
         const defaults = getDefaultFormState();
@@ -3148,7 +3153,7 @@ const handleShootedAtChange = (date: Date | null) => {
         const created = await mutation.mutateAsync(submitData as any);
 
         // Auto-publish the newly created project
-        const projectId = created?.id || created?._id;
+        const projectId = (created as any)?.id || (created as any)?._id;
         if (projectId) {
             try {
                 setUploadLabel("Publishing project...");
@@ -3383,13 +3388,12 @@ const handleShootedAtChange = (date: Date | null) => {
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
                 <Autocomplete
-                    options={cloneSearchResults}
+                    options={allProjects}
                     value={cloneSourceProject || null}
                     onChange={(_, v) => {
-                        const id = v ? (v._id || v.id) : "";
+                        const id = v ? ((v as any)._id || v.id) : "";
                         setCloneProjectId(id);
                     }}
-                    onInputChange={(_, v) => setCloneSearch(v)}
                     getOptionLabel={(opt) => getOptionLabel(opt)}
                     isOptionEqualToValue={(o: any, v: any) => {
                         const oId = (o && (o._id || o.id)) || "";
@@ -3402,7 +3406,7 @@ const handleShootedAtChange = (date: Date | null) => {
                     slotProps={taxonomyAutocompleteSlotProps}
                     loading={isLoadingCloneProjects}
                     className="w-full"
-                    noOptionsText={debouncedCloneSearch ? tr("no_results", "No results") : tr("type_to_search", "Type to search...")}
+                    noOptionsText={isLoadingCloneProjects ? tr("searching", "Searching...") : tr("no_results", "No results")}
                 />
                 <button
                     type="button"
@@ -3527,10 +3531,9 @@ const handleShootedAtChange = (date: Date | null) => {
                         {tr("parent_project", "Parent Project")}
                     </label>
                     <Autocomplete
-                        options={parentSearchResults}
+                        options={allProjects}
                         value={form.parentProject || null}
                         onChange={(_, v) => setForm((prev: any) => ({ ...prev, parentProject: v }))}
-                        onInputChange={(_, v) => setParentSearch(v)}
                         getOptionLabel={(opt) => getOptionLabel(opt)}
                         isOptionEqualToValue={(o: any, v: any) => {
                             const oId = (o && (o._id || o.id)) || "";
@@ -3542,7 +3545,7 @@ const handleShootedAtChange = (date: Date | null) => {
                         sx={taxonomyAutocompleteSx}
                         slotProps={taxonomyAutocompleteSlotProps}
                         loading={isLoadingParentProjects}
-                        noOptionsText={debouncedParentSearch ? tr("no_results", "No results") : tr("type_to_search", "Type to search...")}
+                        noOptionsText={isLoadingParentProjects ? tr("searching", "Searching...") : tr("no_results", "No results")}
                     />
                 </div>
 
