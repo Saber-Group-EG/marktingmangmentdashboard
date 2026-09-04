@@ -184,6 +184,91 @@ const ProjectsPage: React.FC = () => {
         return map;
     }, [allProjects]);
 
+    // Extract all searchable text from a project
+    const getSearchableText = useCallback((p: any): string => {
+        const parts: string[] = [];
+
+        // Name
+        parts.push(localizedText(p?.localizedName || p?.name));
+
+        // Description
+        parts.push(localizedText(p?.localizedDescription || p?.description));
+
+        // Location
+        parts.push(localizedText(p?.localizedLocation || p?.location));
+
+        // Tags
+        if (Array.isArray(p?.tagsEn)) parts.push(...p.tagsEn);
+        if (Array.isArray(p?.tagsAr)) parts.push(...p.tagsAr);
+
+        // Types
+        if (Array.isArray(p?.types)) {
+            p.types.forEach((t: any) => {
+                if (typeof t === "string") parts.push(t);
+                else parts.push(localizedText(t?.name || t));
+            });
+        }
+
+        // Categories
+        if (Array.isArray(p?.categories)) {
+            p.categories.forEach((c: any) => {
+                if (typeof c === "string") parts.push(c);
+                else parts.push(localizedText(c?.name || c));
+            });
+        }
+
+        // Subcategories
+        if (Array.isArray(p?.subcategories)) {
+            p.subcategories.forEach((s: any) => {
+                if (typeof s === "string") parts.push(s);
+                else parts.push(localizedText(s?.name || s));
+            });
+        }
+
+        // Client name
+        const clientName = p?.client?.name ||
+            p?.client?.fullName ||
+            p?.client?.personal?.fullName ||
+            p?.client?.business?.name;
+        if (clientName) parts.push(clientName);
+
+        // Cast
+        if (Array.isArray(p?.cast)) {
+            p.cast.forEach((member: any) => {
+                if (!member) return;
+                if (typeof member === "string") {
+                    const found = projectCast.find((pc: any) => (pc._id || pc.id) === member || pc.name === member);
+                    parts.push(found?.name || member);
+                } else if (member.castId) {
+                    const castEntry = member.castId;
+                    if (typeof castEntry === "string") {
+                        const found = projectCast.find((pc: any) => (pc._id || pc.id) === castEntry || pc.name === castEntry);
+                        parts.push(found?.name || castEntry);
+                    } else if (typeof castEntry === "object") {
+                        parts.push(castEntry.name || "");
+                    }
+                } else if (typeof member === "object") {
+                    parts.push(member?.name || member?.fullName || "");
+                }
+            });
+        } else if (p?.cast && typeof p.cast === "object") {
+            parts.push(p.cast?.name || p.cast?.fullName || "");
+        }
+
+        // Company
+        const company = p?.company;
+        if (company) {
+            if (typeof company === "string") parts.push(company);
+            else parts.push(localizedText(company?.name || company));
+        }
+
+        // Project number
+        const projectNumber = createdAtNumbers.get(getProjectId(p));
+        if (projectNumber !== undefined) parts.push(String(projectNumber));
+
+        return parts.join(" ").toLowerCase();
+    }, [projectCast, createdAtNumbers]);
+
     // Apply search and company filter, prioritizing project number matches
     const projects = useMemo(() => {
         const q = searchTerm.trim().toLowerCase();
@@ -201,15 +286,12 @@ const ProjectsPage: React.FC = () => {
 
             // Search filter
             if (q) {
-                const name = localizedText(p?.localizedName || p?.name).toLowerCase();
-                const category = localizedText(p?.category).toLowerCase();
-                const description = localizedText(p?.localizedDescription || p?.description).toLowerCase();
-                const clientName = getClientOrCastName(p).toLowerCase();
                 const projectNumber = createdAtNumbers.get(getProjectId(p));
                 const numberMatch = projectNumber !== undefined && String(projectNumber) === q;
 
-                if (!numberMatch && !name.includes(q) && !category.includes(q) && !description.includes(q) && !clientName.includes(q)) {
-                    return;
+                if (!numberMatch) {
+                    const text = getSearchableText(p);
+                    if (!text.includes(q)) return;
                 }
 
                 matched.push({ project: p, numberMatch });
@@ -228,7 +310,7 @@ const ProjectsPage: React.FC = () => {
         }
 
         return matched.map((m) => m.project);
-    }, [allProjects, searchTerm, companyFilter, createdAtNumbers]);
+    }, [allProjects, searchTerm, companyFilter, createdAtNumbers, getSearchableText]);
 
     const totalCount = projects.length;
     const { mutate: reorderProjects, isPending: isReordering } = useReorderProjects();
