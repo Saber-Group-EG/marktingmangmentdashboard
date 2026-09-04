@@ -173,29 +173,62 @@ const ProjectsPage: React.FC = () => {
         return "-";
     };
 
-    // Apply search and company filter
+    const createdAtNumbers = useMemo(() => {
+        const map = new Map<string, number>();
+        const sorted = [...allProjects].sort(
+            (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+        sorted.forEach((p: any, i: number) => {
+            map.set(getProjectId(p), i + 1);
+        });
+        return map;
+    }, [allProjects]);
+
+    // Apply search and company filter, prioritizing project number matches
     const projects = useMemo(() => {
         const q = searchTerm.trim().toLowerCase();
-        return allProjects.filter((p: any) => {
+        if (!q && companyFilter.length === 0) return allProjects;
+
+        const matched: { project: any; numberMatch: boolean }[] = [];
+
+        allProjects.forEach((p: any) => {
+            // Company filter
+            if (companyFilter.length > 0) {
+                const c = p.company;
+                const cid = typeof c === "string" ? c : c?._id || c?.id || "";
+                if (!companyFilter.includes(cid)) return;
+            }
+
             // Search filter
             if (q) {
                 const name = localizedText(p?.localizedName || p?.name).toLowerCase();
                 const category = localizedText(p?.category).toLowerCase();
                 const description = localizedText(p?.localizedDescription || p?.description).toLowerCase();
                 const clientName = getClientOrCastName(p).toLowerCase();
-                if (!name.includes(q) && !category.includes(q) && !description.includes(q) && !clientName.includes(q)) {
-                    return false;
+                const projectNumber = createdAtNumbers.get(getProjectId(p));
+                const numberMatch = projectNumber !== undefined && String(projectNumber) === q;
+
+                if (!numberMatch && !name.includes(q) && !category.includes(q) && !description.includes(q) && !clientName.includes(q)) {
+                    return;
                 }
+
+                matched.push({ project: p, numberMatch });
+                return;
             }
-            // Company filter
-            if (companyFilter.length > 0) {
-                const c = p.company;
-                const cid = typeof c === "string" ? c : c?._id || c?.id || "";
-                if (!companyFilter.includes(cid)) return false;
-            }
-            return true;
+
+            matched.push({ project: p, numberMatch: false });
         });
-    }, [allProjects, searchTerm, companyFilter]);
+
+        if (q) {
+            matched.sort((a, b) => {
+                if (a.numberMatch && !b.numberMatch) return -1;
+                if (!a.numberMatch && b.numberMatch) return 1;
+                return 0;
+            });
+        }
+
+        return matched.map((m) => m.project);
+    }, [allProjects, searchTerm, companyFilter, createdAtNumbers]);
 
     const totalCount = projects.length;
     const { mutate: reorderProjects, isPending: isReordering } = useReorderProjects();
@@ -277,17 +310,6 @@ const ProjectsPage: React.FC = () => {
     const total = totalCount;
     const published = projects.filter((p: any) => p.published).length;
     const drafts = total - published;
-
-    const createdAtNumbers = useMemo(() => {
-        const map = new Map<string, number>();
-        const sorted = [...projects].sort(
-            (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        );
-        sorted.forEach((p: any, i: number) => {
-            map.set(getProjectId(p), i + 1);
-        });
-        return map;
-    }, [projects]);
 
     const toggleCompanyFilter = (companyId: string) => {
         setCompanyFilter((prev) =>
