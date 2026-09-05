@@ -1823,6 +1823,7 @@ const EditProject: React.FC = () => {
             return {
                 ...prev,
                 items,
+                thumbnail: itemIndex === 0 ? undefined : prev.thumbnail,
                 url: primary?.url || "",
                 mimeType: primary?.mimeType,
                 originalName: primary?.originalName,
