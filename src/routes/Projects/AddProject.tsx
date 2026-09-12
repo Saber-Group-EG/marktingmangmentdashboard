@@ -32,6 +32,7 @@ import { createType } from "@/api/requests/typesService";
 import { createCast } from "@/api/requests/castService";
 import { togglePublishProject } from "@/api/requests/projectsService";
 import { showAlert } from "@/utils/swal";
+import ImportMaterialsModal from "@/components/ImportMaterialsModal";
 
 interface Material {
   _id?: string;
@@ -729,6 +730,7 @@ const AddProject: React.FC = () => {
     const [activeDragItem, setActiveDragItem] = useState<{ id: string; url: string; isVideo: boolean; thumbnail?: string; label: string } | null>(null);
     const crossGroupDragTargetRef = useRef<{ toGroupIdx: number; toItemIdx: number } | null>(null);
     const draggedItemIdRef = useRef<string | null>(null);
+    const [showImportModal, setShowImportModal] = useState(false);
 
     const [editingCast, setEditingCast] = useState<Cast | null>(null);
     const [castModalMode, setCastModalMode] = useState<"add" | "edit">("add");
@@ -4116,10 +4118,16 @@ const handleShootedAtChange = (date: Date | null) => {
                             <div className="card p-6">
                                 <div className="flex justify-between items-center mb-4">
                                     <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("materials_and_media", "Materials & Media")}</h2>
-                                    <button type="button" onClick={handleAddMaterial} className="btn-primary inline-flex items-center gap-2">
-                                        <Plus className="w-4 h-4" />
-                                        {tr("add_material", "Add Material")}
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button type="button" onClick={() => setShowImportModal(true)} className="btn-secondary inline-flex items-center gap-2">
+                                            <Layers className="w-4 h-4" />
+                                            Import from other project
+                                        </button>
+                                        <button type="button" onClick={handleAddMaterial} className="btn-primary inline-flex items-center gap-2">
+                                            <Plus className="w-4 h-4" />
+                                            {tr("add_material", "Add Material")}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <DndContext sensors={photoSensors} collisionDetection={materialsCollisionDetection}
@@ -4706,6 +4714,18 @@ const handleShootedAtChange = (date: Date | null) => {
                 estimatedSecondsLeft={photoUpload.estimatedSecondsLeft}
                 title={photoUpload.title}
                 label={photoUpload.label}
+            />
+
+            <ImportMaterialsModal
+                open={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                onImport={(imported) => {
+                    setForm((prev: any) => ({
+                        ...prev,
+                        materials: [...prev.materials, ...imported.map((m, i) => ({ ...m, order: prev.materials.length + i + 1 }))],
+                    }));
+                }}
+                localizedToString={localizedToString}
             />
 
             {/* Material Edit Modal */}

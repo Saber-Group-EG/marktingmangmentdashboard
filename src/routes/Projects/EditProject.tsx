@@ -37,6 +37,7 @@ import {
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { showAlert, showConfirm } from "@/utils/swal";
+import ImportMaterialsModal from "@/components/ImportMaterialsModal";
 
 interface Material {
   _id?: string;
@@ -669,6 +670,7 @@ const EditProject: React.FC = () => {
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [activeTab, setActiveTab] = useState<"basic" | "sectors" | "materials" | "cast" | "media">("basic");
     const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+    const [showImportModal, setShowImportModal] = useState(false);
 
     // Resolve string type IDs to full type objects once projectTypes loads
     useEffect(() => {
@@ -4104,10 +4106,16 @@ if (Array.isArray(clone.cast)) {
                             <div className="card p-6">
                                 <div className="flex justify-between items-center mb-4">
                                     <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("materials_and_media", "Materials & Media")}</h2>
-                                    <button type="button" onClick={handleAddMaterial} className="btn-primary inline-flex items-center gap-2">
-                                        <Plus className="w-4 h-4" />
-                                        {tr("add_material", "Add Material")}
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button type="button" onClick={() => setShowImportModal(true)} className="btn-secondary inline-flex items-center gap-2">
+                                            <Layers className="w-4 h-4" />
+                                            Import from other project
+                                        </button>
+                                        <button type="button" onClick={handleAddMaterial} className="btn-primary inline-flex items-center gap-2">
+                                            <Plus className="w-4 h-4" />
+                                            {tr("add_material", "Add Material")}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <DndContext sensors={photoSensors} collisionDetection={materialsCollisionDetection}
@@ -4695,6 +4703,19 @@ if (Array.isArray(clone.cast)) {
                 estimatedSecondsLeft={photoUpload.estimatedSecondsLeft}
                 title={photoUpload.title}
                 label={photoUpload.label}
+            />
+
+            <ImportMaterialsModal
+                open={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                onImport={(imported) => {
+                    setForm((prev: any) => ({
+                        ...prev,
+                        materials: [...prev.materials, ...imported.map((m, i) => ({ ...m, order: prev.materials.length + i + 1 }))],
+                    }));
+                }}
+                localizedToString={localizedToString}
+                currentProjectId={id}
             />
 
             {/* Material Edit Modal */}
