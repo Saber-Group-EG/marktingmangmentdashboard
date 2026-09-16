@@ -38,6 +38,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { showAlert, showConfirm } from "@/utils/swal";
 import ImportMaterialsModal from "@/components/ImportMaterialsModal";
+import MaterialLightbox from "@/components/MaterialLightbox";
 
 interface Material {
   _id?: string;
@@ -93,9 +94,10 @@ const DraggableItemThumb: React.FC<{
     thumbnail?: string;
     label: string;
     onRemove: () => void;
+    onPreview?: () => void;
     otherGroups?: { label: string; index: number }[];
     onMoveToGroup?: (targetGroupIndex: number) => void;
-}> = ({ id, url, isVideo, thumbnail, label, onRemove, otherGroups, onMoveToGroup }) => {
+}> = ({ id, url, isVideo, thumbnail, label, onRemove, onPreview, otherGroups, onMoveToGroup }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, data: { url, isVideo, thumbnail, label } });
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -105,6 +107,7 @@ const DraggableItemThumb: React.FC<{
     };
     const [showMoveMenu, setShowMoveMenu] = useState(false);
     const moveMenuRef = useRef<HTMLDivElement>(null);
+    const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
 
     useEffect(() => {
         if (!showMoveMenu) return;
@@ -117,12 +120,29 @@ const DraggableItemThumb: React.FC<{
         return () => document.removeEventListener("mousedown", handler);
     }, [showMoveMenu]);
 
+    const handlePointerDown = (e: React.PointerEvent) => {
+        pointerStartRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+        if (!pointerStartRef.current) return;
+        const dx = e.clientX - pointerStartRef.current.x;
+        const dy = e.clientY - pointerStartRef.current.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        pointerStartRef.current = null;
+        if (dist < 5) {
+            onPreview?.();
+        }
+    };
+
     return (
         <div
             ref={setNodeRef}
             style={style}
             {...attributes}
             {...listeners}
+            onPointerDown={(e) => { handlePointerDown(e); (listeners?.onPointerDown as any)?.(e); }}
+            onPointerUp={(e) => { handlePointerUp(e); (listeners?.onPointerUp as any)?.(e); }}
             className="group relative shrink-0 w-24 h-24 rounded-lg overflow-hidden border border-light-200 dark:border-dark-700 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow touch-none"
         >
             {isVideo ? (
@@ -799,6 +819,7 @@ const EditProject: React.FC = () => {
     const photoUpload = useUploadProgress();
     const photoSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
     const [activeDragItem, setActiveDragItem] = useState<{ id: string; url: string; isVideo: boolean; thumbnail?: string; label: string } | null>(null);
+    const [lightboxItem, setLightboxItem] = useState<{ url: string; label: string; isVideo?: boolean } | null>(null);
     const crossGroupDragTargetRef = useRef<{ toGroupIdx: number; toItemIdx: number } | null>(null);
     const draggedItemIdRef = useRef<string | null>(null);
 
@@ -3292,6 +3313,7 @@ if (Array.isArray(clone.cast)) {
     }
 
     return (
+        <>
         <div className="min-h-screen bg-light-50 dark:bg-dark-950">
             {/* Header Section */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -4293,6 +4315,7 @@ if (Array.isArray(clone.cast)) {
                                                                                 thumbnail={item.thumbnail}
                                                                                 label={item.label}
                                                                                 onRemove={() => handleFlatItemRemove(idx, items.indexOf(item))}
+                                                                                onPreview={() => setLightboxItem({ url: item.url, label: item.label, isVideo: item.isVideo })}
                                                                             />
                                                                         </div>
                                                                     ))}
@@ -5347,6 +5370,16 @@ if (Array.isArray(clone.cast)) {
                 </div>
             )}
         </div>
+
+        {lightboxItem && (
+            <MaterialLightbox
+                url={lightboxItem.url}
+                label={lightboxItem.label}
+                isVideo={lightboxItem.isVideo}
+                onClose={() => setLightboxItem(null)}
+            />
+        )}
+    </>
     );
 };
 
