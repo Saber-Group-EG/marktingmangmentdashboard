@@ -39,6 +39,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { showAlert, showConfirm } from "@/utils/swal";
 import ImportMaterialsModal from "@/components/ImportMaterialsModal";
 import MaterialLightbox from "@/components/MaterialLightbox";
+import IconPicker from "@/components/IconPicker";
 
 interface Material {
   _id?: string;
@@ -636,6 +637,10 @@ const EditProject: React.FC = () => {
             mainCover: null as any,
             parentProject: null as any,
             company: null as any,
+            icon: "",
+            isFeatured: false,
+            isHero: false,
+            internalLayout: null as number | null,
         };
         try {
             const draft = localStorage.getItem(`${EDIT_STORAGE_KEY_PREFIX}${id}`);
@@ -667,6 +672,10 @@ const EditProject: React.FC = () => {
             mainCover: null as any,
             parentProject: null as any,
             company: null as any,
+            icon: "",
+            isFeatured: false,
+            isHero: false,
+            internalLayout: null as number | null,
         };
     });
     
@@ -762,6 +771,8 @@ const EditProject: React.FC = () => {
     const [isDragging, setIsDragging] = useState(false);
     const isDraggingRef = useRef(false);
     const dragStartRef = useRef<{ x: number; y: number; center: { x: number; y: number } }>({ x: 0, y: 0, center: { x: 0.5, y: 0.5 } });
+    const coverAspectRatio = form.isHero ? 19 / 6 : 4 / 5;
+    const coverAspectClass = form.isHero ? "aspect-[19/6]" : "aspect-[4/5]";
     const [coverPickerMaterialIdx, setCoverPickerMaterialIdx] = useState<number | null>(null);
     const coverPickerRef = useRef<HTMLDivElement>(null);
 
@@ -1342,6 +1353,10 @@ const EditProject: React.FC = () => {
             fullMainCover: (project as any).fullMainCover || null,
             parentProject: parentInitial,
             company: companyInitial,
+            icon: (project as any).icon || "",
+            isFeatured: !!(project as any).isFeatured,
+            isHero: !!(project as any).isHero,
+            internalLayout: (project as any).internalLayout ?? null,
         });
 
     }, [project, projectCast, projectSubcategories]);
@@ -2553,7 +2568,7 @@ const EditProject: React.FC = () => {
         const scale = displayedW / mainCoverMeta.width;
         const naturalW = mainCoverMeta.width;
         const naturalH = mainCoverMeta.height;
-        const aspectRatio = 4 / 5;
+        const aspectRatio = coverAspectRatio;
         let cropNatW: number, cropNatH: number;
         if (naturalW / naturalH > aspectRatio) {
             cropNatH = naturalH / zoom;
@@ -2578,7 +2593,7 @@ const EditProject: React.FC = () => {
         const img = loadedImgRef.current;
         const naturalW = mainCoverMeta.width;
         const naturalH = mainCoverMeta.height;
-        const aspectRatio = 4 / 5;
+        const aspectRatio = coverAspectRatio;
         let cropNatW: number, cropNatH: number;
         if (naturalW / naturalH > aspectRatio) {
             cropNatH = naturalH / zoom;
@@ -2643,7 +2658,7 @@ const EditProject: React.FC = () => {
         // Directly update overlay DOM for instant response
         const naturalW = mainCoverMeta.width;
         const naturalH = mainCoverMeta.height;
-        const aspectRatio = 4 / 5;
+        const aspectRatio = coverAspectRatio;
         let cropNatW: number, cropNatH: number;
         if (naturalW / naturalH > aspectRatio) {
             cropNatH = naturalH / zoom;
@@ -2713,7 +2728,7 @@ const EditProject: React.FC = () => {
         // Directly update overlay DOM for instant response
         const naturalW = mainCoverMeta.width;
         const naturalH = mainCoverMeta.height;
-        const aspectRatio = 4 / 5;
+        const aspectRatio = coverAspectRatio;
         let cropNatW: number, cropNatH: number;
         if (naturalW / naturalH > aspectRatio) {
             cropNatH = naturalH / zoom;
@@ -2744,13 +2759,13 @@ const EditProject: React.FC = () => {
             }, 50);
             return () => clearTimeout(timer);
         }
-    }, [cropEnabled, cropCenter.x, cropCenter.y, zoom, mainCoverMeta, form.mainCover?.url]);
+    }, [cropEnabled, cropCenter.x, cropCenter.y, zoom, mainCoverMeta, form.mainCover?.url, form.isHero]);
 
     useEffect(() => {
         const onResize = () => updateOverlayStyle();
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
-    }, [mainCoverMeta, form.mainCover?.url, cropCenter, zoom]);
+    }, [mainCoverMeta, form.mainCover?.url, cropCenter, zoom, form.isHero]);
 
     // Read cover image dimensions from the rendered <img> element (no fetch needed)
     const handleCoverImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -3218,6 +3233,10 @@ if (Array.isArray(clone.cast)) {
                 fullMainCover: clone.fullMainCover,
                 parentProject: getOptionValue(clone.parentProject) || undefined,
                 company: getOptionValue(clone.company) || undefined,
+                icon: clone.icon || null,
+                isFeatured: !!clone.isFeatured,
+                isHero: !!clone.isHero,
+                internalLayout: clone.internalLayout ?? null,
             };
 
             update.mutate(
@@ -3585,7 +3604,64 @@ if (Array.isArray(clone.cast)) {
                                         />
                                     </div>
 
-                                  
+                                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-2">
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox"
+                                                name="isFeatured"
+                                                id="isFeatured"
+                                                checked={!!form.isFeatured}
+                                                onChange={handleChange}
+                                                className="w-4 h-4 rounded border-light-300 dark:border-dark-600 text-light-500 dark:text-secdark-500 focus:ring-light-500 dark:focus:ring-secdark-500"
+                                            />
+                                            <label htmlFor="isFeatured" className="text-sm text-light-700 dark:text-dark-300">
+                                                {tr("is_featured", "Featured")}
+                                            </label>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox"
+                                                name="isHero"
+                                                id="isHero"
+                                                checked={!!form.isHero}
+                                                onChange={handleChange}
+                                                className="w-4 h-4 rounded border-light-300 dark:border-dark-600 text-light-500 dark:text-secdark-500 focus:ring-light-500 dark:focus:ring-secdark-500"
+                                            />
+                                            <label htmlFor="isHero" className="text-sm text-light-700 dark:text-dark-300">
+                                                {tr("is_hero", "Hero")}
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
+                                        {!form.isFeatured && (
+                                            <div className="sm:col-span-2">
+                                                <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                                    {tr("icon", "Icon")}
+                                                </label>
+                                                <IconPicker
+                                                    value={form.icon}
+                                                    onChange={(name) => setForm({ ...form, icon: name })}
+                                                    noneLabel={tr("none", "None")}
+                                                />
+                                            </div>
+                                        )}
+                                        <div>
+                                            <label className="block mb-2 text-sm font-medium text-light-700 dark:text-dark-300">
+                                                {tr("internal_layout", "Internal Layout")}
+                                            </label>
+                                            <select
+                                                value={form.internalLayout ?? ""}
+                                                onChange={(e) => setForm({ ...form, internalLayout: e.target.value === "" ? null : Number(e.target.value) })}
+                                                className="input w-full"
+                                            >
+                                                <option value="">{tr("none", "None")}</option>
+                                                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                                                    <option key={n} value={n}>{n}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
 
                                     <div className="flex items-center gap-3 pt-2">
                                         <input
@@ -4525,16 +4601,20 @@ if (Array.isArray(clone.cast)) {
                                                         <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-full" />
                                                         <button type="button" onClick={() => { setZoom(1); setCropCenter({ x: 0.5, y: 0.5 }); }} className="btn-ghost">{tr("reset", "Reset")}</button>
                                                     </div>
-                                                    <div className="mt-2 text-sm text-light-500 dark:text-dark-400">{tr("crop_help_text", "Drag the square on the image to position the 4:5 crop. Use the zoom slider to scale.")}</div>
+                                                    <div className="mt-2 text-sm text-light-500 dark:text-dark-400">
+                                                        {form.isHero
+                                                            ? tr("crop_help_text_hero", "Drag the box on the image to position the 19:6 hero crop. Use the zoom slider to scale.")
+                                                            : tr("crop_help_text", "Drag the square on the image to position the 4:5 crop. Use the zoom slider to scale.")}
+                                                    </div>
                                                 </div>
                                                 <div className="col-span-1">
-                                                    <div className="rounded-lg border border-light-200 dark:border-dark-700 overflow-hidden w-full aspect-[4/5] bg-white/5 flex items-center justify-center relative">
+                                                    <div className={`rounded-lg border border-light-200 dark:border-dark-700 overflow-hidden w-full ${coverAspectClass} bg-white/5 flex items-center justify-center relative`}>
                                                         {form.mainCover?.url && mainCoverMeta ? (
                                                             <div className="w-full h-full overflow-hidden flex items-center justify-center">
                                                                  {(() => {
                                                                     const naturalW = mainCoverMeta.width;
                                                                     const naturalH = mainCoverMeta.height;
-                                                                    const aspectRatio = 4 / 5;
+                                                                    const aspectRatio = coverAspectRatio;
                                                                     let cropNatW: number, cropNatH: number;
                                                                     if (naturalW / naturalH > aspectRatio) {
                                                                         cropNatH = naturalH / zoom;
@@ -4571,7 +4651,11 @@ if (Array.isArray(clone.cast)) {
                                                         ) : croppedPreview ? (
                                                             <img src={croppedPreview} alt={tr("cropped_preview_alt", "Cropped preview")} className="w-full h-full object-cover" />
                                                         ) : (
-                                                            <div className="text-sm text-light-500 dark:text-dark-400 p-4">{tr("cropped_preview_4_5", "Cropped preview (4:5)")}</div>
+                                                            <div className="text-sm text-light-500 dark:text-dark-400 p-4">
+                                                                {form.isHero
+                                                                    ? tr("cropped_preview_19_6", "Cropped preview (19:6)")
+                                                                    : tr("cropped_preview_4_5", "Cropped preview (4:5)")}
+                                                            </div>
                                                         )}
                                                     </div>
                                                     <div className="mt-3 flex gap-2">
@@ -4582,7 +4666,7 @@ if (Array.isArray(clone.cast)) {
                                         ) : (
                                             <div className="space-y-4">
                                                 <div className="rounded-lg overflow-hidden border border-light-200 dark:border-dark-700">
-                                                    <div className="max-w-sm mx-auto aspect-[4/5] overflow-hidden rounded">
+                                                    <div className={`max-w-sm mx-auto ${coverAspectClass} overflow-hidden rounded`}>
                                                         <img src={form.mainCover.croppedUrl || form.mainCover.url} alt={tr("main_cover", "Main Cover")} className="w-full h-full object-cover" onLoad={handleCoverImageLoad} />
                                                     </div>
                                                 </div>

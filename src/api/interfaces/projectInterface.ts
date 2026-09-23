@@ -34,6 +34,11 @@ export interface Project {
   createdBy?: { fullName?: string; name?: string; _id?: string } | string;
   createdAt?: string;
   updatedAt?: string;
+  // Display extras
+  icon?: string | null;
+  isFeatured?: boolean;
+  isHero?: boolean;
+  internalLayout?: number | null;
 }
 
 export interface Material {
@@ -90,6 +95,10 @@ export interface ProjectCreate {
   category?: string;
   tag?: string;
   location?: string;
+  icon?: string | null;
+  isFeatured?: boolean;
+  isHero?: boolean;
+  internalLayout?: number | null;
 }
 
 export interface ProjectUpdate extends Partial<ProjectCreate> {}
