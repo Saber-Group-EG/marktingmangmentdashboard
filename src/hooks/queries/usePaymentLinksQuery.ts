@@ -1,9 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPaymentLinks, createPaymentLink, cancelPaymentLink } from "@/api/requests/paymentLinksService";
+import { getPaymentLinks, getPaymentMethods, createPaymentLink, cancelPaymentLink } from "@/api/requests/paymentLinksService";
 
 export const paymentLinksKeys = {
     all: ["payment-links"] as const,
     lists: () => [...paymentLinksKeys.all, "list"] as const,
+    methods: () => [...paymentLinksKeys.all, "methods"] as const,
+};
+
+export const usePaymentMethods = () => {
+    return useQuery({
+        queryKey: paymentLinksKeys.methods(),
+        queryFn: getPaymentMethods,
+        staleTime: 10 * 60 * 1000,
+    });
 };
 
 export const usePaymentLinks = () => {

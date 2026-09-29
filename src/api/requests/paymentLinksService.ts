@@ -1,6 +1,7 @@
 import axiosInstance from "../axios";
 
 export type PaymentLinkStatus = "active" | "paid" | "cancelled" | "expired";
+export type PaymentMethod = "card" | "wallet";
 
 export interface PaymentLink {
     _id: string;
@@ -8,6 +9,7 @@ export interface PaymentLink {
     createdBy?: string | { _id: string; fullName?: string };
     amountCents: number;
     currency: string;
+    paymentMethods?: PaymentMethod[];
     description?: string;
     customer?: { fullName?: string; email?: string; phone?: string };
     referenceId: string;
@@ -23,6 +25,7 @@ export interface PaymentLink {
 export interface PaymentLinkInput {
     amount: number; // major units, e.g. 1500.5 EGP
     clientId?: string | null;
+    paymentMethods: PaymentMethod[];
     description?: string;
     customer?: { fullName?: string; email?: string; phone?: string };
     expiresAt?: string | null;
@@ -32,6 +35,12 @@ export const getPaymentLinks = async (): Promise<PaymentLink[]> => {
     const response = await axiosInstance.get("/payment-links", {
         params: { PageCount: "all", sort: "-createdAt" },
     });
+    return Array.isArray(response.data?.data) ? response.data.data : [];
+};
+
+// Payment methods the backend has a Paymob integration ID configured for
+export const getPaymentMethods = async (): Promise<PaymentMethod[]> => {
+    const response = await axiosInstance.get("/payment-links/methods");
     return Array.isArray(response.data?.data) ? response.data.data : [];
 };
 

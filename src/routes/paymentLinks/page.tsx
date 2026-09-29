@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Loader2, Copy, ExternalLink, Ban, X, Link2, MessageCircle, Mail, Check, ShieldAlert } from "lucide-react";
+import { Plus, Loader2, Copy, ExternalLink, Ban, X, Link2, MessageCircle, Mail, Check, ShieldAlert, CreditCard, Smartphone } from "lucide-react";
 import copy from "copy-to-clipboard";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm, showToast } from "@/utils/swal";
 import { useClients } from "@/hooks/queries";
-import { usePaymentLinks, useCreatePaymentLink, useCancelPaymentLink } from "@/hooks/queries/usePaymentLinksQuery";
-import type { PaymentLink, PaymentLinkStatus } from "@/api/requests/paymentLinksService";
+import { usePaymentLinks, usePaymentMethods, useCreatePaymentLink, useCancelPaymentLink } from "@/hooks/queries/usePaymentLinksQuery";
+import type { PaymentLink, PaymentLinkStatus, PaymentMethod } from "@/api/requests/paymentLinksService";
+import { countryCodes, DEFAULT_COUNTRY_ISO, splitPhone, toE164 } from "@/constants/countryCodes";
 
 const DEFAULT_EXPIRY_DAYS = 7;
 
@@ -46,8 +47,13 @@ const statusStyles: Record<PaymentLinkStatus, string> = {
 
 type StatusFilter = "all" | PaymentLinkStatus;
 
+const methodIcons: Record<PaymentMethod, typeof CreditCard> = {
+    card: CreditCard,
+    wallet: Smartphone,
+};
+
 const PaymentLinksPage = () => {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const tr = (key: string, fallback: string) => {
         const value = t(key);
         return !value || value === key ? fallback : value;
@@ -58,7 +64,10 @@ const PaymentLinksPage = () => {
     const [clientId, setClientId] = useState("");
     const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
-    const [phone, setPhone] = useState("");
+    const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY_ISO);
+    const [phoneLocal, setPhoneLocal] = useState("");
+    // null = not touched yet, so every configured method is offered by default
+    const [selectedMethods, setSelectedMethods] = useState<PaymentMethod[] | null>(null);
     const [amount, setAmount] = useState("");
     const [description, setDescription] = useState("");
     const [expiresAt, setExpiresAt] = useState(defaultExpiry);
@@ -68,6 +77,8 @@ const PaymentLinksPage = () => {
 
     const { data: links, isLoading } = usePaymentLinks();
     const { data: clients } = useClients({ enabled: isAdmin });
+    const { data: availableMethods, isLoading: methodsLoading } = usePaymentMethods();
+    const methods = selectedMethods ?? availableMethods ?? [];
     const createMutation = useCreatePaymentLink();
     const cancelMutation = useCancelPaymentLink();
 
@@ -116,17 +127,30 @@ const PaymentLinksPage = () => {
         setClientId(id);
         const client = allClients.find((c) => (c._id || c.id) === id);
         if (client) {
+            const { iso, local } = splitPhone(client.personal?.phone);
             setFullName(client.personal?.fullName || "");
             setEmail(client.personal?.email || "");
-            setPhone(client.personal?.phone || "");
+            setPhoneCountry(iso);
+            setPhoneLocal(local);
         }
     };
 
+    const toggleMethod = (method: PaymentMethod) => {
+        const next = methods.includes(method) ? methods.filter((m) => m !== method) : [...methods, method];
+        // Keep a stable order (card, wallet) regardless of click order
+        setSelectedMethods((availableMethods || []).filter((m) => next.includes(m)));
+    };
+
+    const methodLabel = (method: PaymentMethod) =>
+        method === "card" ? tr("payment_method_card", "Card") : tr("payment_method_wallet", "Mobile Wallet");
+
+    // Payment method choice is kept between links, like Paymob's "save the methods" option
     const resetForm = () => {
         setClientId("");
         setFullName("");
         setEmail("");
-        setPhone("");
+        setPhoneCountry(DEFAULT_COUNTRY_ISO);
+        setPhoneLocal("");
         setAmount("");
         setDescription("");
         setExpiresAt(defaultExpiry());
@@ -138,8 +162,8 @@ const PaymentLinksPage = () => {
             setError(tr("payment_link_amount_required", "Enter a valid amount"));
             return;
         }
-        if (!clientId && !fullName.trim() && !email.trim() && !phone.trim()) {
-            setError(tr("payment_link_customer_required", "Pick a client or enter the customer's name, email or phone"));
+        if (methods.length === 0) {
+            setError(tr("payment_link_method_required", "Choose at least one payment method"));
             return;
         }
         if (expiresAt && new Date(expiresAt) <= new Date()) {
@@ -152,11 +176,12 @@ const PaymentLinksPage = () => {
             {
                 amount: Math.round(numericAmount * 100) / 100,
                 clientId: clientId || undefined,
+                paymentMethods: methods,
                 description: description.trim() || undefined,
                 customer: {
                     fullName: fullName.trim() || undefined,
                     email: email.trim() || undefined,
-                    phone: phone.trim() || undefined,
+                    phone: toE164(phoneCountry, phoneLocal) || undefined,
                 },
                 expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
             },
@@ -269,7 +294,10 @@ const PaymentLinksPage = () => {
                 <div className="relative mb-5">
                     <h2 className="text-lg font-semibold text-light-900 dark:text-dark-50">{tr("create_payment_link", "Create Payment Link")}</h2>
                     <p className="text-sm text-light-600 dark:text-dark-300">
-                        {tr("create_payment_link_sub", "Pick an existing client or type the customer's details.")}
+                        {tr(
+                            "create_payment_link_sub_optional",
+                            "Customer details are optional — leave them empty and the customer fills them in on the payment page.",
+                        )}
                     </p>
                 </div>
 
@@ -309,6 +337,46 @@ const PaymentLinksPage = () => {
                         />
                     </div>
 
+                    <div className="lg:col-span-2">
+                        <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">
+                            {tr("payment_methods", "Payment methods")} <span className="text-red-500">*</span>
+                        </label>
+                        {methodsLoading ? (
+                            <Loader2 size={18} className="text-light-500 animate-spin" />
+                        ) : (availableMethods || []).length === 0 ? (
+                            <p className="text-sm text-danger-500">
+                                {tr("no_payment_methods_configured", "No payment methods are configured on the server.")}
+                            </p>
+                        ) : (
+                            <div className="flex flex-wrap gap-2">
+                                {(availableMethods || []).map((method) => {
+                                    const Icon = methodIcons[method];
+                                    const checked = methods.includes(method);
+                                    return (
+                                        <label
+                                            key={method}
+                                            className={`flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+                                                checked
+                                                    ? "border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
+                                                    : "border-light-300 text-light-700 hover:bg-light-50 dark:border-dark-600 dark:text-dark-300 dark:hover:bg-dark-700"
+                                            }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleMethod(method)}
+                                                disabled={isSaving}
+                                                className="accent-primary-500"
+                                            />
+                                            <Icon size={16} />
+                                            {methodLabel(method)}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
                     <div>
                         <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">{tr("full_name", "Full Name")}</label>
                         <input
@@ -322,15 +390,29 @@ const PaymentLinksPage = () => {
 
                     <div>
                         <label className="mb-1.5 block text-sm font-medium text-light-700 dark:text-dark-300">{tr("phone_number", "Phone Number")}</label>
-                        <input
-                            type="tel"
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            placeholder="+201012345678"
-                            disabled={isSaving}
-                            className="input w-full disabled:opacity-50"
-                            dir="ltr"
-                        />
+                        <div className="flex gap-2" dir="ltr">
+                            <select
+                                value={phoneCountry}
+                                onChange={(e) => setPhoneCountry(e.target.value)}
+                                disabled={isSaving}
+                                aria-label={tr("country_code", "Country code")}
+                                className="input w-36 shrink-0 disabled:opacity-50"
+                            >
+                                {countryCodes.map((c) => (
+                                    <option key={c.iso} value={c.iso}>
+                                        +{c.dial} {lang === "ar" ? c.ar : c.en}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                type="tel"
+                                value={phoneLocal}
+                                onChange={(e) => setPhoneLocal(e.target.value)}
+                                placeholder={phoneCountry === "EG" ? "1012345678" : ""}
+                                disabled={isSaving}
+                                className="input min-w-0 flex-1 disabled:opacity-50"
+                            />
+                        </div>
                     </div>
 
                     <div>
@@ -427,6 +509,19 @@ const PaymentLinksPage = () => {
                                             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyles[link.status]}`}>
                                                 {statusLabel(link.status)}
                                             </span>
+                                            {(link.paymentMethods || []).map((method) => {
+                                                const Icon = methodIcons[method];
+                                                return Icon ? (
+                                                    <span
+                                                        key={method}
+                                                        title={methodLabel(method)}
+                                                        className="flex items-center gap-1 text-xs text-light-500 dark:text-dark-400"
+                                                    >
+                                                        <Icon size={12} />
+                                                        {methodLabel(method)}
+                                                    </span>
+                                                ) : null;
+                                            })}
                                             {!!link.failedAttempts && link.status === "active" && (
                                                 <span className="text-xs text-danger-500">
                                                     {link.failedAttempts} {tr("failed_attempts", "failed attempt(s)")}
@@ -434,7 +529,13 @@ const PaymentLinksPage = () => {
                                             )}
                                         </div>
                                         <span className="text-sm break-words">
-                                            {link.customer?.fullName || link.customer?.email || link.customer?.phone || "—"}
+                                            {link.customer?.fullName ||
+                                                link.customer?.email ||
+                                                link.customer?.phone || (
+                                                    <span className="text-light-500 dark:text-dark-400 italic">
+                                                        {tr("customer_enters_details", "Customer enters their details at checkout")}
+                                                    </span>
+                                                )}
                                             {clientName && <span className="text-light-500 dark:text-dark-400"> · {clientName}</span>}
                                         </span>
                                         {link.description && <span className="text-xs break-words text-light-600 dark:text-dark-300">{link.description}</span>}
