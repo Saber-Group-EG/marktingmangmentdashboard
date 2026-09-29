@@ -2022,5 +2022,44 @@ ar.photo = "صورة";
 ar.photos = "صور";
 ar.drag_material_to_reorder = "اسحب المادة لإعادة الترتيب";
 
+// Payment Links page (English falls back to the inline defaults)
+ar["Payment Links"] = "روابط الدفع";
+ar.payment_links_page_sub = "أنشئ روابط دفع لمرة واحدة وأرسلها لعملائك.";
+ar.payment_links_admin_only = "إدارة روابط الدفع متاحة للمسؤولين فقط.";
+ar.awaiting_payment = "بانتظار الدفع";
+ar.paid_links = "روابط مدفوعة";
+ar.total_collected = "إجمالي المحصّل";
+ar.create_payment_link = "إنشاء رابط دفع";
+ar.create_payment_link_sub = "اختر عميلاً موجوداً أو أدخل بيانات العميل.";
+ar.client = "العميل";
+ar.no_client_one_off = "— بدون عميل (عميل لمرة واحدة) —";
+ar.amount_egp = "المبلغ (جنيه)";
+ar.link_expires_at = "ينتهي الرابط في";
+ar.payment_link_description_placeholder = "مثال: دفعة مقدمة للحملة — أكتوبر";
+ar.payment_link_amount_required = "أدخل مبلغاً صحيحاً";
+ar.payment_link_customer_required = "اختر عميلاً أو أدخل اسم العميل أو بريده أو هاتفه";
+ar.payment_link_expiry_future = "يجب أن يكون تاريخ الانتهاء في المستقبل";
+ar.payment_link_create_failed = "تعذّر إنشاء رابط الدفع";
+ar.payment_link_cancel_failed = "تعذّر إلغاء رابط الدفع";
+ar.payment_link_cancelled = "تم إلغاء رابط الدفع";
+ar.confirm_cancel_payment_link = "إلغاء رابط الدفع هذا؟ لن يتمكن العميل من الدفع به بعد ذلك.";
+ar.payment_link_ready = "رابط الدفع جاهز";
+ar.payment_link_share_text = "برجاء إتمام دفع مبلغ";
+ar.payment_link_email_subject = "طلب دفع";
+ar.link_copied = "تم نسخ الرابط";
+ar.copy = "نسخ";
+ar.copy_link = "نسخ الرابط";
+ar.open_link = "فتح الرابط";
+ar.cancel_link = "إلغاء الرابط";
+ar.send_email = "إرسال بريد";
+ar.no_payment_links = "لا توجد روابط دفع بعد.";
+ar.failed_attempts = "محاولة فاشلة";
+ar.link_status_active = "نشط";
+ar.link_status_paid = "مدفوع";
+ar.link_status_expired = "منتهي";
+ar.link_status_cancelled = "ملغي";
+ar.paid_at = "دُفع";
+ar.expires = "ينتهي";
+
 export default { en, ar };
 

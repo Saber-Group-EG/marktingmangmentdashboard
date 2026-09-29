@@ -17,6 +17,7 @@ import {
     UserCircle,
     // LogOut,
     Layers,
+    Link2,
     // UserPlus,
 } from "lucide-react";
 
@@ -95,6 +96,12 @@ export const navbarLinks = [
                 label: "Services",
                 icon: Briefcase,
                 path: "/services",
+            },
+            {
+                label: "Payment Links",
+                icon: Link2,
+                path: "/payment-links",
+                adminOnly: true,
             },
             
             

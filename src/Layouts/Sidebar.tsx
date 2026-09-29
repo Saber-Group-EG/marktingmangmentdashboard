@@ -15,6 +15,13 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(({ collapsed, se
     const { lang, t } = useLang();
     const isArabic = lang === "ar";
     const location = useLocation();
+    const isAdmin = (() => {
+        try {
+            return JSON.parse(localStorage.getItem("auth-user") || "null")?.role === "admin";
+        } catch {
+            return false;
+        }
+    })();
 
     // 🧠 Close sidebar automatically on route change (mobile)
     useEffect(() => {
@@ -79,7 +86,7 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(({ collapsed, se
                                 {t(navbarLink.title)}
                             </p>
 
-                            {navbarLink.links.map((link) => {
+                            {navbarLink.links.filter((link: any) => !link.adminOnly || isAdmin).map((link) => {
                                 // Render logout link as a button that calls the auth API
                                 if (link.path === "/logout") {
                                     return (
