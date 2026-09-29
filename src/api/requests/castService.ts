@@ -6,6 +6,7 @@ export interface CastMember {
     title?: string[];
     photo?: any; // string or object (e.g. uploaded file payload)
     socialLinks?: { platform: string; url: string; _id?: string }[];
+    order?: number;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -25,6 +26,7 @@ export interface CastCreateInput {
     title?: string[];
     photo?: string;
     socialLinks?: { platform: string; url: string }[];
+    order?: number | null;
 }
 
 export type CastUpdateInput = Partial<CastCreateInput>;
@@ -89,4 +91,13 @@ export const updateCast = async (id: string, data: CastUpdateInput): Promise<Cas
 
 export const deleteCast = async (id: string): Promise<void> => {
     await axiosInstance.delete(`/cast/${id}`);
+};
+
+export const reorderCast = async (orderedIds: string[]): Promise<{ success: true; orderedIds: string[] }> => {
+    await axiosInstance.patch(
+        "/cast/reorder",
+        { items: orderedIds.map((id, index) => ({ id, order: index })) },
+        { headers: { "x-silent": "1" } },
+    );
+    return { success: true, orderedIds };
 };

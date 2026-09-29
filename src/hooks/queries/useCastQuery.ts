@@ -4,6 +4,7 @@ import {
     createCast,
     updateCast,
     deleteCast,
+    reorderCast,
     type CastListResponse,
     type CastQueryParams,
     type CastUpdateInput,
@@ -111,6 +112,21 @@ export const useDeleteCast = () => {
             }
         },
         onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: castKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
+        },
+    });
+};
+
+export const useReorderCast = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (orderedIds: string[]) => reorderCast(orderedIds),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: castKeys.lists() });
+            queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
+        },
+        onError: () => {
             queryClient.invalidateQueries({ queryKey: castKeys.lists() });
             queryClient.invalidateQueries({ queryKey: projectsKeys.cast() });
         },

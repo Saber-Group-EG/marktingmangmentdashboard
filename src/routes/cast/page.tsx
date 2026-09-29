@@ -1,9 +1,13 @@
 import { useState, useMemo, KeyboardEvent, ChangeEvent } from "react";
-import { Plus, Edit2, Trash2, Check, X, Loader2, User, Search } from "lucide-react";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useQueryClient } from "@tanstack/react-query";
+import { Plus, Edit2, Trash2, Check, X, Loader2, User, Search, GripVertical } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
-import { useCast, useCreateCast, useUpdateCast, useDeleteCast, useProjectCounts } from "@/hooks/queries";
-import type { CastMember } from "@/api/requests/castService";
+import { useCast, useCreateCast, useUpdateCast, useDeleteCast, useReorderCast, useProjectCounts, castKeys } from "@/hooks/queries";
+import type { CastMember, CastListResponse } from "@/api/requests/castService";
 import CastSocialLinks, { type SocialLink } from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
@@ -28,6 +32,134 @@ const cleanSocialLinks = (links: SocialLink[]): { platform: string; url: string 
     links
         .filter((l) => (l.platform || "").trim() && (l.url || "").trim())
         .map((l) => ({ platform: l.platform.trim(), url: l.url.trim() }));
+
+const orderByValue = (member: CastMember): number =>
+    typeof member.order === "number" && Number.isFinite(member.order) ? member.order : Number.MAX_SAFE_INTEGER;
+
+const compareByOrder = (a: CastMember, b: CastMember): number => {
+    const aOrder = orderByValue(a);
+    const bOrder = orderByValue(b);
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return (a.name || "").localeCompare(b.name || "");
+};
+
+type ApiErrorShape = { response?: { data?: { message?: string } } };
+
+const getApiErrorMessage = (error: unknown, fallback: string): string => {
+    const message = (error as ApiErrorShape | null | undefined)?.response?.data?.message;
+    return typeof message === "string" && message.trim() ? message : fallback;
+};
+
+type SortableCastRowProps = {
+    member: CastMember;
+    projectsCount: number;
+    reorderLabel: string;
+    disabled: boolean;
+    isReordering: boolean;
+    onEdit: (member: CastMember) => void;
+    onRemove: (member: CastMember) => void;
+};
+
+const SortableCastRow = ({
+    member,
+    projectsCount,
+    reorderLabel,
+    disabled,
+    isReordering,
+    onEdit,
+    onRemove,
+}: SortableCastRowProps) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+        id: member._id,
+        disabled,
+    });
+
+    const photoUrl = getCastPhotoUrl(member.photo);
+    const initial = member.name ? member.name.charAt(0).toUpperCase() : "?";
+
+    return (
+        <tr
+            ref={setNodeRef}
+            style={{
+                transform: CSS.Transform.toString(transform),
+                transition,
+                zIndex: isDragging ? 50 : undefined,
+                opacity: isDragging ? 0.5 : 1,
+            }}
+            className="hover:bg-light-50/50 dark:hover:bg-dark-800/50 transition-colors"
+        >
+            <td className="py-3 pr-2">
+                <button
+                    type="button"
+                    aria-label={reorderLabel}
+                    disabled={disabled}
+                    {...attributes}
+                    {...listeners}
+                    className={`btn-ghost touch-none rounded-lg p-1.5 ${
+                        disabled ? "cursor-not-allowed opacity-40" : "cursor-grab active:cursor-grabbing"
+                    }`}
+                >
+                    {isReordering ? <Loader2 size={14} className="animate-spin" /> : <GripVertical size={14} />}
+                </button>
+            </td>
+            <td className="py-3 pr-4">
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-light-200 bg-light-100 dark:border-dark-700 dark:bg-dark-700">
+                    {photoUrl ? (
+                        <img src={photoUrl} alt={member.name} className="h-full w-full object-cover" />
+                    ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-light-200 to-light-300 text-sm font-semibold text-light-700 dark:from-dark-700 dark:to-dark-600 dark:text-dark-300">
+                            {initial}
+                        </div>
+                    )}
+                </div>
+            </td>
+            <td className="py-3 pr-4 font-medium text-light-900 dark:text-dark-50 whitespace-nowrap">{member.name}</td>
+            <td className="py-3 pr-4 text-light-600 dark:text-dark-300 whitespace-nowrap">
+                <div className="flex flex-wrap gap-1">
+                    {(member.title || []).length > 0 ? (
+                        member.title!.map((title, idx) => (
+                            <span
+                                key={idx}
+                                className="inline-flex items-center rounded-full border border-light-200 bg-light-50 px-2 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200"
+                            >
+                                {title}
+                            </span>
+                        ))
+                    ) : (
+                        "-"
+                    )}
+                </div>
+            </td>
+            <td className="py-3 pr-4 whitespace-nowrap">
+                <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        projectsCount > 0
+                            ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
+                            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                    }`}
+                >
+                    {projectsCount}
+                </span>
+            </td>
+            <td className="py-3 pr-4">
+                <SocialLinkIcons links={member.socialLinks} size={14} />
+            </td>
+            <td className="py-3">
+                <div className="flex items-center gap-1">
+                    <button onClick={() => onEdit(member)} className="btn-ghost rounded-lg p-1.5">
+                        <Edit2 size={14} />
+                    </button>
+                    <button
+                        onClick={() => onRemove(member)}
+                        className="btn-ghost text-danger-500 rounded-lg p-1.5"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                </div>
+            </td>
+        </tr>
+    );
+};
 
 const CastPage = () => {
     const { t } = useLang();
@@ -55,25 +187,43 @@ const CastPage = () => {
     const [searchQuery, setSearchQuery] = useState("");
 
     const { data: castResponse, isLoading } = useCast();
-    const members = castResponse?.cast || [];
+    const members = useMemo(() => castResponse?.cast || [], [castResponse]);
     const totalMembers = castResponse?.meta?.total ?? members.length;
     const { castCounts, totalProjects } = useProjectCounts();
 
     const filteredMembers = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
-        if (!q) return members;
-        return members.filter(
-            (m) =>
-                (m.name || "").toLowerCase().includes(q) ||
-                (m.title || []).some((t) => t.toLowerCase().includes(q)),
-        );
+        const list = !q
+            ? members
+            : members.filter(
+                  (m) =>
+                      (m.name || "").toLowerCase().includes(q) ||
+                      (m.title || []).some((t) => t.toLowerCase().includes(q)),
+              );
+        return [...list].sort(compareByOrder);
     }, [members, searchQuery]);
+
+    const nextOrder = useMemo(
+        () =>
+            members.reduce(
+                (max, m) =>
+                    typeof m.order === "number" && Number.isFinite(m.order) ? Math.max(max, m.order) : max,
+                -1,
+            ) + 1,
+        [members],
+    );
 
     const createCastMutation = useCreateCast();
     const updateCastMutation = useUpdateCast();
     const deleteCastMutation = useDeleteCast();
+    const reorderMutation = useReorderCast();
 
-    const isSaving = createCastMutation.isPending || updateCastMutation.isPending;
+    const queryClient = useQueryClient();
+    const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+    const isReordering = reorderMutation.isPending;
+    const isSaving = createCastMutation.isPending || updateCastMutation.isPending || isReordering;
+    const canReorder = !searchQuery.trim() && !isSaving;
     const photoUpload = useUploadProgress();
 
     const handlePhotoSelect = async (e: ChangeEvent<HTMLInputElement>, setPhoto: (url: string) => void) => {
@@ -105,7 +255,7 @@ const CastPage = () => {
             setError(tr("member_name_required", "Member name is required"));
             return;
         }
-
+        const order = nextOrder;
         setError("");
         createCastMutation.mutate(
             {
@@ -113,6 +263,7 @@ const CastPage = () => {
                 title: inputTitles.length > 0 ? inputTitles : undefined,
                 photo: inputPhoto || undefined,
                 socialLinks: cleanSocialLinks(inputSocialLinks),
+                order,
             },
             {
                 onSuccess: () => {
@@ -180,11 +331,37 @@ const CastPage = () => {
                     title: editTitles.length > 0 ? editTitles : undefined,
                     photo: editPhoto || undefined,
                     socialLinks: cleanSocialLinks(editSocialLinks),
+                    order: editingMember.order ?? null,
                 },
             });
             closeEditModal();
         } catch (e: any) {
             setError(e?.response?.data?.message || "Failed to update member");
+        }
+    };
+
+    const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+        if (!over || active.id === over.id || !canReorder) return;
+
+        const previousList = filteredMembers;
+        const oldIndex = previousList.findIndex((m) => m._id === active.id);
+        const newIndex = previousList.findIndex((m) => m._id === over.id);
+        if (oldIndex < 0 || newIndex < 0) return;
+
+        const reordered = arrayMove(previousList, oldIndex, newIndex).map((member, index) => ({
+            ...member,
+            order: index + 1,
+        }));
+
+        queryClient.setQueriesData<CastListResponse>({ queryKey: castKeys.lists() }, (previous) =>
+            previous ? { ...previous, cast: reordered } : previous,
+        );
+
+        try {
+            await reorderMutation.mutateAsync(reordered.map((member) => member._id));
+        } catch (e) {
+            setError(getApiErrorMessage(e, "Failed to update order"));
+            queryClient.invalidateQueries({ queryKey: castKeys.lists() });
         }
     };
 
@@ -412,87 +589,46 @@ const CastPage = () => {
                     </div>
                 ) : filteredMembers.length > 0 ? (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead>
-                                <tr className="border-b border-light-200 dark:border-dark-700">
-                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("photo", "Photo")}</th>
-                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_name", "Name")}</th>
-                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_title_role", "Title/Role")}</th>
-                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("used_in_projects", "Used in Projects")}</th>
-                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("social_links", "Social Links")}</th>
-                                    <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("actions", "Actions")}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-light-100 dark:divide-dark-700/50">
-                                {filteredMembers.map((member) => {
-                                    const photoUrl = getCastPhotoUrl(member.photo);
-                                    const initial = member.name ? member.name.charAt(0).toUpperCase() : "?";
-
-    return (
-                                        <tr key={member._id} className="hover:bg-light-50/50 dark:hover:bg-dark-800/50 transition-colors">
-                                            <td className="py-3 pr-4">
-                                                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-light-200 bg-light-100 dark:border-dark-700 dark:bg-dark-700">
-                                                    {photoUrl ? (
-                                                        <img src={photoUrl} alt={member.name} className="h-full w-full object-cover" />
-                                                    ) : (
-                                                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-light-200 to-light-300 text-sm font-semibold text-light-700 dark:from-dark-700 dark:to-dark-600 dark:text-dark-300">
-                                                            {initial}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="py-3 pr-4 font-medium text-light-900 dark:text-dark-50 whitespace-nowrap">
-                                                {member.name}
-                                            </td>
-                                            <td className="py-3 pr-4 text-light-600 dark:text-dark-300 whitespace-nowrap">
-                                                <div className="flex flex-wrap gap-1">
-                                                    {(member.title || []).length > 0 ? (
-                                                        member.title!.map((t, idx) => (
-                                                            <span
-                                                                key={idx}
-                                                                className="inline-flex items-center rounded-full border border-light-200 bg-light-50 px-2 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200"
-                                                            >
-                                                                {t}
-                                                            </span>
-                                                        ))
-                                                    ) : (
-                                                        "-"
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="py-3 pr-4 whitespace-nowrap">
-                                                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                                    (castCounts[member._id] || 0) > 0
-                                                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
-                                                        : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                                                }`}>
-                                                    {castCounts[member._id] || 0}
-                                                </span>
-                                            </td>
-                                            <td className="py-3 pr-4">
-                                                <SocialLinkIcons links={member.socialLinks} size={14} />
-                                            </td>
-                                            <td className="py-3">
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        onClick={() => openEditModal(member)}
-                                                        className="btn-ghost rounded-lg p-1.5"
-                                                    >
-                                                        <Edit2 size={14} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => remove(member)}
-                                                        className="btn-ghost text-danger-500 rounded-lg p-1.5"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                        <DndContext
+                            sensors={dragSensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={handleDragEnd}
+                        >
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="border-b border-light-200 dark:border-dark-700">
+                                        <th className="w-8 pb-3 font-medium text-light-600 dark:text-dark-400">
+                                            <span className="sr-only">{tr("reorder", "Reorder")}</span>
+                                        </th>
+                                        <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("photo", "Photo")}</th>
+                                        <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_name", "Name")}</th>
+                                        <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_title_role", "Title/Role")}</th>
+                                        <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("used_in_projects", "Used in Projects")}</th>
+                                        <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("social_links", "Social Links")}</th>
+                                        <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("actions", "Actions")}</th>
+                                    </tr>
+                                </thead>
+                                <SortableContext
+                                    items={filteredMembers.map((member) => member._id)}
+                                    strategy={verticalListSortingStrategy}
+                                >
+                                    <tbody className="divide-y divide-light-100 dark:divide-dark-700/50">
+                                        {filteredMembers.map((member) => (
+                                            <SortableCastRow
+                                                key={member._id}
+                                                member={member}
+                                                projectsCount={castCounts[member._id] || 0}
+                                                reorderLabel={tr("reorder_member", "Reorder member")}
+                                                disabled={!canReorder}
+                                                isReordering={isReordering}
+                                                onEdit={openEditModal}
+                                                onRemove={remove}
+                                            />
+                                        ))}
+                                    </tbody>
+                                </SortableContext>
+                            </table>
+                        </DndContext>
                     </div>
                 ) : (
                     <p className="text-light-600 dark:text-dark-300 py-8 text-center">
