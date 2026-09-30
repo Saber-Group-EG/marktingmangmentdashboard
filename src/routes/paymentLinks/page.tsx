@@ -357,7 +357,7 @@ const PaymentLinksPage = () => {
                                             key={method}
                                             className={`flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
                                                 checked
-                                                    ? "border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
+                                                    ? "border-light-500 bg-light-50 text-light-700 dark:border-secdark-700 dark:bg-secdark-900/30 dark:text-secdark-100"
                                                     : "border-light-300 text-light-700 hover:bg-light-50 dark:border-dark-600 dark:text-dark-300 dark:hover:bg-dark-700"
                                             }`}
                                         >
@@ -366,7 +366,7 @@ const PaymentLinksPage = () => {
                                                 checked={checked}
                                                 onChange={() => toggleMethod(method)}
                                                 disabled={isSaving}
-                                                className="accent-primary-500"
+                                                className="accent-light-500 dark:accent-secdark-700"
                                             />
                                             <Icon size={16} />
                                             {methodLabel(method)}
@@ -476,7 +476,7 @@ const PaymentLinksPage = () => {
                                 onClick={() => setStatusFilter(f.key)}
                                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                                     statusFilter === f.key
-                                        ? "bg-primary-500 text-white"
+                                        ? "bg-light-500 text-white dark:bg-secdark-700"
                                         : "bg-light-100 text-light-700 hover:bg-light-200 dark:bg-dark-800 dark:text-dark-300 dark:hover:bg-dark-700"
                                 }`}
                             >
@@ -590,7 +590,7 @@ const PaymentLinksPage = () => {
                     <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl dark:bg-dark-800">
                         <div className="flex items-center justify-between border-b border-light-200 px-6 py-4 dark:border-dark-700">
                             <div className="flex items-center gap-2">
-                                <Link2 size={20} className="text-primary-500" />
+                                <Link2 size={20} className="text-light-500 dark:text-secdark-400" />
                                 <h3 className="text-xl font-semibold text-light-900 dark:text-dark-50">{tr("payment_link_ready", "Payment link ready")}</h3>
                             </div>
                             <button
