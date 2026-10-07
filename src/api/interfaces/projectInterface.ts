@@ -38,6 +38,7 @@ export interface Project {
   icon?: string | null;
   isFeatured?: boolean;
   isHero?: boolean;
+  hideClientName?: boolean;
   internalLayout?: number | null;
 }
 
@@ -98,6 +99,7 @@ export interface ProjectCreate {
   icon?: string | null;
   isFeatured?: boolean;
   isHero?: boolean;
+  hideClientName?: boolean;
   internalLayout?: number | null;
 }
 

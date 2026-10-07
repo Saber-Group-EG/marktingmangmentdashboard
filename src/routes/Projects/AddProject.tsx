@@ -609,6 +609,7 @@ const AddProject: React.FC = () => {
         icon: "",
         isFeatured: false,
         isHero: false,
+        hideClientName: false,
         internalLayout: null as number | null,
     });
 
@@ -1220,6 +1221,7 @@ const AddProject: React.FC = () => {
             icon: source.icon || "",
             isFeatured: !!source.isFeatured,
             isHero: !!source.isHero,
+            hideClientName: !!source.hideClientName,
             internalLayout: source.internalLayout ?? null,
         });
     };
@@ -3184,6 +3186,7 @@ const handleShootedAtChange = (date: Date | null) => {
             icon: clone.icon || null,
             isFeatured: !!clone.isFeatured,
             isHero: !!clone.isHero,
+            hideClientName: !!clone.hideClientName,
             internalLayout: clone.internalLayout ?? null,
         };
 
@@ -3829,6 +3832,20 @@ const handleShootedAtChange = (date: Date | null) => {
                                                 </button>
                                             </div>
                                         </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            name="hideClientName"
+                                            id="hideClientName"
+                                            checked={!!form.hideClientName}
+                                            onChange={handleChange}
+                                            className="w-4 h-4 rounded border-light-300 dark:border-dark-600 text-light-500 dark:text-secdark-500 focus:ring-light-500 dark:focus:ring-secdark-500"
+                                        />
+                                        <label htmlFor="hideClientName" className="text-sm text-light-700 dark:text-dark-300">
+                                            {tr("hide_client_name", "Hide Client Name")}
+                                        </label>
                                     </div>
 
                                     <div>
