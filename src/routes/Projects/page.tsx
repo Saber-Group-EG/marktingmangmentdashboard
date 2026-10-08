@@ -11,6 +11,9 @@ import { showConfirm, showAlert } from "@/utils/swal";
 
 const PROJECT_CARD_TYPE = "PROJECT_CARD";
 
+let persistedSearchTerm = "";
+let persistedCompanyFilter: string[] = [];
+
 const getProjectId = (p: any): string => p?.id || p?._id || "";
 
 interface SortableProjectCardProps {
@@ -90,8 +93,16 @@ const ProjectsPage: React.FC = () => {
         return !value || value === key ? fallback : value;
     };
 
-    const [searchTerm, setSearchTerm] = useState<string>("");
-    const [companyFilter, setCompanyFilter] = useState<string[]>([]);
+    const [searchTerm, setSearchTerm] = useState<string>(persistedSearchTerm);
+    const [companyFilter, setCompanyFilter] = useState<string[]>(persistedCompanyFilter);
+
+    useEffect(() => {
+        persistedSearchTerm = searchTerm;
+    }, [searchTerm]);
+
+    useEffect(() => {
+        persistedCompanyFilter = companyFilter;
+    }, [companyFilter]);
 
     const { data: allProjectsData, isLoading, error, refetch } = useProjectsPaginated({
         PageCount: "all",
