@@ -3,7 +3,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit2, Trash2, Check, X, Loader2, User, Search, GripVertical } from "lucide-react";
+import { Plus, Edit2, Trash2, Check, X, Loader2, User, Search, GripVertical, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
 import { useCast, useCreateCast, useUpdateCast, useDeleteCast, useReorderCast, useCastProjectCounts, castKeys } from "@/hooks/queries";
@@ -185,6 +185,7 @@ const CastPage = () => {
 
     const [error, setError] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
+    const [countSort, setCountSort] = useState<"none" | "asc" | "desc">("none");
 
     const { data: castResponse, isLoading } = useCast();
     const members = useMemo(() => castResponse?.cast || [], [castResponse]);
@@ -200,8 +201,16 @@ const CastPage = () => {
                       (m.name || "").toLowerCase().includes(q) ||
                       (m.title || []).some((t) => t.toLowerCase().includes(q)),
               );
-        return [...list].sort(compareByOrder);
-    }, [members, searchQuery]);
+        if (countSort === "none") return [...list].sort(compareByOrder);
+        return [...list].sort((a, b) => {
+            const diff = (castCounts[a._id] || 0) - (castCounts[b._id] || 0);
+            if (diff !== 0) return countSort === "asc" ? diff : -diff;
+            return (a.name || "").localeCompare(b.name || "");
+        });
+    }, [members, searchQuery, countSort, castCounts]);
+
+    const toggleCountSort = () =>
+        setCountSort((prev) => (prev === "desc" ? "asc" : prev === "asc" ? "none" : "desc"));
 
     const nextOrder = useMemo(
         () =>
@@ -223,7 +232,7 @@ const CastPage = () => {
 
     const isReordering = reorderMutation.isPending;
     const isSaving = createCastMutation.isPending || updateCastMutation.isPending || isReordering;
-    const canReorder = !searchQuery.trim() && !isSaving;
+    const canReorder = !searchQuery.trim() && !isSaving && countSort === "none";
     const photoUpload = useUploadProgress();
 
     const handlePhotoSelect = async (e: ChangeEvent<HTMLInputElement>, setPhoto: (url: string) => void) => {
@@ -603,7 +612,22 @@ const CastPage = () => {
                                         <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("photo", "Photo")}</th>
                                         <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_name", "Name")}</th>
                                         <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("cast_title_role", "Title/Role")}</th>
-                                        <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("used_in_projects", "Used in Projects")}</th>
+                                        <th className="pb-3 font-medium text-light-600 dark:text-dark-400">
+                                            <button
+                                                type="button"
+                                                onClick={toggleCountSort}
+                                                className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 hover:bg-light-100 dark:hover:bg-dark-800"
+                                            >
+                                                {tr("used_in_projects", "Used in Projects")}
+                                                {countSort === "asc" ? (
+                                                    <ArrowUp size={12} />
+                                                ) : countSort === "desc" ? (
+                                                    <ArrowDown size={12} />
+                                                ) : (
+                                                    <ArrowUpDown size={12} className="opacity-40" />
+                                                )}
+                                            </button>
+                                        </th>
                                         <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("social_links", "Social Links")}</th>
                                         <th className="pb-3 font-medium text-light-600 dark:text-dark-400">{tr("actions", "Actions")}</th>
                                     </tr>
