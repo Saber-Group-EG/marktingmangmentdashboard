@@ -159,6 +159,30 @@ export const getProjects = async (params?: Record<string, any>): Promise<Project
   }
 };
 
+export interface ProjectCastRef {
+  projectId: string;
+  cast: any[];
+}
+
+export const getProjectsCastRefs = async (): Promise<ProjectCastRef[]> => {
+  const response = await axiosInstance.get(PROJECTS_ENDPOINT, {
+    params: { PageCount: "all", fields: "cast" },
+  });
+  const responseData = response.data;
+  let data: any[] = [];
+  if (Array.isArray(responseData)) data = responseData;
+  else if (Array.isArray(responseData?.projects)) data = responseData.projects;
+  else if (Array.isArray(responseData?.data)) data = responseData.data;
+  else if (Array.isArray(responseData?.data?.projects)) data = responseData.data.projects;
+
+  return data
+    .map((raw: any) => ({
+      projectId: String(raw?._id || raw?.id || ""),
+      cast: Array.isArray(raw?.cast) ? raw.cast : [],
+    }))
+    .filter((item) => !!item.projectId);
+};
+
 export const getProjectsPaginated = async (
   params?: Record<string, any>
 ): Promise<ProjectListResponse> => {

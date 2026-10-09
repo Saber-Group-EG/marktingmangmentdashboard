@@ -1,5 +1,7 @@
 import { useMemo } from "react";
-import { useProjects } from "./useProjectsQuery";
+import { useQuery } from "@tanstack/react-query";
+import { useProjects, projectsKeys } from "./useProjectsQuery";
+import { getProjectsCastRefs, type ProjectCastRef } from "@/api/requests/projectsService";
 
 const extractId = (value: any): string | null => {
     if (!value) return null;
@@ -60,4 +62,41 @@ export const useProjectCounts = () => {
     const totalProjects = projects.length;
 
     return { castCounts, categoryCounts, totalProjects, isLoading };
+};
+
+export const useCastProjectCounts = (castMembers?: { _id?: string; id?: string; name?: string }[]) => {
+    const { data: projectCastRefs = [], isLoading } = useQuery<ProjectCastRef[]>({
+        queryKey: [...projectsKeys.lists(), "cast-refs"],
+        queryFn: getProjectsCastRefs,
+        staleTime: 5 * 60 * 1000,
+        refetchOnMount: true,
+        refetchOnWindowFocus: false,
+    });
+
+    const { castCounts, totalProjects } = useMemo(() => {
+        const nameToId: Record<string, string> = {};
+        for (const member of castMembers || []) {
+            const id = extractId(member);
+            const name = (member?.name || "").trim().toLowerCase();
+            if (id && name && !(name in nameToId)) nameToId[name] = id;
+        }
+
+        const counts: Record<string, number> = {};
+        for (const project of projectCastRefs) {
+            const ids = new Set<string>();
+            for (const member of project.cast) {
+                const id =
+                    extractId(typeof member === "string" ? member : (member as any)?.castId) ||
+                    extractId((member as any)?._id) ||
+                    extractId((member as any)?.id) ||
+                    nameToId[String((member as any)?.name || "").trim().toLowerCase()];
+                if (id) ids.add(id);
+            }
+            for (const id of ids) counts[id] = (counts[id] || 0) + 1;
+        }
+
+        return { castCounts: counts, totalProjects: projectCastRefs.length };
+    }, [projectCastRefs, castMembers]);
+
+    return { castCounts, totalProjects, isLoading };
 };

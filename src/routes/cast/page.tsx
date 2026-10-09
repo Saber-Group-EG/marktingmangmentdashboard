@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Edit2, Trash2, Check, X, Loader2, User, Search, GripVertical } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
-import { useCast, useCreateCast, useUpdateCast, useDeleteCast, useReorderCast, useProjectCounts, castKeys } from "@/hooks/queries";
+import { useCast, useCreateCast, useUpdateCast, useDeleteCast, useReorderCast, useCastProjectCounts, castKeys } from "@/hooks/queries";
 import type { CastMember, CastListResponse } from "@/api/requests/castService";
 import CastSocialLinks, { type SocialLink } from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
@@ -189,7 +189,7 @@ const CastPage = () => {
     const { data: castResponse, isLoading } = useCast();
     const members = useMemo(() => castResponse?.cast || [], [castResponse]);
     const totalMembers = castResponse?.meta?.total ?? members.length;
-    const { castCounts, totalProjects } = useProjectCounts();
+    const { castCounts, totalProjects } = useCastProjectCounts(members);
 
     const filteredMembers = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
