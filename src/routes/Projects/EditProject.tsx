@@ -773,8 +773,8 @@ const EditProject: React.FC = () => {
     const [isDragging, setIsDragging] = useState(false);
     const isDraggingRef = useRef(false);
     const dragStartRef = useRef<{ x: number; y: number; center: { x: number; y: number } }>({ x: 0, y: 0, center: { x: 0.5, y: 0.5 } });
-    const coverAspectRatio = form.isHero ? 19 / 6 : 4 / 5;
-    const coverAspectClass = form.isHero ? "aspect-[19/6]" : "aspect-[4/5]";
+    const coverAspectRatio = form.isHero ? 16 / 9 : 4 / 5;
+    const coverAspectClass = form.isHero ? "aspect-[16/9]" : "aspect-[4/5]";
     const [coverPickerMaterialIdx, setCoverPickerMaterialIdx] = useState<number | null>(null);
     const coverPickerRef = useRef<HTMLDivElement>(null);
 
@@ -4621,7 +4621,7 @@ if (Array.isArray(clone.cast)) {
                                                     </div>
                                                     <div className="mt-2 text-sm text-light-500 dark:text-dark-400">
                                                         {form.isHero
-                                                            ? tr("crop_help_text_hero", "Drag the box on the image to position the 19:6 hero crop. Use the zoom slider to scale.")
+                                                            ? tr("crop_help_text_hero", "Drag the box on the image to position the 16:9 hero crop. Use the zoom slider to scale.")
                                                             : tr("crop_help_text", "Drag the square on the image to position the 4:5 crop. Use the zoom slider to scale.")}
                                                     </div>
                                                 </div>
@@ -4671,7 +4671,7 @@ if (Array.isArray(clone.cast)) {
                                                         ) : (
                                                             <div className="text-sm text-light-500 dark:text-dark-400 p-4">
                                                                 {form.isHero
-                                                                    ? tr("cropped_preview_19_6", "Cropped preview (19:6)")
+                                                                    ? tr("cropped_preview_16_9", "Cropped preview (16:9)")
                                                                     : tr("cropped_preview_4_5", "Cropped preview (4:5)")}
                                                             </div>
                                                         )}
