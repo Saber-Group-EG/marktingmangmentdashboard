@@ -1,8 +1,19 @@
-import { useState, KeyboardEvent, ChangeEvent } from "react";
-import { Plus, Edit2, Trash2, Check, X, Loader2, Building2 } from "lucide-react";
+import { useState, useMemo, KeyboardEvent, ChangeEvent } from "react";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useQueryClient } from "@tanstack/react-query";
+import { Plus, Edit2, Trash2, Check, X, Loader2, Building2, GripVertical } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { showConfirm } from "@/utils/swal";
-import { useProjectCompanies, useCreateProjectCompany, useUpdateProjectCompany, useDeleteProjectCompany } from "@/hooks/queries";
+import {
+    useProjectCompanies,
+    useCreateProjectCompany,
+    useUpdateProjectCompany,
+    useDeleteProjectCompany,
+    useReorderProjectCompanies,
+    projectCompaniesKeys,
+} from "@/hooks/queries";
 import type { ProjectCompany } from "@/api/requests/projectCompaniesService";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
@@ -26,6 +37,23 @@ const getCompanyLogoUrl = (logo: any): string => {
     return logo.url || logo.publicId || "";
 };
 
+const orderByValue = (company: ProjectCompany): number =>
+    typeof company.order === "number" && Number.isFinite(company.order) ? company.order : Number.MAX_SAFE_INTEGER;
+
+const compareByOrder = (a: ProjectCompany, b: ProjectCompany): number => {
+    const aOrder = orderByValue(a);
+    const bOrder = orderByValue(b);
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return getCompanyNameEn(a).localeCompare(getCompanyNameEn(b));
+};
+
+type ApiErrorShape = { response?: { data?: { message?: string } } };
+
+const getApiErrorMessage = (error: unknown, fallback: string): string => {
+    const message = (error as ApiErrorShape | null | undefined)?.response?.data?.message;
+    return typeof message === "string" && message.trim() ? message : fallback;
+};
+
 const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -33,6 +61,90 @@ const readFileAsDataUrl = (file: File): Promise<string> =>
         reader.onerror = () => reject(new Error("Failed to read file"));
         reader.readAsDataURL(file);
     });
+
+type SortableCompanyRowProps = {
+    company: ProjectCompany;
+    reorderLabel: string;
+    disabled: boolean;
+    isReordering: boolean;
+    onEdit: (company: ProjectCompany) => void;
+    onRemove: (company: ProjectCompany) => void;
+};
+
+const SortableCompanyRow = ({
+    company,
+    reorderLabel,
+    disabled,
+    isReordering,
+    onEdit,
+    onRemove,
+}: SortableCompanyRowProps) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+        id: company._id,
+        disabled,
+    });
+
+    const nameEn = getCompanyNameEn(company);
+    const nameAr = getCompanyNameAr(company);
+    const logoUrl = getCompanyLogoUrl(company.logo);
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={{
+                transform: CSS.Transform.toString(transform),
+                transition,
+                zIndex: isDragging ? 50 : undefined,
+                opacity: isDragging ? 0.5 : 1,
+            }}
+            className="group flex flex-col gap-3 rounded-2xl border border-light-200/80 bg-white px-4 py-3 text-light-900 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-dark-700/80 dark:bg-dark-800 dark:text-dark-50 sm:flex-row sm:items-center sm:justify-between"
+        >
+            <div className="flex w-full min-w-0 items-center gap-3">
+                <button
+                    type="button"
+                    aria-label={reorderLabel}
+                    disabled={disabled}
+                    {...attributes}
+                    {...listeners}
+                    className={`btn-ghost touch-none shrink-0 rounded-lg p-1.5 ${
+                        disabled ? "cursor-not-allowed opacity-40" : "cursor-grab active:cursor-grabbing"
+                    }`}
+                >
+                    {isReordering ? <Loader2 size={14} className="animate-spin" /> : <GripVertical size={14} />}
+                </button>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-light-200 bg-light-100 dark:border-dark-700 dark:bg-dark-700">
+                    {logoUrl ? (
+                        <img src={logoUrl} alt={nameEn} className="h-full w-full object-cover" />
+                    ) : (
+                        <Building2 size={18} className="text-light-500 dark:text-dark-400" />
+                    )}
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                    <span className="flex items-center gap-2 text-sm font-semibold break-words">{nameEn}</span>
+                    {nameAr && (
+                        <span dir="rtl" className="text-sm break-words text-light-600 dark:text-dark-300">
+                            {nameAr}
+                        </span>
+                    )}
+                    {company.field && (
+                        <span className="text-xs break-words text-light-500 dark:text-dark-400">{company.field}</span>
+                    )}
+                </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
+                <button onClick={() => onEdit(company)} className="btn-ghost flex items-center gap-2 rounded-xl">
+                    <Edit2 size={14} />
+                </button>
+                <button
+                    onClick={() => onRemove(company)}
+                    className="btn-ghost text-danger-500 flex items-center gap-2 rounded-xl"
+                >
+                    <Trash2 size={14} />
+                </button>
+            </div>
+        </div>
+    );
+};
 
 const ProjectCompaniesPage = () => {
     const { t } = useLang();
@@ -57,13 +169,30 @@ const ProjectCompaniesPage = () => {
     const [error, setError] = useState("");
 
     const { data: companies, isLoading } = useProjectCompanies();
-    const allCompanies = companies || [];
+    const allCompanies = useMemo(() => [...(companies || [])].sort(compareByOrder), [companies]);
+
+    const nextOrder = useMemo(
+        () =>
+            allCompanies.reduce(
+                (max, c) =>
+                    typeof c.order === "number" && Number.isFinite(c.order) ? Math.max(max, c.order) : max,
+                -1,
+            ) + 1,
+        [allCompanies],
+    );
 
     const createProjectCompanyMutation = useCreateProjectCompany();
     const updateProjectCompanyMutation = useUpdateProjectCompany();
     const deleteProjectCompanyMutation = useDeleteProjectCompany();
+    const reorderMutation = useReorderProjectCompanies();
 
-    const isSaving = createProjectCompanyMutation.isPending || updateProjectCompanyMutation.isPending;
+    const queryClient = useQueryClient();
+    const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+    const isReordering = reorderMutation.isPending;
+    const isSaving =
+        createProjectCompanyMutation.isPending || updateProjectCompanyMutation.isPending || isReordering;
+    const canReorder = !isSaving;
     const logoUpload = useUploadProgress();
 
     const handleLogoSelect = async (e: ChangeEvent<HTMLInputElement>, setLogo: (url: string) => void) => {
@@ -108,6 +237,7 @@ const ProjectCompaniesPage = () => {
                 name: { en: nameEn, ar: nameAr },
                 field: (inputField || "").trim() || undefined,
                 logo: inputLogo || undefined,
+                order: nextOrder,
             },
             {
                 onSuccess: () => {
@@ -177,11 +307,37 @@ const ProjectCompaniesPage = () => {
                     name: { en: nameEn, ar: nameAr },
                     field: (editField || "").trim() || undefined,
                     logo: editLogo || undefined,
+                    order: editingCompany.order ?? null,
                 },
             });
             closeEditModal();
         } catch (e: any) {
             setError(e?.response?.data?.message || "Failed to update company");
+        }
+    };
+
+    const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+        if (!over || active.id === over.id || !canReorder) return;
+
+        const previousList = allCompanies;
+        const oldIndex = previousList.findIndex((c) => c._id === active.id);
+        const newIndex = previousList.findIndex((c) => c._id === over.id);
+        if (oldIndex < 0 || newIndex < 0) return;
+
+        const reordered = arrayMove(previousList, oldIndex, newIndex).map((company, index) => ({
+            ...company,
+            order: index + 1,
+        }));
+
+        queryClient.setQueriesData<ProjectCompany[]>({ queryKey: projectCompaniesKeys.lists() }, (previous) =>
+            previous ? reordered : previous,
+        );
+
+        try {
+            await reorderMutation.mutateAsync(reordered.map((company) => company._id));
+        } catch (e) {
+            setError(getApiErrorMessage(e, "Failed to update order"));
+            queryClient.invalidateQueries({ queryKey: projectCompaniesKeys.lists() });
         }
     };
 
@@ -348,65 +504,35 @@ const ProjectCompaniesPage = () => {
                     <div className="flex items-center justify-center py-12">
                         <Loader2 className="text-light-500 h-8 w-8 animate-spin" />
                     </div>
-                ) : (
-                    <div className="space-y-2">
-                        {allCompanies.length > 0 ? (
-                            allCompanies.map((company) => {
-                                const nameEn = getCompanyNameEn(company);
-                                const nameAr = getCompanyNameAr(company);
-                                const logoUrl = getCompanyLogoUrl(company.logo);
-                                return (
-                                    <div
+                ) : allCompanies.length > 0 ? (
+                    <DndContext
+                        sensors={dragSensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEnd}
+                    >
+                        <SortableContext
+                            items={allCompanies.map((company) => company._id)}
+                            strategy={verticalListSortingStrategy}
+                        >
+                            <div className="space-y-2">
+                                {allCompanies.map((company) => (
+                                    <SortableCompanyRow
                                         key={company._id}
-                                        className="group flex flex-col gap-3 rounded-2xl border border-light-200/80 bg-white px-4 py-3 text-light-900 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-dark-700/80 dark:bg-dark-800 dark:text-dark-50 sm:flex-row sm:items-center sm:justify-between"
-                                    >
-                                        <div className="flex w-full min-w-0 items-center gap-3">
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-light-200 bg-light-100 dark:border-dark-700 dark:bg-dark-700">
-                                                {logoUrl ? (
-                                                    <img src={logoUrl} alt={nameEn} className="h-full w-full object-cover" />
-                                                ) : (
-                                                    <Building2 size={18} className="text-light-500 dark:text-dark-400" />
-                                                )}
-                                            </div>
-                                            <div className="flex min-w-0 flex-col gap-1">
-                                                <span className="flex items-center gap-2 text-sm font-semibold break-words">
-                                                    {nameEn}
-                                                </span>
-                                                {nameAr && (
-                                                    <span dir="rtl" className="text-sm break-words text-light-600 dark:text-dark-300">
-                                                        {nameAr}
-                                                    </span>
-                                                )}
-                                                {company.field && (
-                                                    <span className="text-xs break-words text-light-500 dark:text-dark-400">
-                                                        {company.field}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
-                                            <button
-                                                onClick={() => openEditModal(company)}
-                                                className="btn-ghost flex items-center gap-2 rounded-xl"
-                                            >
-                                                <Edit2 size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => remove(company)}
-                                                className="btn-ghost text-danger-500 flex items-center gap-2 rounded-xl"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        ) : (
-                            <p className="text-sm text-light-600 dark:text-dark-300">
-                                {tr("no_project_companies", "No project companies defined yet.")}
-                            </p>
-                        )}
-                    </div>
+                                        company={company}
+                                        reorderLabel={tr("reorder_company", "Reorder company")}
+                                        disabled={!canReorder}
+                                        isReordering={isReordering}
+                                        onEdit={openEditModal}
+                                        onRemove={remove}
+                                    />
+                                ))}
+                            </div>
+                        </SortableContext>
+                    </DndContext>
+                ) : (
+                    <p className="text-sm text-light-600 dark:text-dark-300">
+                        {tr("no_project_companies", "No project companies defined yet.")}
+                    </p>
                 )}
             </div>
 
