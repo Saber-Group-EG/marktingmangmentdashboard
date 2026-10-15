@@ -5,6 +5,7 @@ export interface ProjectCompany {
     name: { en: string; ar: string } | string;
     logo?: string;
     field?: string;
+    order?: number;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -13,6 +14,7 @@ export interface ProjectCompanyInput {
     name: { en: string; ar: string };
     logo?: string;
     field?: string;
+    order?: number | null;
 }
 
 const extractProjectCompanies = (payload: any): ProjectCompany[] => {
@@ -49,4 +51,13 @@ export const updateProjectCompany = async (
 
 export const deleteProjectCompany = async (id: string): Promise<void> => {
     await axiosInstance.delete(`/project-companies/${id}`);
+};
+
+export const reorderProjectCompanies = async (orderedIds: string[]): Promise<{ success: true; orderedIds: string[] }> => {
+    await axiosInstance.patch(
+        "/project-companies/reorder",
+        { items: orderedIds.map((id, index) => ({ id, order: index })) },
+        { headers: { "x-silent": "1" } },
+    );
+    return { success: true, orderedIds };
 };

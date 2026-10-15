@@ -4,6 +4,7 @@ import {
     createProjectCompany,
     updateProjectCompany,
     deleteProjectCompany,
+    reorderProjectCompanies,
     type ProjectCompanyInput,
 } from "@/api/requests/projectCompaniesService";
 
@@ -69,6 +70,19 @@ export const useDeleteProjectCompany = () => {
     return useMutation({
         mutationFn: deleteProjectCompany,
         onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: projectCompaniesKeys.lists() });
+        },
+    });
+};
+
+export const useReorderProjectCompanies = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (orderedIds: string[]) => reorderProjectCompanies(orderedIds),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: projectCompaniesKeys.lists() });
+        },
+        onError: () => {
             queryClient.invalidateQueries({ queryKey: projectCompaniesKeys.lists() });
         },
     });
