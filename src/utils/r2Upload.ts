@@ -37,6 +37,44 @@ export const isDataUrl = (value?: string): value is string => typeof value === "
 export const isBlobUrl = (value?: string): value is string => typeof value === "string" && value.startsWith("blob:");
 export const needsUpload = (value?: string): boolean => isDataUrl(value) || isBlobUrl(value);
 
+/** Session-scoped URLs (`blob:`/`data:`) — never valid to store on the server. */
+export const isLocalUrl = (value?: string | null): boolean => typeof value === "string" && (isBlobUrl(value) || isDataUrl(value));
+
+/**
+ * Deep-scans a JSON-ready payload and returns the paths of every local (`blob:`/`data:`) URL.
+ * Example output: `material[0].thumbnail`, `material[2].items[1].url`.
+ */
+export const findLocalUrls = (node: unknown, path = "", found: string[] = []): string[] => {
+    if (typeof node === "string") {
+        if (isLocalUrl(node)) found.push(path || "(root)");
+        return found;
+    }
+    if (Array.isArray(node)) {
+        node.forEach((child, index) => findLocalUrls(child, `${path}[${index}]`, found));
+        return found;
+    }
+    if (node && typeof node === "object" && !(node instanceof Date)) {
+        Object.entries(node as Record<string, unknown>).forEach(([key, child]) => {
+            findLocalUrls(child, path ? `${path}.${key}` : key, found);
+        });
+    }
+    return found;
+};
+
+/**
+ * Last-line guard: throws when the payload still contains local (`blob:`/`data:`) media URLs,
+ * so a missed upload can never be persisted as a dead link on the server.
+ */
+export const assertNoLocalUrls = (payload: unknown, label = "payload"): void => {
+    const found = findLocalUrls(payload);
+    if (!found.length) return;
+    console.error(`[r2Upload] Local (blob:/data:) media found in ${label} — submission blocked:`, found);
+    throw new Error(
+        `Some media was not uploaded yet (${found.join(", ")}). Nothing was saved — please try again.`,
+    );
+};
+
+
 const dataUrlToFile = (dataUrl: string, fileName: string): File => {
     const [header, base64] = dataUrl.split(",");
     if (!header || !base64) {

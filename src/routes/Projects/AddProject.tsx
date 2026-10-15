@@ -9,7 +9,7 @@ import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
-import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency } from "@/utils/r2Upload";
+import { needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency, assertNoLocalUrls } from "@/utils/r2Upload";
 
 import { useAutoTranslatePair } from "@/hooks/useAutoTranslatePair";
 import { stripHtml } from "@/utils/translateText";
@@ -2767,11 +2767,11 @@ const handleShootedAtChange = (date: Date | null) => {
             });
         }
 
-        // precompute how many asset uploads we will perform (data-URL based)
+        // precompute how many asset uploads we will perform (local blob:/data:-URL based)
         let uploadsCount = 0;
         if (clone.mainCover) {
             const coverSrc = clone.mainCover.croppedUrl || clone.mainCover.url;
-            if (isDataUrl(coverSrc)) uploadsCount += 1;
+            if (needsUpload(coverSrc)) uploadsCount += 1;
         }
 
         if (Array.isArray(clone.materials)) {
@@ -2779,21 +2779,21 @@ const handleShootedAtChange = (date: Date | null) => {
                 if (isPhotoMaterialType(m.type)) {
                     const items = buildPhotoItems(m);
                     items.forEach((it) => {
-                        if (isDataUrl(it.url)) uploadsCount += 1;
+                        if (needsUpload(it.url)) uploadsCount += 1;
                     });
                 }
-                if (m.type === "video" && m.url && isDataUrl(m.url)) uploadsCount += 1;
+                if (m.type === "video" && m.url && needsUpload(m.url)) uploadsCount += 1;
                 const mThumbUrl = typeof m.thumbnail === 'string' ? m.thumbnail : m.thumbnail?.url;
-                if (mThumbUrl && isDataUrl(mThumbUrl)) uploadsCount += 1;
-                if (m.before?.url && isDataUrl(m.before.url)) uploadsCount += 1;
-                if (m.after?.url && isDataUrl(m.after.url)) uploadsCount += 1;
+                if (mThumbUrl && needsUpload(mThumbUrl)) uploadsCount += 1;
+                if (m.before?.url && needsUpload(m.before.url)) uploadsCount += 1;
+                if (m.after?.url && needsUpload(m.after.url)) uploadsCount += 1;
             });
         }
 
         if (Array.isArray(clone.cast)) {
             clone.cast.forEach((c: any) => {
                 const photoUrl = c && (typeof c.photo === "string" ? c.photo : c.photo?.url);
-                if (photoUrl && isDataUrl(photoUrl)) uploadsCount += 1;
+                if (photoUrl && needsUpload(photoUrl)) uploadsCount += 1;
             });
         }
 
@@ -3134,8 +3134,8 @@ const handleShootedAtChange = (date: Date | null) => {
 
                     let photo: any = c.photo || null;
                     let photoUrl = typeof photo === "string" ? photo : photo?.url;
-                    if (photoUrl && isDataUrl(photoUrl)) {
-                        const uploaded = await uploadDataUrlToR2(photoUrl, {
+                    if (photoUrl && needsUpload(photoUrl)) {
+                        const uploaded = await uploadThumbnailToR2(photoUrl, {
                             resourceType: "image",
                             fileName: (photo && photo.originalName) || `cast-photo-${Date.now()}.jpg`,
                         });
@@ -3192,6 +3192,9 @@ const handleShootedAtChange = (date: Date | null) => {
             hideClientName: !!clone.hideClientName,
             internalLayout: clone.internalLayout ?? null,
         };
+
+        // Hard guard — a local (blob:/data:) URL must never reach the API
+        assertNoLocalUrls(submitData, "project create payload");
 
         // final submission step (use mutateAsync to await completion and update progress)
         setUploadLabel("Submitting project...");

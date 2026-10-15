@@ -11,7 +11,7 @@ import CastSocialLinks from "@/components/CastSocialLinks";
 import SocialLinkIcons from "@/components/SocialLinkIcons";
 import UploadProgressOverlay from "@/components/UploadProgressOverlay";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
-import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency } from "@/utils/r2Upload";
+import { isDataUrl, needsUpload, uploadThumbnailToR2, uploadDataUrlToR2Cached, uploadDataUrlToR2, uploadFileToR2, runWithConcurrency, assertNoLocalUrls } from "@/utils/r2Upload";
 import { compressDataUrl } from "@/utils/imageCompression";
 import { getProxiedCoverUrl } from "@/utils/proxy";
 
@@ -2877,8 +2877,9 @@ const handleSubmit = async (e: React.FormEvent) => {
             // upload full main cover (original image before crop)
             if (clone.mainCover) {
                 const fullCoverSource = form.mainCover?.url || clone.mainCover.url;
-                if (isDataUrl(fullCoverSource)) {
-                    const uploadedFullCover = await uploadDataUrlToR2(fullCoverSource, {
+                // needsUpload() covers both data: and blob: sources — neither may reach the API
+                if (needsUpload(fullCoverSource)) {
+                    const uploadedFullCover = await uploadThumbnailToR2(fullCoverSource, {
                         resourceType: "image",
                         fileName: clone.mainCover.originalName || `full-main-cover-${Date.now()}.jpg`,
                     });
@@ -2893,9 +2894,10 @@ const handleSubmit = async (e: React.FormEvent) => {
             // upload main cover if needed
             if (clone.mainCover) {
                 const coverUploadSource = clone.mainCover.croppedUrl || clone.mainCover.url;
-                if (isDataUrl(coverUploadSource)) {
-                    const compressedCover = await compressDataUrl(coverUploadSource);
-                    const uploadedMainCover = await uploadDataUrlToR2(compressedCover, {
+                if (needsUpload(coverUploadSource)) {
+                    // data: covers are compressed first; blob: covers are uploaded as-is
+                    const sourceToUpload = isDataUrl(coverUploadSource) ? await compressDataUrl(coverUploadSource) : coverUploadSource;
+                    const uploadedMainCover = await uploadThumbnailToR2(sourceToUpload, {
                         resourceType: "image",
                         fileName: clone.mainCover.originalName || `main-cover-${Date.now()}.jpg`,
                     });
@@ -3189,8 +3191,8 @@ if (Array.isArray(clone.cast)) {
 
                         let photo: any = c.photo || null;
                         let photoUrl = typeof photo === "string" ? photo : photo?.url;
-                        if (photoUrl && isDataUrl(photoUrl)) {
-                            const uploaded = await uploadDataUrlToR2(photoUrl, {
+                        if (photoUrl && needsUpload(photoUrl)) {
+                            const uploaded = await uploadThumbnailToR2(photoUrl, {
                                 resourceType: "image",
                                 fileName: (photo && photo.originalName) || `cast-photo-${Date.now()}.jpg`,
                             });
@@ -3250,6 +3252,9 @@ if (Array.isArray(clone.cast)) {
                 hideClientName: !!clone.hideClientName,
                 internalLayout: clone.internalLayout ?? null,
             };
+
+            // Hard guard — a local (blob:/data:) URL must never reach the API
+            assertNoLocalUrls(submitData, "project update payload");
 
             update.mutate(
                 { id, data: submitData as any },
