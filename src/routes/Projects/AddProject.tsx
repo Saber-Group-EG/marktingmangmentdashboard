@@ -2957,8 +2957,10 @@ const handleShootedAtChange = (date: Date | null) => {
                                             item.originalName || `project-video-${materialIndex + 1}-${itemIndex + 1}.mp4`,
                                         );
                                         let uploadedThumb = item.thumbnail;
-                                        if (item.thumbnail && isDataUrl(item.thumbnail)) {
-                                            const thumbResult = await uploadDataUrlToR2Cached(item.thumbnail, {
+                                        // Thumbnails picked from a file are blob URLs — they must be uploaded too
+                                        // (needsUpload covers both `blob:` and `data:` sources).
+                                        if (item.thumbnail && needsUpload(item.thumbnail)) {
+                                            const thumbResult = await uploadThumbnailToR2(item.thumbnail, {
                                                 resourceType: "image",
                                                 fileName: `video-thumb-${materialIndex + 1}-${itemIndex + 1}.jpg`,
                                             });
@@ -3094,7 +3096,8 @@ const handleShootedAtChange = (date: Date | null) => {
                     if (!thumb) return undefined;
                     const url = typeof thumb === 'string' ? thumb : (thumb.url || thumb.publicId || undefined);
                     if (!url) return undefined;
-                    if (isDataUrl(url)) return "";
+                    // Never send a local (blob:/data:) thumbnail to the API
+                    if (needsUpload(url)) return "";
                     return url;
                 };
 

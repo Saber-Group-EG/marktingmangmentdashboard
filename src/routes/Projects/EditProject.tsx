@@ -3043,14 +3043,19 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     copy.thumbnail = videoItems[0].thumbnail;
                                 }
                                 const rawThumb = typeof copy.thumbnail === 'string' ? copy.thumbnail : copy.thumbnail?.url;
-                                if (rawThumb && isDataUrl(rawThumb)) {
-                                    const uploadedThumb = await uploadDataUrlToR2(rawThumb, {
+                                // Thumbnails picked from a file are blob URLs — they must be uploaded too
+                                // (needsUpload covers both `blob:` and `data:` sources).
+                                if (rawThumb && needsUpload(rawThumb)) {
+                                    const uploadedThumb = await uploadThumbnailToR2(rawThumb, {
                                         resourceType: "image",
                                         fileName: `project-video-thumb-${materialIndex + 1}.jpg`,
                                     });
                                     copy.thumbnail = uploadedThumb.url;
                                 } else if (!rawThumb) {
                                     copy.thumbnail = "";
+                                } else {
+                                    // Already a hosted URL — normalize { url } objects to a plain string
+                                    copy.thumbnail = rawThumb;
                                 }
                             }
                         } else if (isPhotoMaterialType(copy.type)) {
@@ -3160,9 +3165,12 @@ const handleSubmit = async (e: React.FormEvent) => {
                     }
 
                     const { items, thumbnail, ...rest } = material || {};
+                    const thumbValue = typeof thumbnail === "string" ? thumbnail : thumbnail?.url;
                     return {
                         ...rest,
-                        thumbnail: thumbnail || "",
+                        // Safety net: never send a local (blob:/data:) thumbnail to the API —
+                        // the server would store the string as-is and it dies with the session.
+                        thumbnail: thumbValue && needsUpload(thumbValue) ? "" : thumbnail || "",
                         order: index + 1,
                     };
                 });
