@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from "axios";
 import { showToast } from "../utils/swal";
 
 // Helper to get cookie value
@@ -17,7 +17,7 @@ export const getStoredToken = (name: string): string | null => {
     try {
         const local = localStorage.getItem(name);
         if (local) return local;
-    } catch (err) {
+    } catch {
         // ignore storage errors
     }
 
@@ -30,10 +30,18 @@ const axiosInstance = axios.create({
     headers: {
         "Content-Type": "application/json",
     },
-    timeout: 10000, // 10 seconds timeout - faster failure detection
+    timeout: 20000, // 20 seconds - backend cold starts can exceed 10s
     maxRedirects: 5,
     decompress: true,
 });
+
+// Internal per-request flags used by the response interceptor.
+type RequestFlags = {
+    _retry?: boolean;
+    _retryWithoutPopulate?: boolean;
+    _isRefreshRequest?: boolean;
+};
+type FlaggedRequestConfig = InternalAxiosRequestConfig & RequestFlags;
 
 // Initialize default Authorization header from stored token (cookie or localStorage)
 try {
@@ -41,7 +49,7 @@ try {
     if (initToken) {
         axiosInstance.defaults.headers.common.Authorization = `Bearer ${initToken}`;
     }
-} catch (err) {
+} catch {
     // ignore
 }
 
@@ -90,17 +98,37 @@ axiosInstance.interceptors.request.use(
 
 // Track if we're currently refreshing to avoid multiple refresh requests
 let isRefreshing = false;
-let failedQueue: Array<{ resolve: (value?: any) => void; reject: (reason?: any) => void }> = [];
+let failedQueue: Array<{ resolve: (token: string) => void; reject: (reason: unknown) => void }> = [];
 
-const processQueue = (error: any = null, token: string | null = null) => {
+const processQueue = (error: unknown = null, token: string | null = null): void => {
     failedQueue.forEach((prom) => {
         if (error) {
             prom.reject(error);
         } else {
-            prom.resolve(token);
+            prom.resolve(token ?? "");
         }
     });
     failedQueue = [];
+};
+
+// Full auth teardown: cookies AND localStorage (remember-me), then redirect.
+// localStorage must go too, otherwise the Layout guard re-mounts protected
+// routes in a loop after a failed refresh.
+const hardLogout = (): void => {
+    document.cookie = "accessToken=; Path=/; Max-Age=0";
+    document.cookie = "refreshToken=; Path=/; Max-Age=0";
+    try {
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("auth-user");
+    } catch {
+        // ignore storage errors
+    }
+
+    if (!window.location.pathname.includes("/auth/login")) {
+        console.warn("⚠️ Redirecting to login page");
+        window.location.href = "/auth/login";
+    }
 };
 
 // Response interceptor (for handling errors globally)
@@ -129,18 +157,17 @@ axiosInstance.interceptors.response.use(
                     showToast(`${resourceName} ${action} successfully`, "success");
                 } catch (err) {
                     // swallow errors from UI helper to avoid breaking API flow
-                    // eslint-disable-next-line no-console
                     console.warn("swal showToast failed:", err);
                 }
             }
-        } catch (err) {
+        } catch {
             // ignore any parsing errors here
         }
 
         return response;
     },
     async (error) => {
-        const originalRequest = error.config;
+        const originalRequest = error.config as FlaggedRequestConfig;
 
         // Handle common errors
         if (error.response) {
@@ -159,7 +186,8 @@ axiosInstance.interceptors.response.use(
 
                     // Remove populate from query params
                     if (originalRequest.params) {
-                        const { populate, ...restParams } = originalRequest.params;
+                        const restParams = { ...originalRequest.params };
+                        delete restParams.populate;
                         originalRequest.params = restParams;
                     }
 
@@ -169,85 +197,80 @@ axiosInstance.interceptors.response.use(
 
             // Handle 401 authentication errors
             if (error.response.status === 401 && !originalRequest._retry) {
-                const errorCode = error.response.data?.error?.code;
+                // The refresh call itself was rejected (e.g. refresh token
+                // expired). Reject immediately so the outer catch always runs —
+                // queueing it behind `isRefreshing` would deadlock every
+                // pending request forever.
+                if (originalRequest._isRefreshRequest) {
+                    return Promise.reject(error);
+                }
 
-                // If token is expired and we haven't tried refreshing yet
-                if (errorCode === "TOKEN_EXPIRED" || errorCode === "AUTHENTICATION_FAILED") {
-                    if (isRefreshing) {
-                        // If already refreshing, queue this request
-                        return new Promise((resolve, reject) => {
-                            failedQueue.push({ resolve, reject });
-                        })
-                            .then((token) => {
-                                originalRequest.headers.Authorization = `Bearer ${token}`;
-                                return axiosInstance(originalRequest);
-                            })
-                            .catch((err) => {
-                                return Promise.reject(err);
-                            });
-                    }
-
-                    originalRequest._retry = true;
-                    isRefreshing = true;
-
-                    const refreshToken = getCookie("refreshToken");
-
-                    if (refreshToken) {
-                        try {
-                            const response = await axiosInstance.post("/auth/refresh", {
-                                refreshToken: decodeURIComponent(refreshToken),
-                            });
-
-                            const { accessToken, refreshToken: newRefreshToken } = response.data;
-
-                            // Update cookies with new tokens and localStorage (for remember-me)
-                            const setCookie = (name: string, value: string, days: number) => {
-                                const maxAge = days * 24 * 60 * 60;
-                                document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
-                            };
-                            setCookie("accessToken", accessToken, 1);
-                            setCookie("refreshToken", newRefreshToken, 7);
-                            try {
-                                localStorage.setItem("accessToken", accessToken);
-                                localStorage.setItem("refreshToken", newRefreshToken);
-                            } catch (err) {
-                                // ignore
-                            }
-
-                            // Update authorization header
-                            axiosInstance.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-                            originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-
-                            processQueue(null, accessToken);
-
+                if (isRefreshing) {
+                    // A refresh is already in flight: queue this request
+                    return new Promise<string>((resolve, reject) => {
+                        failedQueue.push({ resolve, reject });
+                    })
+                        .then((token) => {
+                            originalRequest.headers.Authorization = `Bearer ${token}`;
                             return axiosInstance(originalRequest);
-                        } catch (refreshError) {
-                            console.error("❌ Token refresh failed:", refreshError);
-                            processQueue(refreshError, null);
+                        })
+                        .catch((err) => {
+                            return Promise.reject(err);
+                        });
+                }
 
-                            // Clear invalid cookies and redirect to login
-                            document.cookie = "accessToken=; Path=/; Max-Age=0";
-                            document.cookie = "refreshToken=; Path=/; Max-Age=0";
+                originalRequest._retry = true;
+                isRefreshing = true;
 
-                            if (!window.location.pathname.includes("/auth/login")) {
-                                console.warn("⚠️ Redirecting to login page");
-                                window.location.href = "/auth/login";
-                            }
+                const refreshToken = getCookie("refreshToken");
 
-                            return Promise.reject(refreshError);
-                        } finally {
-                            isRefreshing = false;
-                        }
-                    } else {
-                        // No refresh token available, clear auth and redirect
-                        console.warn("⚠️ No refresh token found - redirecting to login");
-                        document.cookie = "accessToken=; Path=/; Max-Age=0";
-                        document.cookie = "refreshToken=; Path=/; Max-Age=0";
+                if (!refreshToken) {
+                    // No way to recover: tear the session down completely
+                    console.warn("⚠️ No refresh token found - logging out");
+                    processQueue(error, null);
+                    isRefreshing = false;
+                    hardLogout();
+                    return Promise.reject(error);
+                }
 
-                        if (!window.location.pathname.includes("/auth/login")) {
-                            window.location.href = "/auth/login";
-                        }
+                try {
+                    const refreshConfig: AxiosRequestConfig & RequestFlags = { _isRefreshRequest: true };
+                    const response = await axiosInstance.post(
+                        "/auth/refresh",
+                        { refreshToken: decodeURIComponent(refreshToken) },
+                        refreshConfig,
+                    );
+
+                    const { accessToken, refreshToken: newRefreshToken } = response.data;
+
+                    // Update cookies with new tokens and localStorage (for remember-me)
+                    const setCookie = (name: string, value: string, days: number) => {
+                        const maxAge = days * 24 * 60 * 60;
+                        document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
+                    };
+                    setCookie("accessToken", accessToken, 1);
+                    setCookie("refreshToken", newRefreshToken, 7);
+                    try {
+                        localStorage.setItem("accessToken", accessToken);
+                        localStorage.setItem("refreshToken", newRefreshToken);
+                    } catch {
+                        // ignore
                     }
+
+                    // Update authorization header
+                    axiosInstance.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+                    originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+
+                    processQueue(null, accessToken);
+
+                    return axiosInstance(originalRequest);
+                } catch (refreshError) {
+                    console.error("❌ Token refresh failed:", refreshError);
+                    processQueue(refreshError, null);
+                    hardLogout();
+                    return Promise.reject(refreshError);
+                } finally {
+                    isRefreshing = false;
                 }
             }
         } else if (error.request) {

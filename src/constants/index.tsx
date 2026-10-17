@@ -18,6 +18,7 @@ import {
     // LogOut,
     Layers,
     Link2,
+    Clapperboard,
     // UserPlus,
 } from "lucide-react";
 
@@ -135,6 +136,11 @@ export const navbarLinks = [
                 label: "Projects",
                 icon: Target,
                 path: "/projects",
+            },
+            {
+                label: "Story Groups",
+                icon: Clapperboard,
+                path: "/story-groups",
             },
             {
                 label: "Categories",

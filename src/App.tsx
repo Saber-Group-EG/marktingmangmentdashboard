@@ -30,6 +30,9 @@ import ProjectDetailsPage from "./routes/Projects/PreviewProject.tsx";
 import EditProjectPage from "./routes/Projects/EditProject.tsx";
 import AccountsPage from "./routes/Accounts/table";
 import PaymentLinksPage from "./routes/paymentLinks/page";
+import StoryGroupsPage from "./routes/StoryGroups/page";
+import AddStoryGroupPage from "./routes/StoryGroups/AddStoryGroup";
+import EditStoryGroupPage from "./routes/StoryGroups/EditStoryGroup";
 
 function App() {
     // React Router basename should match the build base. Vite exposes the base via import.meta.env.BASE_URL
@@ -68,6 +71,9 @@ function App() {
                     { path: "projects/add", element: <AddProjectPage /> },
                     { path: "projects/:id", element: <ProjectDetailsPage /> },
                     { path: "projects/:id/edit", element: <EditProjectPage /> },
+                    { path: "story-groups", element: <StoryGroupsPage /> },
+                    { path: "story-groups/add", element: <AddStoryGroupPage /> },
+                    { path: "story-groups/:id/edit", element: <EditStoryGroupPage /> },
                     { path: "contracts", element: <ContractPage /> },
                     { path: "contracts/manage", element: <ContractPage /> },
                     { path: "reports", element: <ReportsPage /> },

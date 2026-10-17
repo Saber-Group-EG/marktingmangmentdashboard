@@ -56,3 +56,6 @@ export * from "./useProjectCompaniesQuery";
 
 // Payment Links
 export * from "./usePaymentLinksQuery";
+
+// Story Groups
+export * from "./useStoryGroupsQuery";
