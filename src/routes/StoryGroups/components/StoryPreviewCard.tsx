@@ -1,3 +1,4 @@
+import type { StoryLocalizedText } from "@/api/interfaces/storyGroupInterface";
 import { useLang } from "@/hooks/useLang";
 import { cn } from "@/utils/cn";
 import { getProxiedCoverUrl } from "@/utils/proxy";
@@ -5,6 +6,7 @@ import { getProxiedCoverUrl } from "@/utils/proxy";
 interface StoryPreviewCardProps {
     title: string;
     videoCount: number;
+    subtitle?: StoryLocalizedText;
     coverUrl?: string;
     className?: string;
 }
@@ -14,13 +16,20 @@ const tr = (t: (key: string) => string, key: string, fallback: string): string =
     return !value || value === key ? fallback : value;
 };
 
+const localizedSubtitle = (subtitle: StoryLocalizedText | undefined, lang: "ar" | "en"): string => {
+    const ar = subtitle?.ar?.trim() || "";
+    const en = subtitle?.en?.trim() || "";
+    return lang === "ar" ? ar || en : en || ar;
+};
+
 /**
  * Instagram-style story card. The top segment count is driven by the amount of
  * videos in the group so the bar grows as videos are added.
  */
-const StoryPreviewCard = ({ title, videoCount, coverUrl, className }: StoryPreviewCardProps) => {
-    const { t } = useLang();
+const StoryPreviewCard = ({ title, videoCount, subtitle, coverUrl, className }: StoryPreviewCardProps) => {
+    const { t, lang } = useLang();
     const displayTitle = title || tr(t, "untitled_story_group", "Untitled");
+    const displaySubtitle = localizedSubtitle(subtitle, lang);
     const cover = coverUrl ? getProxiedCoverUrl(coverUrl, { width: 640, quality: 70 }) : "";
     const initial = displayTitle.trim().charAt(0).toUpperCase();
 
@@ -68,7 +77,8 @@ const StoryPreviewCard = ({ title, videoCount, coverUrl, className }: StoryPrevi
                     <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-bold text-white">{displayTitle}</span>
                         <span className="block truncate text-[11px] text-white/75">
-                            {tr(t, "story_card_reel", "Reel")} · {videoCount} {tr(t, "story_card_videos", "videos")}
+                            {displaySubtitle ||
+                                `${tr(t, "story_card_reel", "Reel")} · ${videoCount} ${tr(t, "story_card_videos", "videos")}`}
                         </span>
                     </span>
                 </div>

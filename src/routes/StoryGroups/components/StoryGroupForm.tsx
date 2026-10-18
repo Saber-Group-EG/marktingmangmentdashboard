@@ -99,6 +99,7 @@ const StoryGroupForm = ({ initial, submitLabel, submitting = false, onSubmit, on
     );
     const coverUpdateUnsupported = !coverRemoved && !cover.file && !!cover.url && !isHttpUrl(cover.url);
     const previewTitle = storyGroupTitleForLang({ ar: titleAr, en: titleEn }, lang);
+    const previewSubtitle = { ar: subtitleAr, en: subtitleEn };
     const previewCover = cover.previewUrl || cover.url || "";
 
     const applyCoverUrl = (url?: string) => {
@@ -593,6 +594,7 @@ const StoryGroupForm = ({ initial, submitLabel, submitting = false, onSubmit, on
                     <StoryPreviewCard
                         title={previewTitle}
                         videoCount={items.length}
+                        subtitle={previewSubtitle}
                         coverUrl={previewCover}
                     />
                 </div>
@@ -631,6 +633,7 @@ const StoryGroupForm = ({ initial, submitLabel, submitting = false, onSubmit, on
                 <StoryPreviewCard
                     title={previewTitle}
                     videoCount={items.length}
+                    subtitle={previewSubtitle}
                     coverUrl={previewCover}
                 />
                 <p className="text-light-600 dark:text-dark-300 text-xs">

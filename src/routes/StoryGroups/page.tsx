@@ -69,6 +69,7 @@ const SortableStoryGroupCard = ({
             <StoryPreviewCard
                 title={title}
                 videoCount={videoCount}
+                subtitle={group.subtitle}
                 coverUrl={group.coverImage?.url}
             />
             <div className="border-light-200 dark:border-dark-700 dark:bg-dark-900 mt-2 flex items-center justify-between gap-2 rounded-xl border bg-white px-2 py-1.5 shadow-sm">

@@ -50,7 +50,7 @@ const group = (id, order, videoCount, extra = {}) => ({
 });
 
 // render order when sorted by `order` asc: g2(0), g3(1), g1(2), g5(3), g4(4)
-const GROUPS = [group("g1", 2, 3), group("g2", 0, 1), group("g3", 1, 4), group("g4", 4, 2), group("g5", 3, 5)];
+const GROUPS = [group("g1", 2, 3), group("g2", 0, 1), group("g3", 1, 4), group("g4", 4, 2, { subtitle: undefined }), group("g5", 3, 5)];
 const SORTED_TITLES = ["Story g2", "Story g3", "Story g1", "Story g5", "Story g4"];
 const SORTED_SEGMENTS = [1, 4, 3, 5, 2];
 
@@ -263,6 +263,11 @@ const scenarios = {
             if (n !== SORTED_SEGMENTS[i]) segmentsOk = false;
         }
         check("segment count per card = video count", segmentsOk, `expected ${SORTED_SEGMENTS.join(",")}`);
+        const subOf = async (i) => (await cardAt(page, i).locator("span.block.truncate").nth(1).innerText()).trim();
+        const withSub = await subOf(0);
+        check("card shows group SUBTITLE instead of hardcoded text", withSub === "subtitle g2", withSub);
+        const withoutSub = await subOf(4);
+        check("missing subtitle falls back to 'Reel · N videos'", /Reel · 2 videos/.test(withoutSub), withoutSub);
         const listReq = net.find((n) => n.kind === "api" && n.method === "GET" && n.path.includes("/story-groups"));
         check("list request asks for PageCount=all (no silent limit-10)", listReq && listReq.path.includes("PageCount=all") && !/[?&]page=/i.test(listReq.path), listReq?.path);
         check("no runtime errors", errors.length === 0, errors.join(" ; "));
