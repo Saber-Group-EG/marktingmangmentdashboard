@@ -54,9 +54,10 @@ type SortableCastRowProps = {
     member: CastMember;
     projectsCount: number;
     reorderLabel: string;
+    titleEditLabel: string;
     disabled: boolean;
     isReordering: boolean;
-    onEdit: (member: CastMember) => void;
+    onEdit: (member: CastMember, titleIndex?: number) => void;
     onRemove: (member: CastMember) => void;
 };
 
@@ -64,6 +65,7 @@ const SortableCastRow = ({
     member,
     projectsCount,
     reorderLabel,
+    titleEditLabel,
     disabled,
     isReordering,
     onEdit,
@@ -118,12 +120,16 @@ const SortableCastRow = ({
                 <div className="flex flex-wrap gap-1">
                     {(member.title || []).length > 0 ? (
                         member.title!.map((title, idx) => (
-                            <span
+                            <button
                                 key={idx}
-                                className="inline-flex items-center rounded-full border border-light-200 bg-light-50 px-2 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200"
+                                type="button"
+                                onClick={() => onEdit(member, idx)}
+                                title={titleEditLabel}
+                                aria-label={`${titleEditLabel}: ${title}`}
+                                className="inline-flex items-center rounded-full border border-light-200 bg-light-50 px-2 py-0.5 text-xs font-medium text-light-700 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:border-primary-500/50 dark:hover:bg-primary-500/10 dark:hover:text-primary-200"
                             >
                                 {title}
-                            </span>
+                            </button>
                         ))
                     ) : (
                         "-"
@@ -180,6 +186,8 @@ const CastPage = () => {
     const [editName, setEditName] = useState("");
     const [editTitles, setEditTitles] = useState<string[]>([]);
     const [editTitleInput, setEditTitleInput] = useState("");
+    const [editingTitleIndex, setEditingTitleIndex] = useState<number | null>(null);
+    const [editingTitleValue, setEditingTitleValue] = useState("");
     const [editPhoto, setEditPhoto] = useState("");
     const [editSocialLinks, setEditSocialLinks] = useState<SocialLink[]>([]);
 
@@ -296,13 +304,20 @@ const CastPage = () => {
         }
     };
 
-    const openEditModal = (member: CastMember) => {
+    const openEditModal = (member: CastMember, titleIndex?: number) => {
         setEditingMember(member);
         setEditName(member.name || "");
         setEditTitles(member.title || []);
         setEditTitleInput("");
         setEditPhoto(getCastPhotoUrl(member.photo));
         setEditSocialLinks((member.socialLinks || []).map((l) => ({ platform: l.platform, url: l.url })));
+        if (typeof titleIndex === "number" && (member.title || [])[titleIndex] !== undefined) {
+            setEditingTitleIndex(titleIndex);
+            setEditingTitleValue((member.title || [])[titleIndex]);
+        } else {
+            setEditingTitleIndex(null);
+            setEditingTitleValue("");
+        }
         setError("");
     };
 
@@ -311,6 +326,8 @@ const CastPage = () => {
         setEditName("");
         setEditTitles([]);
         setEditTitleInput("");
+        setEditingTitleIndex(null);
+        setEditingTitleValue("");
         setEditPhoto("");
         setEditSocialLinks([]);
         setError("");
@@ -331,13 +348,25 @@ const CastPage = () => {
         }
         if (!editingMember) return;
 
+        const titlesToSave =
+            editingTitleIndex !== null && editingTitleIndex >= 0 && editingTitleIndex < editTitles.length
+                ? editTitles
+                      .map((title, idx) =>
+                          idx === editingTitleIndex ? (editingTitleValue || "").trim() : title.trim(),
+                      )
+                      .filter(
+                          (title, idx, list) =>
+                              title.length > 0 && list.findIndex((t) => t.toLowerCase() === title.toLowerCase()) === idx,
+                      )
+                : editTitles.map((title) => title.trim()).filter(Boolean);
+
         try {
             setError("");
             await updateCastMutation.mutateAsync({
                 id: editingMember._id,
                 data: {
                     name,
-                    title: editTitles.length > 0 ? editTitles : undefined,
+                    title: titlesToSave,
                     photo: editPhoto || undefined,
                     socialLinks: cleanSocialLinks(editSocialLinks),
                     order: editingMember.order ?? null,
@@ -419,6 +448,55 @@ const CastPage = () => {
 
     const removeEditTitle = (index: number) => {
         setEditTitles(editTitles.filter((_, i) => i !== index));
+        if (editingTitleIndex === index) {
+            setEditingTitleIndex(null);
+            setEditingTitleValue("");
+        }
+    };
+
+    const startEditTitle = (index: number) => {
+        setEditingTitleIndex(index);
+        setEditingTitleValue(editTitles[index] || "");
+    };
+
+    const cancelEditTitle = () => {
+        setEditingTitleIndex(null);
+        setEditingTitleValue("");
+    };
+
+    const commitEditTitle = () => {
+        if (editingTitleIndex === null) return;
+        const index = editingTitleIndex;
+        const value = (editingTitleValue || "").trim();
+
+        setEditTitles((prev) => {
+            if (index < 0 || index >= prev.length) return prev;
+            const next = [...prev];
+            if (!value) {
+                next.splice(index, 1);
+                return next;
+            }
+            const isDuplicate = next.some((t, i) => i !== index && t.toLowerCase() === value.toLowerCase());
+            if (isDuplicate) {
+                next.splice(index, 1);
+                return next;
+            }
+            next[index] = value;
+            return next;
+        });
+
+        setEditingTitleIndex(null);
+        setEditingTitleValue("");
+    };
+
+    const handleEditingTitleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            commitEditTitle();
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancelEditTitle();
+        }
     };
 
     const handleEditTitleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -643,6 +721,7 @@ const CastPage = () => {
                                                 member={member}
                                                 projectsCount={castCounts[member._id] || 0}
                                                 reorderLabel={tr("reorder_member", "Reorder member")}
+                                                titleEditLabel={tr("edit_title_click", "Click to edit")}
                                                 disabled={!canReorder}
                                                 isReordering={isReordering}
                                                 onEdit={openEditModal}
@@ -715,21 +794,63 @@ const CastPage = () => {
                                         {tr("cast_title_role", "Titles/Roles")}
                                     </label>
                                     <div className="flex flex-wrap gap-1.5 mb-2">
-                                        {editTitles.map((title, idx) => (
-                                            <span
-                                                key={idx}
-                                                className="inline-flex items-center gap-1 rounded-full border border-light-300 bg-light-100 px-2.5 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-700 dark:text-dark-200"
-                                            >
-                                                {title}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeEditTitle(idx)}
-                                                    className="ml-0.5 rounded-full p-0.5 hover:bg-light-300 dark:hover:bg-dark-600"
+                                        {editTitles.map((title, idx) =>
+                                            editingTitleIndex === idx ? (
+                                                <span
+                                                    key={idx}
+                                                    className="inline-flex items-center gap-1 rounded-full border border-primary-400 bg-white px-2 py-0.5 text-xs font-medium text-light-800 dark:border-primary-500 dark:bg-dark-700 dark:text-dark-100"
                                                 >
-                                                    <X size={10} />
-                                                </button>
-                                            </span>
-                                        ))}
+                                                    <input
+                                                        autoFocus
+                                                        value={editingTitleValue}
+                                                        onChange={(e) => setEditingTitleValue(e.target.value)}
+                                                        onKeyDown={handleEditingTitleKeyDown}
+                                                        onBlur={commitEditTitle}
+                                                        size={Math.max(editingTitleValue.length, 4)}
+                                                        className="min-w-8 max-w-40 rounded-full bg-transparent px-1 py-0.5 text-xs font-medium outline-none"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onMouseDown={(e) => e.preventDefault()}
+                                                        onClick={commitEditTitle}
+                                                        aria-label={tr("save", "Save")}
+                                                        className="rounded-full p-0.5 text-primary-600 hover:bg-primary-100 dark:text-primary-300 dark:hover:bg-primary-500/20"
+                                                    >
+                                                        <Check size={10} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onMouseDown={(e) => e.preventDefault()}
+                                                        onClick={cancelEditTitle}
+                                                        aria-label={tr("cancel", "Cancel")}
+                                                        className="rounded-full p-0.5 hover:bg-light-200 dark:hover:bg-dark-600"
+                                                    >
+                                                        <X size={10} />
+                                                    </button>
+                                                </span>
+                                            ) : (
+                                                <span
+                                                    key={idx}
+                                                    className="inline-flex items-center gap-1 rounded-full border border-light-300 bg-light-100 px-2.5 py-0.5 text-xs font-medium text-light-700 dark:border-dark-600 dark:bg-dark-700 dark:text-dark-200"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => startEditTitle(idx)}
+                                                        title={tr("edit_title_click", "Click to edit")}
+                                                        className="rounded-full hover:text-primary-700 dark:hover:text-primary-200"
+                                                    >
+                                                        {title}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeEditTitle(idx)}
+                                                        className="ml-0.5 rounded-full p-0.5 hover:bg-light-300 dark:hover:bg-dark-600"
+                                                    >
+                                                        <X size={10} />
+                                                    </button>
+                                                </span>
+                                            ),
+                                        )}
                                     </div>
                                     <input
                                         value={editTitleInput}
