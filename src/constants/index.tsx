@@ -162,6 +162,11 @@ export const navbarLinks = [
                 icon: Building2,
                 path: "/project-companies",
             },
+            {
+                label: "Project Types",
+                icon: Tag,
+                path: "/project-types",
+            },
             // {
             //     label: "Logout",
             //     icon: LogOut,

@@ -54,6 +54,9 @@ export * from "./useProjectCounts";
 // Project Companies
 export * from "./useProjectCompaniesQuery";
 
+// Project Types
+export * from "./useTypesQuery";
+
 // Payment Links
 export * from "./usePaymentLinksQuery";
 

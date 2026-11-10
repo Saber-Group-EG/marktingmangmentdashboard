@@ -24,6 +24,7 @@ import CategoriesPage from "./routes/categories/page";
 import SubcategoriesPage from "./routes/subcategories/page";
 import CastPage from "./routes/cast/page";
 import ProjectCompaniesPage from "./routes/projectCompanies/page";
+import ProjectTypesPage from "./routes/ProjectTypes/page";
 import ProjectsPage from "./routes/Projects/page";
 import AddProjectPage from "./routes/Projects/AddProject.tsx";
 import ProjectDetailsPage from "./routes/Projects/PreviewProject.tsx";
@@ -67,6 +68,7 @@ function App() {
                     { path: "subcategories", element: <SubcategoriesPage /> },
                     { path: "cast", element: <CastPage /> },
                     { path: "project-companies", element: <ProjectCompaniesPage /> },
+                    { path: "project-types", element: <ProjectTypesPage /> },
                     { path: "projects", element: <ProjectsPage /> },
                     { path: "projects/add", element: <AddProjectPage /> },
                     { path: "projects/:id", element: <ProjectDetailsPage /> },
